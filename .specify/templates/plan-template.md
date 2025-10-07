@@ -31,7 +31,11 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+- Performance-First Architecture: Ensure all technical decisions prioritize performance benchmarks
+- Master-Worker Scalability: Verify system design supports horizontal scaling and thousands of concurrent users
+- Fault Tolerance: Confirm error handling, retry mechanisms, and circuit breakers in design
+- C++ Implementation Standard: Validate all dependencies and coding standards align with C++ requirements
+- High Throughput Design: Ensure I/O operations and concurrency patterns meet throughput requirements
 
 ## Project Structure
 
