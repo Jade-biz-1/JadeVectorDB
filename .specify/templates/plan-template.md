@@ -31,11 +31,12 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-- Performance-First Architecture: Ensure all technical decisions prioritize performance benchmarks
-- Master-Worker Scalability: Verify system design supports horizontal scaling and thousands of concurrent users
-- Fault Tolerance: Confirm error handling, retry mechanisms, and circuit breakers in design
-- C++ Implementation Standard: Validate all dependencies and coding standards align with C++ requirements
-- High Throughput Design: Ensure I/O operations and concurrency patterns meet throughput requirements
+- Performance-First Architecture: Ensure all technical decisions prioritize performance benchmarks with special attention to vector similarity search performance and indexing efficiency
+- Master-Worker Scalability: Verify system design supports horizontal scaling, thousands of concurrent users, and effective data sharding strategies
+- Fault Tolerance: Confirm error handling, retry mechanisms, circuit breakers, and graceful degradation during failures in design
+- C++ Implementation Standard: Validate all dependencies and coding standards align with C++ requirements, including SIMD optimizations where appropriate
+- High Throughput Design: Ensure I/O operations, concurrency patterns, and batch processing capabilities meet throughput requirements
+- Vector Database Specific Considerations: Verify support for multiple indexing algorithms, metadata filtering with similarity search, various embedding models, caching mechanisms, and compression techniques
 
 ## Project Structure
 
