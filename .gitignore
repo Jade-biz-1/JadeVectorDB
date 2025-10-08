@@ -1,0 +1,20 @@
+# C++ build files
+*.o
+*.lo
+*.la
+*.slo
+*.so
+*.a
+*.dll
+*.exe
+*.out
+
+# Build directories
+build/
+bin/
+
+# Other
+.DS_Store
+
+# Qwen files
+.qwen/
