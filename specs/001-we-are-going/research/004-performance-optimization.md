@@ -94,9 +94,9 @@ Lock-free data structures use atomic operations (e.g., Compare-And-Swap) to ensu
 
 For JadeVectorDB, using lock-free data structures is a promising approach for managing concurrent access to shared data. However, given the complexity of implementing these structures correctly, it is recommended to use well-tested libraries whenever possible. Some popular libraries for lock-free data structures include:
 
-*   **Intel Threading Building Blocks (TBB)**
-*   **Boost.Lockfree**
-*   **Junction**
+*   **Boost.Lockfree** (Boost Software License - permissive)
+*   **Junction** (MIT License - permissive)
+*   **Folly** (Apache 2.0 License - permissive)
 
 By using these libraries, we can leverage the benefits of lock-free programming without having to implement these complex data structures from scratch.
 

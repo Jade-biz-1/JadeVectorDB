@@ -102,19 +102,20 @@ As a system administrator, I want to create new vector database instances with s
 
 ---
 
-### User Story 5 - Vector Embedding Integration (Priority: P2)
+### User Story 5 - Embedding Management (Priority: P2)
 
-As a database user, I want to integrate with various vector embedding models (Word2Vec, GloVe, BERT, etc.) to generate vector embeddings for text, images, and other data types, so that I can process my data through established and accurate ML models.
+As a database user, I want to generate vector embeddings from raw data (like text or images) by leveraging a variety of integrated embedding models, so that I can easily convert my data into vectors without needing an external processing pipeline.
 
-**Why this priority**: Integration with established embedding models is essential for the system's utility. Users expect to be able to leverage state-of-the-art embedding technology without having to implement it themselves.
+**Why this priority**: This capability is essential for the system's utility, as users expect to leverage state-of-the-art embedding technology directly. It simplifies the data ingestion workflow significantly.
 
-**Independent Test**: The system should accept raw input (text, images, etc.) and convert them to vector embeddings using various models. This can be tested independently and provides value by enabling data ingestion.
+**Independent Test**: The system should accept raw input (e.g., text) and a specified model, and then return the corresponding vector embedding. This can be tested independently and provides immediate value by enabling a complete "data-to-vector" workflow.
 
 **Acceptance Scenarios**:
 
-1. **Given** text input, **When** I request embedding using BERT model, **Then** the system returns an appropriate vector representation
-2. **Given** image input, **When** I request embedding using CNN model, **Then** the system returns an appropriate vector representation
-3. **Given** text input, **When** I request embedding using different models, **Then** the system allows specifying which model to use for the embedding
+1. **Given** a text input and a specified embedding model (e.g., BERT), **When** I request the vector embedding, **Then** the system returns the appropriate vector representation.
+2. **Given** an image input and a specified embedding model (e.g., a CNN model), **When** I request the vector embedding, **Then** the system returns the appropriate vector representation.
+3. **Given** raw data, **When** I request an embedding, **Then** the system allows me to choose from a list of available integrated models.
+4. **Given** a running vector database with embedding capabilities, **When** I submit text for embedding, **Then** the system returns a vector representation of the text.
 
 ---
 
@@ -150,22 +151,7 @@ As a system administrator, I want to manage vector indexes (HNSW, IVF, LSH) with
 
 ---
 
-### User Story 8 - Vector Embedding Generation (Priority: P3)
-
-As a database user, I want to submit text or other data and have the system automatically generate appropriate vector embeddings from it, so that I don't need to pre-process my data with external embedding models.
-
-**Why this priority**: This adds convenience and integration value to the system, but is not essential for core functionality as users can generate embeddings externally.
-
-**Independent Test**: The system should accept raw text input and return vector embeddings based on internal embedding models. This can be tested independently and adds value by simplifying the user workflow.
-
-**Acceptance Scenarios**:
-
-1. **Given** a vector database with embedding capabilities, **When** I submit text for embedding, **Then** the system returns a vector representation of the text
-2. **Given** a vector database with multiple embedding models, **When** I specify which model to use, **Then** the system generates embeddings using the requested model
-
----
-
-### User Story 9 - Monitoring and Health Status (Priority: P2)
+### User Story 8 - Monitoring and Health Status (Priority: P2)
 
 As a system administrator, I want to monitor the health and performance of the vector database, so that I can maintain system reliability and performance.
 
@@ -180,7 +166,7 @@ As a system administrator, I want to monitor the health and performance of the v
 
 ---
 
-### User Story 10 - Vector Data Lifecycle Management (Priority: P3)
+### User Story 9 - Vector Data Lifecycle Management (Priority: P3)
 
 As a system administrator, I want to manage the lifecycle of vector data including archival, cleanup, and retention policies, so that I can optimize storage costs while maintaining data availability.
 
@@ -401,7 +387,7 @@ As a system administrator, I want to manage the lifecycle of vector data includi
 - **FR-024**: System MUST provide vector compression capabilities (quantization) to optimize storage and network usage
 - **FR-025**: System MUST support batch operations for efficient bulk vector ingestion
 - **FR-026**: System MUST provide vector dimension reduction capabilities for performance optimization
-- **FR-027**: System MUST support approximate nearest neighbor (ANN) algorithms for fast similarity search
+- **FR-027**: System MUST support specific approximate nearest neighbor (ANN) algorithms for fast similarity search, including HNSW (Hierarchical Navigable Small World), IVF (Inverted File), and LSH (Locality Sensitive Hashing) with configurable parameters for performance vs. accuracy trade-offs
 - **FR-028**: System MUST handle polysemy and homonymy issues in text embeddings appropriately
 
 ### Key Entities *(include if feature involves data)*
@@ -421,7 +407,7 @@ As a system administrator, I want to manage the lifecycle of vector data includi
 ### Security Requirements
 
 - **NFR-001**: System MUST provide API key-based authentication for all users
-- **NFR-002**: System MUST provide role-based access control (RBAC) for configuration and administration activities
+- **NFR-002**: System MUST provide a granular access control model supporting `Users`, `Groups`, and `Roles`. Roles shall be collections of specific permissions (e.g., `vector:add`, `index:create`) and must be assignable to both users and groups.
 - **NFR-003**: System MUST support encryption in transit using TLS/SSL for all communications
 - **NFR-004**: System MUST support comprehensive audit logging of all user operations (create, read, update, delete)
 - **NFR-005**: System MUST provide facility to switch on/off logging for performance optimization
@@ -714,6 +700,7 @@ A more detailed architecture document, including visual diagrams and data flow d
 - **DO-006**: System SHALL implement zero-downtime deployments for production environments through blue-green or rolling deployment strategies
 - **DO-007**: System SHALL provide deployment scripts and documentation for initial version with placeholders for CI/CD enhancement in later versions
 - **DO-008**: System SHALL support cloud-native deployment targeting major cloud platforms (AWS, Azure, GCP) with appropriate infrastructure templates
+- **DO-008a**: System SHALL provide a `docker-compose.yml` configuration to enable easy, one-command local deployment of a multi-container cluster for development and testing purposes.
 
 ### Operational Capabilities
 
@@ -1115,6 +1102,16 @@ A feature-rich CLI SHALL be developed for power users and for automating adminis
 - **SC-013**: System can handle vector dimensions up to 4096 for state-of-the-art embedding models
 - **SC-014**: Metadata filtering combined with similarity search returns results in under 200 milliseconds for complex queries
 - **SC-015**: The system achieves 99% cache hit rate for frequently accessed vectors with appropriate cache configuration
+
+## Clarifications
+
+### Session 2025-10-10
+
+- Q: What is the target performance requirement for similarity search in terms of response time and accuracy for datasets larger than 100 million vectors? → A: Response time under 500ms with 95% accuracy for datasets up to 1 billion vectors
+- Q: How should the system handle authentication and authorization for the different API endpoints and user roles? → A: Role-Based Access Control (RBAC) with fine-grained permissions for each API operation
+- Q: What are the specific consistency requirements for distributed vector data operations? → A: Configurable consistency models (eventual, strong, causal) for different use cases with strong consistency as default for critical operations
+- Q: What is the required availability target for the distributed vector database system? → A: 99.9% availability with automatic failover under 30 seconds
+- Q: How should the system handle backup and disaster recovery procedures? → A: Automated daily backups with point-in-time recovery within 1 hour RTO and 15 minutes RPO
 
 ## Glossary of Terms
 
