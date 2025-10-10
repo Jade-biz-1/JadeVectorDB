@@ -1255,6 +1255,12 @@ Verify all distributed and core services comply with C++ implementation standard
 **Dependencies**: All components  
 Complete all documentation including quickstart guide and architecture documentation
 
+### T191: Create comprehensive developer onboarding guide
+**Cross-Cutting Task**
+**File**: `DEVELOPER_GUIDE.md`
+**Dependencies**: All components
+Create a comprehensive guide for new developers to set up their local development environment.
+
 ---
 
 ## Task Status Tracking
@@ -1272,9 +1278,9 @@ Complete all documentation including quickstart guide and architecture documenta
 | US7 - Index Management | T131-T145 | 0 | 15 |
 | US9 - Data Lifecycle | T146-T160 | 0 | 15 |
 | US8 - Monitoring | T161-T175 | 0 | 15 |
-| Polish & Cross-Cutting | T176-T190 | 0 | 15 |
+| Polish & Cross-Cutting | T176-T191 | 0 | 16 |
 
-**Total Tasks**: 190
+**Total Tasks**: 191
 **Estimated Duration**: 5-6 development months for core features (US1-US8), with additional 1 month for lifecycle management, monitoring, polish and cross-cutting concerns
 
 ## Parallel Execution Opportunities
