@@ -1,0 +1,73 @@
+{
+  "CreateDatabaseRequest": {
+    "name": "document-embeddings",
+    "description": "Database for storing document embeddings for semantic search.",
+    "vectorDimension": 768,
+    "indexType": "HNSW",
+    "indexParameters": {
+      "M": 16,
+      "efConstruction": 200,
+      "efSearch": 64
+    },
+    "sharding": {
+      "strategy": "hash",
+      "numShards": 4
+    },
+    "replication": {
+      "factor": 2,
+      "sync": true
+    }
+  },
+  "StoreVectorsBatchRequest": {
+    "vectors": [
+      {
+        "id": "doc-001",
+        "values": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+        "metadata": {
+          "source": "internal-docs",
+          "category": "technical-spec",
+          "author": "john.doe",
+          "createdAt": "2025-10-10T10:00:00Z"
+        }
+      },
+      {
+        "id": "doc-002",
+        "values": [0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1],
+        "metadata": {
+          "source": "external-research",
+          "category": "market-analysis",
+          "author": "jane.doe",
+          "createdAt": "2025-10-10T11:00:00Z"
+        }
+      }
+    ],
+    "upsert": false
+  },
+  "AdvancedSearchRequest": {
+    "queryVector": [0.11, 0.22, 0.33, 0.44, 0.55, 0.66, 0.77, 0.88],
+    "topK": 5,
+    "threshold": 0.8,
+    "filters": {
+      "metadata.category": "technical-spec",
+      "metadata.author": "john.doe"
+    },
+    "includeMetadata": true,
+    "includeValues": false
+  },
+  "SearchResponse": {
+    "results": [
+      {
+        "id": "doc-001",
+        "similarity": 0.98,
+        "metadata": {
+          "source": "internal-docs",
+          "category": "technical-spec",
+          "author": "john.doe",
+          "createdAt": "2025-10-10T10:00:00Z"
+        }
+      }
+    ],
+    "queryTimeMs": 45.5,
+    "indexUsed": "HNSW"
+  }
+}
