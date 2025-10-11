@@ -29,10 +29,72 @@ The project will be developed in C++ for maximum performance and will follow a m
 *   **Monitoring and Health Status:** Monitor the health and performance of the vector database.
 *   **Vector Data Lifecycle Management:** Manage vector data lifecycle including archival, cleanup, and retention policies.
 
-## Work in Progress
+## Technical Stack
 
-This `README.md` is a work in progress and will be updated soon with more detailed information, including installation instructions, usage examples, and contribution guidelines.
+*   **Backend**: C++20 for high-performance vector operations with SIMD optimizations
+*   **Libraries**: Eigen (linear algebra), OpenBLAS/BLIS (vector operations), FlatBuffers (serialization), Apache Arrow (in-memory analytics), gRPC (service communication)
+*   **Storage**: Custom binary format optimized for vector operations with memory-mapped files; supports Apache Arrow for in-memory operations and FlatBuffers for network serialization
+*   **Frontend**: Next.js framework with shadcn UI components
+*   **CLI**: Python and shell script integration
+*   **Testing**: Google Test with Google Mock for unit and integration testing; Google Benchmark for performance testing
+*   **Platform**: Linux server environments (Ubuntu 20.04+, CentOS 8+, RHEL 8+) with containerization support (Docker, Kubernetes)
 
-## Getting Started
+## Performance Goals
 
-Further details on functional and non-functional requirements, API design, data persistence, and implementation roadmap can be found in the `spec.md` document located in the `specs/002-check-if-we/` directory.
+* Similarity searches return results for 1 million vectors in under 50ms with 95% accuracy
+* Handle 10,000+ vectors per second ingestion
+* 99.9% availability with automatic failover under 30 seconds
+* Support for vector dimensions up to 4096
+
+## Architecture
+
+JadeVectorDB uses a microservices architecture with the following components:
+
+- **Backend**: C++20 services for high-performance vector operations
+- **Frontend**: Next.js web UI with shadcn components
+- **CLI**: Python and shell-based command-line tools
+
+The system supports multiple indexing algorithms configurable per database:
+- **HNSW**: Recommended for single-node deployments or where maximum accuracy is the priority
+- **IVF with PQ**: Recommended for large-scale distributed deployments due to superior query routing and scalability
+- **LSH**: Available for specialized use cases where build time and memory usage are primary constraints
+
+## Implementation Phases
+
+The implementation follows a phased approach with 12 distinct phases:
+
+1. **Setup**: Project initialization and environment setup
+2. **Foundational**: Prerequisites blocking all user stories (core C++ libraries, build system, basic data structures)
+3. **Vector Storage & Retrieval**: Core vector storage and retrieval capabilities (P1 priority)
+4. **Similarity Search**: Similarity search capabilities (P1 priority)
+5. **Advanced Search**: Advanced search with metadata filtering (P2 priority)
+6. **Database Management**: Database creation and configuration (P2 priority)
+7. **Embedding Management**: Embedding model integration and generation (P2 priority)
+8. **Distributed System**: Distributed deployment and scaling (P2 priority)
+9. **Index Management**: Configurable indexing algorithms (P3 priority)
+10. **Data Lifecycle**: Data archival, cleanup, and retention policies (P3 priority)
+11. **Monitoring**: Monitoring and health status capabilities (P2 priority)
+12. **Polish & Cross-Cutting**: Final refinement and cross-cutting concerns
+
+## Quick Start
+
+See the [Quickstart Guide](specs/002-check-if-we/quickstart.md) for getting started with JadeVectorDB.
+
+## Documentation
+
+Complete documentation is available in the `specs/002-check-if-we/` directory and includes:
+
+- [Specification](specs/002-check-if-we/spec.md): Detailed feature requirements and design
+- [Implementation Plan](specs/002-check-if-we/plan.md): Technical approach and architecture
+- [Research Findings](specs/002-check-if-we/research.md): Technical decisions and evaluations
+- [Task Execution Plan](specs/002-check-if-we/tasks.md): Detailed implementation tasks
+- [Data Model](specs/002-check-if-we/data-model.md): Entity definitions and relationships
+- [API Contracts](specs/002-check-if-we/contracts/): API specification in OpenAPI format
+
+## Contributing
+
+We welcome contributions to JadeVectorDB! Please see our [contributing guidelines](CONTRIBUTING.md) for more information.
+
+## License
+
+This project is licensed under the terms specified in [LICENSE](LICENSE).
