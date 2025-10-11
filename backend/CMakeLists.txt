@@ -27,6 +27,20 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(eigen)
 
+# FlatBuffers
+FetchContent_Declare(
+    flatbuffers
+    GIT_REPOSITORY https://github.com/google/flatbuffers.git
+    GIT_TAG v23.5.26
+)
+FetchContent_MakeAvailable(flatbuffers)
+
+# Apache Arrow
+find_package(Arrow REQUIRED)
+if(NOT Arrow_FOUND)
+    message(FATAL_ERROR "Apache Arrow not found. Please install Apache Arrow.")
+endif()
+
 # gRPC
 find_package(gRPC CONFIG REQUIRED)
 if(NOT gRPC_FOUND)
@@ -41,6 +55,7 @@ endif()
 
 # Include directories
 include_directories(${eigen_SOURCE_DIR})
+include_directories(${flatbuffers_SOURCE_DIR}/include)
 
 # For FlatBuffers, Apache Arrow and other dependencies, we'll use package managers or find modules
 # These may need to be installed separately or via vcpkg/conan
@@ -75,6 +90,7 @@ target_link_libraries(jadevectordb
     gRPC::gpr
     gRPC::grpc
     gRPC::grpc++
+    Arrow::arrow
     ${CMAKE_DL_LIBS}
 )
 
@@ -102,6 +118,7 @@ add_library(jadevectordb_core
 
 target_link_libraries(jadevectordb_core 
     Threads::Threads
+    Arrow::arrow
     ${CMAKE_DL_LIBS}
 )
 
