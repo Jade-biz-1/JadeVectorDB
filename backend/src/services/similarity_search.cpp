@@ -2,6 +2,7 @@
 #include "lib/logging.h"
 #include "lib/error_handling.h"
 #include "lib/metrics.h"
+#include "search_utils.h"
 #include <algorithm>
 #include <numeric>
 #include <chrono>
@@ -39,6 +40,14 @@ Result<void> SimilaritySearchService::initialize() {
         "Time spent processing search requests",
         {0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0}
     );
+    search_results_counter_ = metrics_registry->register_counter(
+        "search_results_total",
+        "Total number of search results returned"
+    );
+    active_searches_gauge_ = metrics_registry->register_gauge(
+        "active_searches",
+        "Number of currently active searches"
+    );
     
     LOG_INFO(logger_, "SimilaritySearchService initialized successfully");
     return {};
@@ -58,12 +67,23 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
     // Record start time for metrics
     auto start_time = std::chrono::high_resolution_clock::now();
     
+    // Increment active searches gauge
+    if (active_searches_gauge_) {
+        active_searches_gauge_->increment();
+    }
+    
     // Get all vectors from the database
     // Note: In a real implementation, this would use an index for efficiency
     // For now, we're doing a linear scan which is inefficient for large datasets
     auto all_vectors_result = vector_storage_->retrieve_vectors(database_id, {});
     if (!all_vectors_result.has_value()) {
         LOG_ERROR(logger_, "Failed to retrieve vectors from database: " << database_id);
+        
+        // Decrement active searches gauge
+        if (active_searches_gauge_) {
+            active_searches_gauge_->decrement();
+        }
+        
         return std::vector<SearchResult>{};
     }
     
@@ -87,14 +107,20 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
         if (similarity >= params.threshold) {
             results.emplace_back(vector.id, similarity);
             
-            // Optionally include vector data and metadata
-            if (params.include_vector_data) {
-                results.back().vector_data = vector;
+            // Optionally include vector data and metadata in results
+            if (params.include_vector_data || params.include_metadata) {
+                auto& result_vector = results.back().vector_data;
+                result_vector = vector;
+                
+                // If only including metadata (not vector values), clear the values
+                if (params.include_metadata && !params.include_vector_data) {
+                    result_vector.values.clear();
+                }
             }
         }
     }
     
-    // Sort and limit results
+    // Sort and limit results (KNN - K nearest neighbors)
     results = sort_and_limit_results(std::move(results), params, false); // descending order for similarity
     
     // Update metrics
@@ -103,11 +129,21 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
     if (search_requests_counter_) {
         search_requests_counter_->increment();
     }
+    if (search_results_counter_) {
+        search_results_counter_->add(static_cast<double>(results.size()));
+    }
     if (search_latency_histogram_) {
         search_latency_histogram_->observe(duration);
     }
     
-    LOG_DEBUG(logger_, "Similarity search completed: found " << results.size() << " results in " << duration << " seconds");
+    // Decrement active searches gauge
+    if (active_searches_gauge_) {
+        active_searches_gauge_->decrement();
+    }
+    
+    LOG_DEBUG(logger_, "Similarity search completed: found " << results.size() 
+                   << " results from " << all_vectors.size() << " vectors in " 
+                   << duration << " seconds");
     
     return results;
 }
@@ -126,10 +162,21 @@ Result<std::vector<SearchResult>> SimilaritySearchService::euclidean_search(
     // Record start time for metrics
     auto start_time = std::chrono::high_resolution_clock::now();
     
+    // Increment active searches gauge
+    if (active_searches_gauge_) {
+        active_searches_gauge_->increment();
+    }
+    
     // Get all vectors from the database
     auto all_vectors_result = vector_storage_->retrieve_vectors(database_id, {});
     if (!all_vectors_result.has_value()) {
         LOG_ERROR(logger_, "Failed to retrieve vectors from database: " << database_id);
+        
+        // Decrement active searches gauge
+        if (active_searches_gauge_) {
+            active_searches_gauge_->decrement();
+        }
+        
         return std::vector<SearchResult>{};
     }
     
@@ -173,8 +220,16 @@ Result<std::vector<SearchResult>> SimilaritySearchService::euclidean_search(
     if (search_requests_counter_) {
         search_requests_counter_->increment();
     }
+    if (search_results_counter_) {
+        search_results_counter_->add(static_cast<double>(results.size()));
+    }
     if (search_latency_histogram_) {
         search_latency_histogram_->observe(duration);
+    }
+    
+    // Decrement active searches gauge
+    if (active_searches_gauge_) {
+        active_searches_gauge_->decrement();
     }
     
     LOG_DEBUG(logger_, "Euclidean search completed: found " << results.size() << " results in " << duration << " seconds");
@@ -196,10 +251,21 @@ Result<std::vector<SearchResult>> SimilaritySearchService::dot_product_search(
     // Record start time for metrics
     auto start_time = std::chrono::high_resolution_clock::now();
     
+    // Increment active searches gauge
+    if (active_searches_gauge_) {
+        active_searches_gauge_->increment();
+    }
+    
     // Get all vectors from the database
     auto all_vectors_result = vector_storage_->retrieve_vectors(database_id, {});
     if (!all_vectors_result.has_value()) {
         LOG_ERROR(logger_, "Failed to retrieve vectors from database: " << database_id);
+        
+        // Decrement active searches gauge
+        if (active_searches_gauge_) {
+            active_searches_gauge_->decrement();
+        }
+        
         return std::vector<SearchResult>{};
     }
     
@@ -239,8 +305,16 @@ Result<std::vector<SearchResult>> SimilaritySearchService::dot_product_search(
     if (search_requests_counter_) {
         search_requests_counter_->increment();
     }
+    if (search_results_counter_) {
+        search_results_counter_->add(static_cast<double>(results.size()));
+    }
     if (search_latency_histogram_) {
         search_latency_histogram_->observe(duration);
+    }
+    
+    // Decrement active searches gauge
+    if (active_searches_gauge_) {
+        active_searches_gauge_->decrement();
     }
     
     LOG_DEBUG(logger_, "Dot product search completed: found " << results.size() << " results in " << duration << " seconds");
