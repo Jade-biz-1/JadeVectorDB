@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  jadevectordb-master:
+    build: .
+    container_name: jadevectordb-master
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_TYPE=master
+      - PORT=8080
+      - CLUSTER_SIZE=3
+    volumes:
+      - jadevectordb_data:/data
+    networks:
+      - jadevectordb_network
+    restart: unless-stopped
+  
+  jadevectordb-worker-1:
+    build: .
+    container_name: jadevectordb-worker-1
+    environment:
+      - NODE_TYPE=worker
+      - MASTER_HOST=jadevectordb-master
+      - PORT=8081
+    volumes:
+      - jadevectordb_data:/data
+    networks:
+      - jadevectordb_network
+    depends_on:
+      - jadevectordb-master
+    restart: unless-stopped
+  
+  jadevectordb-worker-2:
+    build: .
+    container_name: jadevectordb-worker-2
+    environment:
+      - NODE_TYPE=worker
+      - MASTER_HOST=jadevectordb-master
+      - PORT=8082
+    volumes:
+      - jadevectordb_data:/data
+    networks:
+      - jadevectordb_network
+    depends_on:
+      - jadevectordb-master
+    restart: unless-stopped
+
+volumes:
+  jadevectordb_data:
+
+networks:
+  jadevectordb_network:
+    driver: bridge

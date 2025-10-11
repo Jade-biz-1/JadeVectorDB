@@ -1,20 +1,122 @@
-# C++ build files
+# C++ build artifacts and IDE files
 *.o
-*.lo
-*.la
-*.slo
-*.so
 *.a
+*.so
+*.dylib
 *.dll
 *.exe
-*.out
 
-# Build directories
+# CMake build directories
 build/
-bin/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+Makefile
+cmake_install.cmake
+compile_commands.json
 
-# Other
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 
-# Qwen files
-.qwen/
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.swap
+*.orig
+*.rej
+
+# Node.js/Next.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dist/
+.next/
+.nuxt/
+out/
+coverage/
+.nyc_output/
+
+# Docker
+.dockerenv
+.dockerinit
+
+# Environment specific files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.staging.local
+.env.backup
+.env.example
+
+# Database
+*.db
+*.db-journal
+
+# Docker and container
+.docker/
+containerd/
+.kube/
+
+# C++ specific
+obj/
+*.obj
+*.ilk
+*.iobj
+*.ipdb
+*.pdb
+*.exp
+*.lib
+*.gch
+*.gcda
+*.gcno
+*.gcin
+*.stackdump
+*.dSYM/
+
+# Conan package manager
+conanbuildinfo*
+conaninfo.txt
+conan.lock
+
+# vcpkg
+vcpkg/
+vcpkg.json
+vcpkg-configuration.json
