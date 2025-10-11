@@ -117,6 +117,9 @@ public:
     void setup_authentication();
     void setup_request_validation();
     void setup_response_serialization();
+    
+    // Authentication helper
+    Result<bool> authenticate_request(const std::string& api_key) const;
 };
 
 } // namespace jadevectordb
