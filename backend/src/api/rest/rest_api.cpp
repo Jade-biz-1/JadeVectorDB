@@ -591,8 +591,8 @@ void RestApiImpl::handle_similarity_search() {
 void RestApiImpl::handle_advanced_search() {
     LOG_DEBUG(logger_, "Setting up advanced search endpoint at /v1/databases/{databaseId}/search/advanced");
     
-    // In a real implementation, this would register a POST endpoint
-    // that connects to the SimilaritySearchService with advanced filtering
+    // In a real implementation with a web framework, this would register a POST endpoint
+    // that connects to the SimilaritySearchService with advanced filtering capabilities
     // Example pseudo-code for the actual web framework integration:
     /*
     POST("/v1/databases/:databaseId/search/advanced", [&](const Request& req, Response& res) {
@@ -616,22 +616,38 @@ void RestApiImpl::handle_advanced_search() {
                 return;
             }
             
-            // Check if user has permission to perform advanced search in this database
-            // auto auth_manager = AuthManager::get_instance();
-            // auto user_id_result = auth_manager->get_user_from_api_key(api_key);
-            // if (user_id_result.has_value()) {
-            //     auto perm_result = auth_manager->has_permission_with_api_key(api_key, "search:execute");
-            //     if (!perm_result.has_value() || !perm_result.value()) {
-            //         res.status = 403; // Forbidden
-            //         res.set_content("{\"error\":\"Insufficient permissions\"}", "application/json");
-            //         return;
-            //     }
-            // }
+            // Authorize user for advanced search operation
+            auto auth_manager = AuthManager::get_instance();
+            auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+            if (!user_id_result.has_value()) {
+                res.status = 401; // Unauthorized
+                res.set_content("{\"error\":\"Invalid API key\"}", "application/json");
+                return;
+            }
+            
+            std::string user_id = user_id_result.value();
+            
+            // Check if user has permission to perform search in this database
+            auto search_perm_result = auth_manager->has_permission_with_api_key(api_key, "search:execute");
+            if (!search_perm_result.has_value() || !search_perm_result.value()) {
+                res.status = 403; // Forbidden
+                res.set_content("{\"error\":\"Insufficient permissions for search operation\"}", "application/json");
+                return;
+            }
+            
+            // Check if user has access to the specific database
+            auto db_access_result = auth_manager->check_database_access(user_id, database_id);
+            if (!db_access_result.has_value() || !db_access_result.value()) {
+                res.status = 403; // Forbidden
+                res.set_content("{\"error\":\"Access denied to database\"}", "application/json");
+                return;
+            }
             
             // Parse query vector and advanced search parameters from request body
             auto search_request = parse_advanced_search_request_from_json(req.body);
             auto query_vector = search_request.query_vector;
             auto search_params = search_request.search_params;  // Includes filters
+            auto complex_filter = search_request.complex_filter;  // Advanced filter object
             
             // Validate search parameters
             auto validation_result = similarity_search_service_->validate_search_params(search_params);
@@ -641,6 +657,19 @@ void RestApiImpl::handle_advanced_search() {
                 return;
             }
             
+            // If a complex filter is provided, validate it first
+            if (!complex_filter.conditions.empty() || !complex_filter.nested_filters.empty()) {
+                auto filter_validation_result = similarity_search_service_->validate_complex_filter(complex_filter);
+                if (!filter_validation_result.has_value()) {
+                    res.status = 400; // Bad Request
+                    res.set_content("{\"error\":\"Invalid complex filter\"}", "application/json");
+                    return;
+                }
+            }
+            
+            // Log the search operation for audit purposes
+            LOG_INFO(logger_, "User " << user_id << " performing advanced search on database " << database_id);
+            
             // Perform advanced similarity search using the service
             auto result = similarity_search_service_->similarity_search(database_id, query_vector, search_params);
             
@@ -649,13 +678,23 @@ void RestApiImpl::handle_advanced_search() {
                 auto json_str = serialize_search_results_to_json(result.value());
                 res.status = 200; // OK
                 res.set_content(json_str, "application/json");
+                
+                // Log successful search
+                LOG_DEBUG(logger_, "Advanced search completed successfully for user " << user_id);
             } else {
                 res.status = 400; // Bad Request
                 res.set_content("{\"error\":\"Search failed\"}", "application/json");
+                
+                // Log failed search
+                LOG_WARN(logger_, "Advanced search failed for user " << user_id << ": " 
+                          << ErrorHandler::format_error(result.error()));
             }
         } catch (const std::exception& e) {
             res.status = 500; // Internal Server Error
             res.set_content("{\"error\":\"Internal server error\"}", "application/json");
+            
+            // Log error
+            LOG_ERROR(logger_, "Exception in advanced search: " << e.what());
         }
     });
     */
