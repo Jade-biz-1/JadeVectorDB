@@ -1,48 +1,38 @@
-# JadeVectorDB
+<p align="center">
+  <img src="docs/logo.png" alt="JadeVectorDB Logo">
+</p>
 
-A high-performance distributed vector database solution designed for modern AI and machine learning applications.
+# JadeVectorDB: High-Performance Distributed Vector Database
 
-## Overview
+## Executive Summary
 
-JadeVectorDB is a high-performance, distributed vector database built from the ground up for scalability and performance. It supports fast similarity search, distributed deployment, and rich metadata filtering capabilities.
+JadeVectorDB is a new high-performance, distributed vector database designed to be built from scratch. The primary goal of this project is to deliver a scalable and resilient solution for storing, indexing, and searching large volumes of vector embeddings with high efficiency.
 
-### Key Features
+The core features of the database include:
+- **High-Performance Search:** Support for fast and accurate similarity searches (e.g., cosine similarity, Euclidean distance) using advanced indexing algorithms like HNSW, IVF, and LSH.
+- **Distributed Architecture:** A master-worker architecture that supports horizontal scaling, data sharding, and automatic failover to ensure high availability and resilience.
+- **Comprehensive API:** A complete set of APIs (REST and gRPC) for all database operations, including database creation, vector management, and complex search queries.
+- **Flexible Data Model:** Support for rich metadata associated with vectors, enabling powerful filtered searches that combine semantic and structural criteria.
+- **Integrated Embedding Generation:** Optional capabilities to generate vector embeddings from raw data (text, images) using various popular models.
 
-- **High Performance**: Optimized for fast similarity searches with response times under 100ms
-- **Distributed Architecture**: Master-worker pattern with automatic failover and data sharding
-- **Multiple Indexing Algorithms**: Support for HNSW, IVF, and LSH algorithms with configurable parameters
-- **Rich Metadata Support**: Combined similarity and metadata filtering
-- **Embedding Integration**: Direct integration with popular embedding models (Hugging Face, local models, commercial APIs)
-- **API Support**: REST and gRPC APIs for flexible integration
-- **Multi-language SDKs**: Python, JavaScript/TypeScript, and other language clients
-- **Monitoring & Observability**: Built-in health checks, metrics, and distributed tracing
+The project will be developed in C++ for maximum performance and will follow a microservices architecture. It is designed for deployment on modern server platforms, including cloud and on-premises environments, with support for containerization and orchestration.
 
-## Architecture
+## Key Features
 
-JadeVectorDB uses a microservices architecture with the following components:
+*   **Vector Storage and Retrieval:** Store vector embeddings with associated metadata and retrieve them for similarity searches.
+*   **Similarity Search:** Perform fast and accurate similarity searches (cosine similarity, Euclidean distance, dot product).
+*   **Advanced Similarity Search with Filters:** Combine vector similarity search with metadata filtering for precise results.
+*   **Database Creation and Configuration:** Create and manage vector database instances with configurable parameters.
+*   **Vector Embedding Integration:** Integrate with various vector embedding models (BERT, Word2Vec, GloVe, etc.) for text, image, and other data types.
+*   **Distributed Deployment and Scaling:** Deploy in a distributed master-worker architecture with horizontal scaling and automatic failover.
+*   **Vector Index Management:** Manage vector indexes (HNSW, IVF, LSH) with configurable parameters.
+*   **Monitoring and Health Status:** Monitor the health and performance of the vector database.
+*   **Vector Data Lifecycle Management:** Manage vector data lifecycle including archival, cleanup, and retention policies.
 
-- **Backend**: C++20 services for high-performance vector operations
-- **Frontend**: Next.js web UI with shadcn components
-- **CLI**: Python and shell-based command-line tools
+## Work in Progress
 
-## Quick Start
+This `README.md` is a work in progress and will be updated soon with more detailed information, including installation instructions, usage examples, and contribution guidelines.
 
-See the [Quickstart Guide](specs/002-check-if-we/quickstart.md) for getting started with JadeVectorDB.
+## Getting Started
 
-## Documentation
-
-Complete documentation is available in the `docs/` directory and includes:
-
-- Architecture overview
-- API reference
-- Deployment guides
-- Performance tuning
-- Security configuration
-
-## Contributing
-
-We welcome contributions to JadeVectorDB! Please see our [contributing guidelines](CONTRIBUTING.md) for more information.
-
-## License
-
-This project is licensed under the terms specified in [LICENSE](LICENSE).
+Further details on functional and non-functional requirements, API design, data persistence, and implementation roadmap can be found in the `spec.md` document located in the `specs/002-check-if-we/` directory.
