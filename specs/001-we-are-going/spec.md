@@ -443,6 +443,14 @@ As a system administrator, I want to manage the lifecycle of vector data includi
 - **NFR-023**: System MUST provide essential test coverage for critical functions
 - **NFR-024**: System MUST include automated code review processes in the CI/CD pipeline
 
+### Data Privacy and Governance Requirements
+
+- **NFR-025**: System MUST implement data privacy controls to satisfy GDPR compliance requirements for European users
+- **NFR-026**: System MUST implement data governance mechanisms including data retention policies, right to deletion capabilities, and data anonymization features
+- **NFR-027**: System MUST support data residency controls allowing users to specify geographic regions for data storage and processing
+- **NFR-028**: System MUST provide data portability features enabling users to export their data in standard formats (as per GDPR Article 20)
+- **NFR-029**: System MUST maintain audit trails of all data access and modifications for compliance verification
+
 ### Scalability Requirements
 
 - **NFR-025**: System MUST support horizontal scaling across multiple nodes
@@ -667,7 +675,7 @@ A more detailed architecture document, including visual diagrams and data flow d
 
 ### Search Performance
 
-- **PB-004**: System SHALL provide similarity search response times under 100ms for datasets up to 10M vectors
+- **PB-004**: System SHALL provide similarity search response times under 100ms for datasets up to 10M vectors with K=10 nearest neighbors and similarity threshold ≥0.7 (cosine similarity)
 - **PB-005**: System SHALL maintain search performance under 100ms even as dataset size scales, using appropriate indexing algorithms (HNSW, IVF, LSH)
 - **PB-006**: System SHALL provide configurable accuracy vs. speed trade-offs for different use cases
 - **PB-007**: System SHALL optimize search performance based on indexing parameters and cluster configuration
@@ -886,6 +894,8 @@ The development of migration capabilities will follow a phased approach:
 ## User Interface (UI/CLI) Requirements
 
 To complement the powerful API, a user-friendly web-based User Interface (UI) and a scriptable Command-Line Interface (CLI) SHALL be developed. These interfaces will cater to different user personas, from administrators and developers to data scientists.
+
+The Web UI will be implemented using Next.js framework with shadcn UI components for a modern, responsive user experience with excellent developer experience. These technologies were specifically selected to provide consistent, accessible, and well-designed UI elements that accelerate development while providing excellent user experience for administrators and data scientists managing the vector database.
 
 ### General Principles
 - **UI-001:** The Web UI MUST be intuitive, responsive, and provide a clear visual representation of the database state and data.

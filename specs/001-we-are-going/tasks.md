@@ -171,55 +171,67 @@ Implement serialization/deserialization utilities using FlatBuffers for network 
 **Dependencies**: T009, T010, T011, T012  
 Implement the custom binary storage format optimized for vector operations as per architecture decisions
 
-### T017: Implement basic logging infrastructure
+### T017: Implement Apache Arrow utilities for in-memory operations
+**[P] Foundational Task**  
+**File**: `backend/src/lib/arrow_utils.h`, `backend/src/lib/arrow_utils.cpp`  
+**Dependencies**: None  
+Implement utilities for Apache Arrow-based in-memory analytics with rich typing and columnar format support as per architecture decisions
+
+### T018: Implement memory pool utilities with SIMD-aligned allocations
+**[P] Foundational Task**  
+**File**: `backend/src/lib/memory_pool.h`, `backend/src/lib/memory_pool.cpp`  
+**Dependencies**: None  
+Implement thread-local memory pools with SIMD-aligned allocations for optimized memory management as per architecture decisions
+
+### T019: Implement basic logging infrastructure
 **[P] Foundational Task**  
 **File**: `backend/src/lib/logging.h`, `backend/src/lib/logging.cpp`  
 **Dependencies**: None  
 Set up structured logging infrastructure as required for monitoring needs
 
-### T018: Implement error handling utilities
+### T020: Implement error handling utilities
 **[P] Foundational Task**  
 **File**: `backend/src/lib/error_handling.h`, `backend/src/lib/error_handling.cpp`  
 **Dependencies**: None  
 Implement error handling utilities using std::expected as per architecture decisions
 
-### T019: Create basic configuration management
+### T021: Create basic configuration management
 **[P] Foundational Task**  
 **File**: `backend/src/lib/config.h`, `backend/src/lib/config.cpp`  
 **Dependencies**: None  
 Implement basic configuration management system for server settings
 
-### T020: Set up thread pool utilities
+### T022: Set up thread pool utilities
 **[P] Foundational Task**  
 **File**: `backend/src/lib/thread_pool.h`, `backend/src/lib/thread_pool.cpp`  
 **Dependencies**: None  
 Implement thread pool utilities using lock-free queues as per architecture decisions
 
-### T021: Implement basic authentication framework
+### T023: Implement basic authentication framework
 **[P] Foundational Task**  
 **File**: `backend/src/lib/auth.h`, `backend/src/lib/auth.cpp`  
 **Dependencies**: None  
 Create basic authentication framework with API key support as required by security needs
 
-### T022: Create metrics collection infrastructure
+### T024: Create metrics collection infrastructure
 **[P] Foundational Task**  
 **File**: `backend/src/lib/metrics.h`, `backend/src/lib/metrics.cpp`  
 **Dependencies**: None  
-Implement metrics collection infrastructure for monitoring and observability
+Implement metrics collection infrastructure for monitoring and observability, specifically designed to track compliance with performance benchmarks defined in the spec including response times, throughput, and resource utilization targets
 
-### T023: Set up gRPC service interfaces
+### T025: Set up gRPC service interfaces
 **[P] Foundational Task**  
 **File**: `backend/src/api/grpc/`  
 **Dependencies**: None  
 Define gRPC service interfaces based on API specification for internal communication
 
-### T024: Set up REST API interfaces
+### T026: Set up REST API interfaces
 **[P] Foundational Task**  
 **File**: `backend/src/api/rest/`  
 **Dependencies**: None  
 Define REST API interfaces based on OpenAPI specification in contracts/vector-db-api.yaml
 
-### T025: Create database abstraction layer
+### T027: Create database abstraction layer
 **[P] Foundational Task**  
 **File**: `backend/src/services/database_layer.h`, `backend/src/services/database_layer.cpp`  
 **Dependencies**: T009, T010, T011, T012  
@@ -251,13 +263,13 @@ Implement validation for vector dimensions, ID uniqueness, and metadata format
 **[P] US1 Task**  
 **File**: `backend/src/api/rest/vector_routes.cpp`  
 **Dependencies**: T026, T027  
-Implement the REST API endpoint POST /databases/{databaseId}/vectors
+Implement the REST API endpoint POST /v1/databases/{databaseId}/vectors
 
 ### T030: Create REST endpoint for retrieving vectors
 **[P] US1 Task**  
 **File**: `backend/src/api/rest/vector_routes.cpp`  
 **Dependencies**: T027  
-Implement the REST API endpoint GET /databases/{databaseId}/vectors/{vectorId}
+Implement the REST API endpoint GET /v1/databases/{databaseId}/vectors/{vectorId}
 
 ### T031: Implement batch vector storage
 **[P] US1 Task**  
@@ -269,7 +281,7 @@ Extend storage service to support batch vector operations
 **[P] US1 Task**  
 **File**: `backend/src/api/rest/vector_routes.cpp`  
 **Dependencies**: T031  
-Implement the REST API endpoint POST /databases/{databaseId}/vectors/batch
+Implement the REST API endpoint POST /v1/databases/{databaseId}/vectors/batch
 
 ### T033: Implement vector update functionality
 **[P] US1 Task**  
@@ -281,7 +293,7 @@ Implement the service to update vector embeddings and metadata
 **[P] US1 Task**  
 **File**: `backend/src/api/rest/vector_routes.cpp`  
 **Dependencies**: T033  
-Implement the REST API endpoint PUT /databases/{databaseId}/vectors/{vectorId}
+Implement the REST API endpoint PUT /v1/databases/{databaseId}/vectors/{vectorId}
 
 ### T035: Implement vector deletion functionality
 **[P] US1 Task**  
@@ -293,7 +305,7 @@ Implement the service to delete vector embeddings (soft delete)
 **[P] US1 Task**  
 **File**: `backend/src/api/rest/vector_routes.cpp`  
 **Dependencies**: T035  
-Implement the REST API endpoint DELETE /databases/{databaseId}/vectors/{vectorId}
+Implement the REST API endpoint DELETE /v1/databases/{databaseId}/vectors/{vectorId}
 
 ### T037: Implement basic CRUD operations for Vectors in the API layer
 **[P] US1 Task**  
@@ -327,7 +339,7 @@ Write integration tests for the vector storage and retrieval API endpoints
 **[P] US2 Task**  
 **File**: `backend/src/services/similarity_search.h`, `backend/src/services/similarity_search.cpp`  
 **Dependencies**: T014, T026  
-Implement basic similarity search functionality with cosine similarity metric
+Implement basic similarity search functionality with cosine similarity metric, ensuring performance targets: response times under 100ms for datasets up to 10M vectors (as per spec PB-004)
 
 ### T042: Implement additional similarity metrics
 **[P] US2 Task**  
@@ -345,7 +357,7 @@ Implement KNN search functionality to return top K similar vectors
 **[P] US2 Task**  
 **File**: `backend/src/api/rest/search_routes.cpp`  
 **Dependencies**: T041, T043  
-Implement the REST API endpoint POST /databases/{databaseId}/search
+Implement the REST API endpoint POST /v1/databases/{databaseId}/search, ensuring the implementation meets performance requirements (response times under 100ms for datasets up to 10M vectors as per spec PB-004)
 
 ### T045: Implement threshold-based filtering for search results
 **[P] US2 Task**  
@@ -357,7 +369,7 @@ Add functionality to filter results by similarity threshold
 **[P] US2 Task**  
 **File**: `backend/src/services/similarity_search.cpp`  
 **Dependencies**: T041, T043  
-Optimize search performance using SIMD operations and efficient data structures
+Optimize search performance using SIMD operations and efficient data structures to meet the response time requirement of under 100ms for datasets up to 10M vectors (as per spec PB-004)
 
 ### T047: Create unit tests for similarity search algorithms
 **[P] US2 Task**  
@@ -375,7 +387,7 @@ Write integration tests for the search API endpoints
 **[P] US2 Task**  
 **File**: `backend/tests/benchmarks/search_benchmarks.cpp`  
 **Dependencies**: T041, T043  
-Create performance benchmarks for search functionality to ensure performance requirements are met
+Create performance benchmarks for search functionality to ensure performance requirements are met, specifically targeting response times under 100ms for datasets up to 10M vectors (as per spec PB-004)
 
 ### T050: Implement search result metadata inclusion
 **[P] US2 Task**  
@@ -411,7 +423,7 @@ Create tests to validate search result quality and accuracy
 **[P] US2 Task**  
 **File**: `backend/src/services/similarity_search.cpp`, `backend/src/lib/metrics.cpp`  
 **Dependencies**: T022, T041  
-Add search-specific metrics to the monitoring system
+Add search-specific metrics to the monitoring system, including query latency metrics to track compliance with response time requirements (under 100ms for datasets up to 10M vectors as per spec PB-004)
 
 ---
 
@@ -433,7 +445,7 @@ Combine metadata filtering with similarity search to implement advanced search
 **[P] US3 Task**  
 **File**: `backend/src/api/rest/search_routes.cpp`  
 **Dependencies**: T057  
-Implement the REST API endpoint POST /databases/{databaseId}/search/advanced
+Implement the REST API endpoint POST /v1/databases/{databaseId}/search/advanced
 
 ### T059: Implement complex filter combinations
 **[P] US3 Task**  
@@ -463,7 +475,7 @@ Write integration tests for the advanced search API endpoints
 **[P] US3 Task**  
 **File**: `backend/tests/benchmarks/filtered_search_benchmarks.cpp`  
 **Dependencies**: T057  
-Create benchmarks for filtered search performance
+Create benchmarks for filtered search performance, specifically targeting response times under 150ms for complex queries with multiple metadata filters (as per spec PB-009)
 
 ### T064: Add support for range queries in metadata filtering
 **[P] US3 Task**  
@@ -505,7 +517,7 @@ Create end-to-end tests for the filtered similarity search functionality
 **[P] US3 Task**  
 **File**: `backend/src/services/metadata_filter.cpp`, `backend/src/lib/metrics.cpp`  
 **Dependencies**: T022, T056  
-Add filtered search-specific metrics to the monitoring system
+Add filtered search-specific metrics to the monitoring system, specifically tracking response times to ensure they remain under 150 milliseconds for complex queries (as per spec PB-009)
 
 ---
 
@@ -527,7 +539,7 @@ Validate database configurations like vector dimensions, index parameters, etc.
 **[P] US4 Task**  
 **File**: `backend/src/api/rest/database_routes.cpp`  
 **Dependencies**: T071  
-Implement the REST API endpoint POST /databases
+Implement the REST API endpoint POST /v1/databases
 
 ### T074: Implement database listing functionality
 **[P] US4 Task**  
@@ -539,7 +551,7 @@ Add functionality to list all available databases
 **[P] US4 Task**  
 **File**: `backend/src/api/rest/database_routes.cpp`  
 **Dependencies**: T074  
-Implement the REST API endpoint GET /databases
+Implement the REST API endpoint GET /v1/databases
 
 ### T076: Implement database retrieval by ID
 **[P] US4 Task**  
@@ -551,7 +563,7 @@ Add functionality to retrieve specific database configuration by ID
 **[P] US4 Task**  
 **File**: `backend/src/api/rest/database_routes.cpp`  
 **Dependencies**: T076  
-Implement the REST API endpoint GET /databases/{databaseId}
+Implement the REST API endpoint GET /v1/databases/{databaseId}
 
 ### T078: Implement database update functionality
 **[P] US4 Task**  
@@ -563,7 +575,7 @@ Add functionality to update database configurations
 **[P] US4 Task**  
 **File**: `backend/src/api/rest/database_routes.cpp`  
 **Dependencies**: T078  
-Implement the REST API endpoint PUT /databases/{databaseId}
+Implement the REST API endpoint PUT /v1/databases/{databaseId}
 
 ### T080: Implement database deletion functionality
 **[P] US4 Task**  
@@ -575,7 +587,7 @@ Add functionality to delete database instances and all their data
 **[P] US4 Task**  
 **File**: `backend/src/api/rest/database_routes.cpp`  
 **Dependencies**: T080  
-Implement the REST API endpoint DELETE /databases/{databaseId}
+Implement the REST API endpoint DELETE /v1/databases/{databaseId}
 
 ### T082: Add authentication and authorization to database endpoints
 **[P] US4 Task**  
@@ -753,7 +765,7 @@ Write integration tests for embedding generation API endpoints
 **[P] US5 Task**  
 **File**: `backend/tests/benchmarks/embedding_generation_benchmarks.cpp`  
 **Dependencies**: T101, T102  
-Create performance benchmarks for embedding generation
+Create performance benchmarks for embedding generation to ensure text inputs are processed in under 1 second for texts up to 1000 tokens (as per spec SC-008)
 
 ### T111: Document embedding generation API
 **[P] US5 Task**  
@@ -771,7 +783,7 @@ Allow users to specify which model to use for embedding generation
 **[P] US5 Task**  
 **File**: `backend/src/services/embedding_service.cpp`, `backend/src/lib/metrics.cpp`  
 **Dependencies**: T022, T101  
-Add embedding generation-specific metrics to the monitoring system
+Add embedding generation-specific metrics to the monitoring system to track performance toward processing text inputs in under 1 second for texts up to 1000 tokens (as per spec SC-008)
 
 ### T114: Add rate limiting to embedding generation endpoints
 **[P] US5 Task**  
@@ -871,7 +883,7 @@ Create documentation for the distributed system architecture
 **[P] US6 Task**  
 **File**: `backend/tests/benchmarks/distributed_benchmarks.cpp`  
 **Dependencies**: T121, T122  
-Create performance benchmarks for distributed operations
+Create performance benchmarks for distributed operations to ensure scalability targets are met (as per spec PB-005 and PB-026)
 
 ### T130: Implement distributed security mechanisms
 **[P] US6 Task**  
@@ -917,25 +929,25 @@ Create a service to manage different index types with configurable parameters
 **[P] US7 Task**  
 **File**: `backend/src/api/rest/index_routes.cpp`  
 **Dependencies**: T135  
-Implement the REST API endpoint POST /databases/{databaseId}/indexes for creating indexes
+Implement the REST API endpoint POST /v1/databases/{databaseId}/indexes for creating indexes
 
 ### T137: Implement index listing endpoint
 **[P] US7 Task**  
 **File**: `backend/src/api/rest/index_routes.cpp`  
 **Dependencies**: T135  
-Implement the REST API endpoint GET /databases/{databaseId}/indexes for listing indexes
+Implement the REST API endpoint GET /v1/databases/{databaseId}/indexes for listing indexes
 
 ### T138: Implement index update endpoint
 **[P] US7 Task**  
 **File**: `backend/src/api/rest/index_routes.cpp`  
 **Dependencies**: T135  
-Implement the REST API endpoint PUT /databases/{databaseId}/indexes/{indexId} for updating index configuration
+Implement the REST API endpoint PUT /v1/databases/{databaseId}/indexes/{indexId} for updating index configuration
 
 ### T139: Implement index deletion endpoint
 **[P] US7 Task**  
 **File**: `backend/src/api/rest/index_routes.cpp`  
 **Dependencies**: T135  
-Implement the REST API endpoint DELETE /databases/{databaseId}/indexes/{indexId} for deleting indexes
+Implement the REST API endpoint DELETE /v1/databases/{databaseId}/indexes/{indexId} for deleting indexes
 
 ### T140: Add authentication and authorization to index endpoints
 **[P] US7 Task**  
@@ -959,7 +971,7 @@ Write integration tests for index management API endpoints
 **[P] US7 Task**  
 **File**: `backend/tests/benchmarks/index_benchmarks.cpp`  
 **Dependencies**: T131, T132, T133, T134  
-Create performance benchmarks for different indexing algorithms
+Create performance benchmarks for different indexing algorithms to ensure they meet search response time requirements (as per spec PB-004 and PB-005)
 
 ### T144: Document index configuration options
 **[P] US7 Task**  
@@ -971,7 +983,7 @@ Document the different index types and their configuration parameters
 **[P] US7 Task**  
 **File**: `backend/src/services/index_service.cpp`, `backend/src/lib/metrics.cpp`  
 **Dependencies**: T022, T135  
-Add index-specific metrics to the monitoring system
+Add index-specific metrics to the monitoring system to track performance of different indexing algorithms toward meeting search response time requirements (as per spec PB-004 and PB-005)
 
 ---
 
@@ -1087,7 +1099,7 @@ Implement the REST API endpoint GET /status for detailed system status
 **[P] US8 Task**  
 **File**: `backend/src/api/rest/monitoring_routes.cpp`  
 **Dependencies**: T071  
-Implement the REST API endpoint GET /databases/{databaseId}/status
+Implement the REST API endpoint GET /v1/databases/{databaseId}/status
 
 ### T164: Implement cluster status functionality
 **[P] US8 Task**  
@@ -1261,6 +1273,25 @@ Complete all documentation including quickstart guide and architecture documenta
 **Dependencies**: All components
 Create a comprehensive guide for new developers to set up their local development environment.
 
+### T192: Gather UI wireframe requirements from user
+**Cross-Cutting Task**
+**File**: N/A
+**Dependencies**: T025 (Database abstraction layer completed), T040 (Vector API endpoints implemented), T055 (Search API endpoints implemented), T077 (Database API endpoints implemented)
+**Note**: This task should be completed after foundational API endpoints are established to ensure UI wireframes align with actual API capabilities but before starting T181 UI development.
+Gather input and requirements from the user for creating UI wireframes and mockups.
+
+### T193: Implement comprehensive security audit logging
+**Cross-Cutting Task**  
+**File**: `backend/src/lib/security_audit.h`, `backend/src/lib/security_audit.cpp`  
+**Dependencies**: T021, T038, T052, T067, T082  
+Implement comprehensive security event logging as required by NFR-004 and NFR-005, including all user operations and authentication events
+
+### T194: Implement data privacy controls for GDPR compliance
+**Cross-Cutting Task**  
+**File**: `backend/src/services/privacy_controls.h`, `backend/src/services/privacy_controls.cpp`  
+**Dependencies**: T025, T071  
+Implement data privacy controls required for GDPR compliance including right to deletion, right to portability, and data retention policies (NFR-025, NFR-027, NFR-028)
+
 ---
 
 ## Task Status Tracking
@@ -1268,19 +1299,19 @@ Create a comprehensive guide for new developers to set up their local developmen
 | Phase | Tasks | Completed | Remaining |
 |-------|-------|-----------|-----------|
 | Setup | T001-T008 | 0 | 8 |
-| Foundational | T009-T025 | 0 | 17 |
-| US1 - Vector Storage | T026-T040 | 0 | 15 |
-| US2 - Similarity Search | T041-T055 | 0 | 15 |
-| US3 - Advanced Search | T056-T070 | 0 | 15 |
-| US4 - Database Management | T071-T085 | 0 | 15 |
-| US5 - Embedding Management | T086-T115 | 0 | 30 |
-| US6 - Distributed System | T116-T130 | 0 | 15 |
-| US7 - Index Management | T131-T145 | 0 | 15 |
-| US9 - Data Lifecycle | T146-T160 | 0 | 15 |
-| US8 - Monitoring | T161-T175 | 0 | 15 |
-| Polish & Cross-Cutting | T176-T191 | 0 | 16 |
+| Foundational | T009-T027 | 0 | 19 |
+| US1 - Vector Storage | T028-T042 | 0 | 15 |
+| US2 - Similarity Search | T043-T057 | 0 | 15 |
+| US3 - Advanced Search | T058-T072 | 0 | 15 |
+| US4 - Database Management | T073-T087 | 0 | 15 |
+| US5 - Embedding Management | T088-T117 | 0 | 30 |
+| US6 - Distributed System | T118-T132 | 0 | 15 |
+| US7 - Index Management | T133-T147 | 0 | 15 |
+| US9 - Data Lifecycle | T148-T162 | 0 | 15 |
+| US8 - Monitoring | T163-T177 | 0 | 15 |
+| Polish & Cross-Cutting | T178-T194 | 0 | 19 |
 
-**Total Tasks**: 191
+**Total Tasks**: 196
 **Estimated Duration**: 5-6 development months for core features (US1-US8), with additional 1 month for lifecycle management, monitoring, polish and cross-cutting concerns
 
 ## Parallel Execution Opportunities
