@@ -48,7 +48,7 @@ The `inconsistencies.md` report noted a conflict between the API path in `quicks
 The first experience for a new user trying out the API will be confusing or broken if the quickstart guide is inaccurate.
 
 **Recommendation:**
-Review and update `specs/001-we-are-going/quickstart.md` to be fully consistent with the final API design in `vector-db-api.yaml`. It should contain a simple, runnable example of creating a database, adding a vector, and performing a search.
+Review and update `specs/002-check-if-we/quickstart.md` to be fully consistent with the final API design in `vector-db-api.yaml`. It should contain a simple, runnable example of creating a database, adding a vector, and performing a search.
 
 ---
 
@@ -63,7 +63,7 @@ The `vector-db-api.yaml` file is very detailed for endpoints but the schemas (e.
 Developers will have to navigate the large `vector-db-api.yaml` file to understand the exact structure of expected request and response bodies, which can be cumbersome.
 
 **Recommendation:**
-In the `specs/001-we-are-going/contracts/` directory, create a few example files like `examples.json` that provide clear JSON examples for the bodies of key requests and responses, such as:
+In the `specs/002-check-if-we/contracts/` directory, create a few example files like `examples.json` that provide clear JSON examples for the bodies of key requests and responses, such as:
 - `POST /databases` (CreateDatabaseRequest)
 - `POST /databases/{databaseId}/vectors/batch` (Batch Vector Storage Request)
 - `POST /databases/{databaseId}/search/advanced` (AdvancedSearchRequest and SearchResponse)
