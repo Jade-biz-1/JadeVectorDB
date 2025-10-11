@@ -153,33 +153,384 @@ void RestApiImpl::handle_database_status() {
 
 // Database management endpoints
 void RestApiImpl::handle_create_database() {
-    // In a real implementation, this would handle POST /v1/databases
-    // and connect to the DatabaseService
-    LOG_DEBUG(logger_, "Registered create database endpoint at /v1/databases");
+    LOG_DEBUG(logger_, "Setting up create database endpoint at /v1/databases");
+    
+    // In a real implementation with a web framework, this would register a POST endpoint
+    // that connects to the DatabaseService for creating databases
+    // Example pseudo-code for the actual web framework integration:
+    /*
+    POST("/v1/databases", [&](const Request& req, Response& res) {
+        try {
+            // Extract API key from header
+            std::string api_key = req.get_header_value("Authorization");
+            if (api_key.substr(0, 7) == "Bearer ") {
+                api_key = api_key.substr(7);
+            } else if (api_key.substr(0, 5) == "ApiKey ") {
+                api_key = api_key.substr(5);
+            }
+            
+            // Authenticate request
+            auto auth_result = authenticate_request(api_key);
+            if (!auth_result.has_value()) {
+                res.status = 401; // Unauthorized
+                res.set_content("{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}", "application/json");
+                return;
+            }
+            
+            // Check if user has permission to create databases
+            auto auth_manager = AuthManager::get_instance();
+            auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+            if (user_id_result.has_value()) {
+                auto perm_result = auth_manager->has_permission_with_api_key(api_key, "database:create");
+                if (!perm_result.has_value() || !perm_result.value()) {
+                    res.status = 403; // Forbidden
+                    res.set_content("{\"error\":\"Insufficient permissions\"}", "application/json");
+                    return;
+                }
+            }
+            
+            // Parse database creation parameters from request body
+            auto creation_params = parse_database_creation_params_from_json(req.body);
+            
+            // Validate database creation parameters
+            auto validation_result = db_service_->validate_creation_params(creation_params);
+            if (!validation_result.has_value()) {
+                res.status = 400; // Bad Request
+                res.set_content("{\"error\":\"Invalid database creation parameters\"}", "application/json");
+                return;
+            }
+            
+            // Create the database using the service
+            auto result = db_service_->create_database(creation_params);
+            
+            if (result.has_value()) {
+                std::string database_id = result.value();
+                res.status = 201; // Created
+                res.set_content("{\"databaseId\":\"" + database_id + "\",\"status\":\"success\"}", "application/json");
+                
+                LOG_INFO(logger_, "Created database: " + database_id + " (Name: " + creation_params.name + ")");
+            } else {
+                res.status = 400; // Bad Request
+                res.set_content("{\"error\":\"Failed to create database\"}", "application/json");
+                
+                LOG_ERROR(logger_, "Failed to create database: " + ErrorHandler::format_error(result.error()));
+            }
+        } catch (const std::exception& e) {
+            res.status = 500; // Internal Server Error
+            res.set_content("{\"error\":\"Internal server error\"}", "application/json");
+            
+            LOG_ERROR(logger_, "Exception in create database: " + std::string(e.what()));
+        }
+    });
+    */
 }
 
 void RestApiImpl::handle_list_databases() {
-    // In a real implementation, this would handle GET /v1/databases
-    // and connect to the DatabaseService
-    LOG_DEBUG(logger_, "Registered list databases endpoint at /v1/databases");
+    LOG_DEBUG(logger_, "Setting up list databases endpoint at /v1/databases");
+    
+    // In a real implementation with a web framework, this would register a GET endpoint
+    // that connects to the DatabaseService for listing databases
+    // Example pseudo-code for the actual web framework integration:
+    /*
+    GET("/v1/databases", [&](const Request& req, Response& res) {
+        try {
+            // Extract API key from header
+            std::string api_key = req.get_header_value("Authorization");
+            if (api_key.substr(0, 7) == "Bearer ") {
+                api_key = api_key.substr(7);
+            } else if (api_key.substr(0, 5) == "ApiKey ") {
+                api_key = api_key.substr(5);
+            }
+            
+            // Authenticate request
+            auto auth_result = authenticate_request(api_key);
+            if (!auth_result.has_value()) {
+                res.status = 401; // Unauthorized
+                res.set_content("{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}", "application/json");
+                return;
+            }
+            
+            // Check if user has permission to list databases
+            auto auth_manager = AuthManager::get_instance();
+            auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+            if (user_id_result.has_value()) {
+                auto perm_result = auth_manager->has_permission_with_api_key(api_key, "database:list");
+                if (!perm_result.has_value() || !perm_result.value()) {
+                    res.status = 403; // Forbidden
+                    res.set_content("{\"error\":\"Insufficient permissions\"}", "application/json");
+                    return;
+                }
+            }
+            
+            // Parse query parameters for filtering and pagination
+            DatabaseListParams list_params;
+            
+            // Extract query parameters
+            auto name_filter = req.get_param_value("name");
+            if (!name_filter.empty()) {
+                list_params.filterByName = name_filter;
+            }
+            
+            auto owner_filter = req.get_param_value("owner");
+            if (!owner_filter.empty()) {
+                list_params.filterByOwner = owner_filter;
+            }
+            
+            auto limit_param = req.get_param_value("limit");
+            if (!limit_param.empty()) {
+                try {
+                    list_params.limit = std::stoi(limit_param);
+                    // Clamp limit to reasonable values
+                    list_params.limit = std::max(1, std::min(1000, list_params.limit));
+                } catch (const std::exception&) {
+                    list_params.limit = 100; // Default limit
+                }
+            }
+            
+            auto offset_param = req.get_param_value("offset");
+            if (!offset_param.empty()) {
+                try {
+                    list_params.offset = std::stoi(offset_param);
+                    // Ensure non-negative offset
+                    list_params.offset = std::max(0, list_params.offset);
+                } catch (const std::exception&) {
+                    list_params.offset = 0; // Default offset
+                }
+            }
+            
+            // List databases using the service
+            auto result = db_service_->list_databases(list_params);
+            
+            if (result.has_value()) {
+                auto databases = result.value();
+                
+                // Serialize databases to JSON
+                auto json_str = serialize_databases_to_json(databases);
+                res.status = 200; // OK
+                res.set_content(json_str, "application/json");
+                
+                LOG_DEBUG(logger_, "Listed " + std::to_string(databases.size()) + " databases");
+            } else {
+                res.status = 400; // Bad Request
+                res.set_content("{\"error\":\"Failed to list databases\"}", "application/json");
+                
+                LOG_ERROR(logger_, "Failed to list databases: " + ErrorHandler::format_error(result.error()));
+            }
+        } catch (const std::exception& e) {
+            res.status = 500; // Internal Server Error
+            res.set_content("{\"error\":\"Internal server error\"}", "application/json");
+            
+            LOG_ERROR(logger_, "Exception in list databases: " + std::string(e.what()));
+        }
+    });
+    */
 }
 
 void RestApiImpl::handle_get_database() {
-    // In a real implementation, this would handle GET /v1/databases/{databaseId}
-    // and connect to the DatabaseService
-    LOG_DEBUG(logger_, "Registered get database endpoint at /v1/databases/{databaseId}");
+    LOG_DEBUG(logger_, "Setting up get database endpoint at /v1/databases/{databaseId}");
+    
+    // In a real implementation with a web framework, this would register a GET endpoint
+    // that connects to the DatabaseService for retrieving database details
+    // Example pseudo-code for the actual web framework integration:
+    /*
+    GET("/v1/databases/:databaseId", [&](const Request& req, Response& res) {
+        try {
+            // Extract database ID from path
+            std::string database_id = req.path_params.at("databaseId");
+            
+            // Extract API key from header
+            std::string api_key = req.get_header_value("Authorization");
+            if (api_key.substr(0, 7) == "Bearer ") {
+                api_key = api_key.substr(7);
+            } else if (api_key.substr(0, 5) == "ApiKey ") {
+                api_key = api_key.substr(5);
+            }
+            
+            // Authenticate request
+            auto auth_result = authenticate_request(api_key);
+            if (!auth_result.has_value()) {
+                res.status = 401; // Unauthorized
+                res.set_content("{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}", "application/json");
+                return;
+            }
+            
+            // Check if user has permission to get database details
+            auto auth_manager = AuthManager::get_instance();
+            auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+            if (user_id_result.has_value()) {
+                auto perm_result = auth_manager->has_permission_with_api_key(api_key, "database:read");
+                if (!perm_result.has_value() || !perm_result.value()) {
+                    res.status = 403; // Forbidden
+                    res.set_content("{\"error\":\"Insufficient permissions\"}", "application/json");
+                    return;
+                }
+            }
+            
+            // Get database using the service
+            auto result = db_service_->get_database(database_id);
+            
+            if (result.has_value()) {
+                auto database = result.value();
+                
+                // Serialize database to JSON
+                auto json_str = serialize_database_to_json(database);
+                res.status = 200; // OK
+                res.set_content(json_str, "application/json");
+                
+                LOG_DEBUG(logger_, "Retrieved database: " + database_id);
+            } else {
+                res.status = 404; // Not Found
+                res.set_content("{\"error\":\"Database not found\"}", "application/json");
+                
+                LOG_WARN(logger_, "Database not found: " + database_id);
+            }
+        } catch (const std::exception& e) {
+            res.status = 500; // Internal Server Error
+            res.set_content("{\"error\":\"Internal server error\"}", "application/json");
+            
+            LOG_ERROR(logger_, "Exception in get database: " + std::string(e.what()));
+        }
+    });
+    */
 }
 
 void RestApiImpl::handle_update_database() {
-    // In a real implementation, this would handle PUT /v1/databases/{databaseId}
-    // and connect to the DatabaseService
-    LOG_DEBUG(logger_, "Registered update database endpoint at /v1/databases/{databaseId}");
+    LOG_DEBUG(logger_, "Setting up update database endpoint at /v1/databases/{databaseId}");
+    
+    // In a real implementation with a web framework, this would register a PUT endpoint
+    // that connects to the DatabaseService for updating database configuration
+    // Example pseudo-code for the actual web framework integration:
+    /*
+    PUT("/v1/databases/:databaseId", [&](const Request& req, Response& res) {
+        try {
+            // Extract database ID from path
+            std::string database_id = req.path_params.at("databaseId");
+            
+            // Extract API key from header
+            std::string api_key = req.get_header_value("Authorization");
+            if (api_key.substr(0, 7) == "Bearer ") {
+                api_key = api_key.substr(7);
+            } else if (api_key.substr(0, 5) == "ApiKey ") {
+                api_key = api_key.substr(5);
+            }
+            
+            // Authenticate request
+            auto auth_result = authenticate_request(api_key);
+            if (!auth_result.has_value()) {
+                res.status = 401; // Unauthorized
+                res.set_content("{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}", "application/json");
+                return;
+            }
+            
+            // Check if user has permission to update database configuration
+            auto auth_manager = AuthManager::get_instance();
+            auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+            if (user_id_result.has_value()) {
+                auto perm_result = auth_manager->has_permission_with_api_key(api_key, "database:update");
+                if (!perm_result.has_value() || !perm_result.value()) {
+                    res.status = 403; // Forbidden
+                    res.set_content("{\"error\":\"Insufficient permissions\"}", "application/json");
+                    return;
+                }
+            }
+            
+            // Parse database update parameters from request body
+            auto update_params = parse_database_update_params_from_json(req.body);
+            
+            // Validate database update parameters
+            auto validation_result = db_service_->validate_update_params(update_params);
+            if (!validation_result.has_value()) {
+                res.status = 400; // Bad Request
+                res.set_content("{\"error\":\"Invalid database update parameters\"}", "application/json");
+                return;
+            }
+            
+            // Update the database using the service
+            auto result = db_service_->update_database(database_id, update_params);
+            
+            if (result.has_value()) {
+                res.status = 200; // OK
+                res.set_content("{\"status\":\"success\",\"message\":\"Database updated successfully\"}", "application/json");
+                
+                LOG_INFO(logger_, "Updated database: " + database_id);
+            } else {
+                res.status = 400; // Bad Request
+                res.set_content("{\"error\":\"Failed to update database\"}", "application/json");
+                
+                LOG_ERROR(logger_, "Failed to update database: " + database_id + " - " + ErrorHandler::format_error(result.error()));
+            }
+        } catch (const std::exception& e) {
+            res.status = 500; // Internal Server Error
+            res.set_content("{\"error\":\"Internal server error\"}", "application/json");
+            
+            LOG_ERROR(logger_, "Exception in update database: " + std::string(e.what()));
+        }
+    });
+    */
 }
 
 void RestApiImpl::handle_delete_database() {
-    // In a real implementation, this would handle DELETE /v1/databases/{databaseId}
-    // and connect to the DatabaseService
-    LOG_DEBUG(logger_, "Registered delete database endpoint at /v1/databases/{databaseId}");
+    LOG_DEBUG(logger_, "Setting up delete database endpoint at /v1/databases/{databaseId}");
+    
+    // In a real implementation with a web framework, this would register a DELETE endpoint
+    // that connects to the DatabaseService for deleting databases
+    // Example pseudo-code for the actual web framework integration:
+    /*
+    DELETE("/v1/databases/:databaseId", [&](const Request& req, Response& res) {
+        try {
+            // Extract database ID from path
+            std::string database_id = req.path_params.at("databaseId");
+            
+            // Extract API key from header
+            std::string api_key = req.get_header_value("Authorization");
+            if (api_key.substr(0, 7) == "Bearer ") {
+                api_key = api_key.substr(7);
+            } else if (api_key.substr(0, 5) == "ApiKey ") {
+                api_key = api_key.substr(5);
+            }
+            
+            // Authenticate request
+            auto auth_result = authenticate_request(api_key);
+            if (!auth_result.has_value()) {
+                res.status = 401; // Unauthorized
+                res.set_content("{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}", "application/json");
+                return;
+            }
+            
+            // Check if user has permission to delete databases
+            auto auth_manager = AuthManager::get_instance();
+            auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+            if (user_id_result.has_value()) {
+                auto perm_result = auth_manager->has_permission_with_api_key(api_key, "database:delete");
+                if (!perm_result.has_value() || !perm_result.value()) {
+                    res.status = 403; // Forbidden
+                    res.set_content("{\"error\":\"Insufficient permissions\"}", "application/json");
+                    return;
+                }
+            }
+            
+            // Delete the database using the service
+            auto result = db_service_->delete_database(database_id);
+            
+            if (result.has_value()) {
+                res.status = 200; // OK
+                res.set_content("{\"status\":\"success\",\"message\":\"Database deleted successfully\"}", "application/json");
+                
+                LOG_INFO(logger_, "Deleted database: " + database_id);
+            } else {
+                res.status = 400; // Bad Request
+                res.set_content("{\"error\":\"Failed to delete database\"}", "application/json");
+                
+                LOG_ERROR(logger_, "Failed to delete database: " + database_id + " - " + ErrorHandler::format_error(result.error()));
+            }
+        } catch (const std::exception& e) {
+            res.status = 500; // Internal Server Error
+            res.set_content("{\"error\":\"Internal server error\"}", "application/json");
+            
+            LOG_ERROR(logger_, "Exception in delete database: " + std::string(e.what()));
+        }
+    });
+    */
 }
 
 // Vector management endpoints
@@ -747,18 +1098,28 @@ void RestApiImpl::setup_authentication() {
 }
 
 Result<bool> RestApiImpl::authenticate_request(const std::string& api_key) const {
-    // In a real implementation, this would use the auth_manager to validate the API key
-    // For now, we'll just return true (allowing all requests)
-    // This is just a placeholder for the real implementation
     if (api_key.empty()) {
         RETURN_ERROR(ErrorCode::UNAUTHENTICATED, "No API key provided");
     }
     
-    // In a real implementation, we would call the AuthManager to validate the key
-    // auto auth_manager = AuthManager::get_instance();
-    // return auth_manager->validate_api_key(api_key);
+    // Use the AuthManager to validate the API key
+    auto auth_manager = AuthManager::get_instance();
+    auto validation_result = auth_manager->validate_api_key(api_key);
     
-    // For now, return true to allow the request
+    if (!validation_result.has_value()) {
+        RETURN_ERROR(ErrorCode::UNAUTHENTICATED, "Invalid API key");
+    }
+    
+    if (!validation_result.value()) {
+        RETURN_ERROR(ErrorCode::UNAUTHENTICATED, "API key validation failed");
+    }
+    
+    // Check if API key is active and not expired
+    auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+    if (!user_id_result.has_value()) {
+        RETURN_ERROR(ErrorCode::UNAUTHENTICATED, "Unable to retrieve user from API key");
+    }
+    
     return true;
 }
 
