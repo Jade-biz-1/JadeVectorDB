@@ -15,6 +15,7 @@
 #include "services/vector_storage.h"
 #include "services/database_layer.h"
 #include "search_utils.h"
+#include "metadata_filter.h"
 
 namespace jadevectordb {
 
@@ -52,6 +53,18 @@ private:
     std::shared_ptr<Histogram> search_latency_histogram_;
     std::shared_ptr<Counter> search_results_counter_;
     std::shared_ptr<Gauge> active_searches_gauge_;
+    
+    // Filtered search specific metrics
+    std::shared_ptr<Counter> filtered_search_requests_counter_;
+    std::shared_ptr<Histogram> filtered_search_latency_histogram_;
+    std::shared_ptr<Counter> filtered_search_results_counter_;
+    std::shared_ptr<Gauge> active_filtered_searches_gauge_;
+    std::shared_ptr<Histogram> filter_application_time_histogram_;
+    std::shared_ptr<Counter> filter_cache_hits_counter_;
+    std::shared_ptr<Counter> filter_cache_misses_counter_;
+
+    // Metadata filter service
+    std::unique_ptr<MetadataFilter> metadata_filter_;
 
 public:
     explicit SimilaritySearchService(std::unique_ptr<VectorStorageService> vector_storage = nullptr);
@@ -98,6 +111,11 @@ private:
     std::vector<SearchResult> sort_and_limit_results(std::vector<SearchResult>&& results, 
                                                    const SearchParams& params, 
                                                    bool ascending = false) const;
+
+    // Advanced filtering with ComplexFilter
+    Result<std::vector<Vector>> apply_advanced_filters(
+        const ComplexFilter& filter,
+        const std::vector<Vector>& vectors) const;
 };
 
 } // namespace jadevectordb
