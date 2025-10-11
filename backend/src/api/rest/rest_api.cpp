@@ -516,15 +516,149 @@ void RestApiImpl::handle_batch_store_vectors() {
 
 // Search endpoints
 void RestApiImpl::handle_similarity_search() {
-    // In a real implementation, this would handle POST /v1/databases/{databaseId}/search
-    // and connect to the SimilaritySearchService
-    LOG_DEBUG(logger_, "Registered similarity search endpoint at /v1/databases/{databaseId}/search");
+    LOG_DEBUG(logger_, "Setting up similarity search endpoint at /v1/databases/{databaseId}/search");
+    
+    // In a real implementation with a web framework, this would register a POST endpoint
+    // that connects to the SimilaritySearchService for similarity search
+    // Example pseudo-code for the actual web framework integration:
+    /*
+    POST("/v1/databases/:databaseId/search", [&](const Request& req, Response& res) {
+        try {
+            // Extract database ID from path
+            std::string database_id = req.path_params.at("databaseId");
+            
+            // Extract API key from header
+            std::string api_key = req.get_header_value("Authorization");
+            if (api_key.substr(0, 7) == "Bearer ") {
+                api_key = api_key.substr(7);
+            } else if (api_key.substr(0, 5) == "ApiKey ") {
+                api_key = api_key.substr(5);
+            }
+            
+            // Authenticate request
+            auto auth_result = authenticate_request(api_key);
+            if (!auth_result.has_value()) {
+                res.status = 401; // Unauthorized
+                res.set_content("{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}", "application/json");
+                return;
+            }
+            
+            // Check if user has permission to perform search in this database
+            // auto auth_manager = AuthManager::get_instance();
+            // auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+            // if (user_id_result.has_value()) {
+            //     auto perm_result = auth_manager->has_permission_with_api_key(api_key, "search:execute");
+            //     if (!perm_result.has_value() || !perm_result.value()) {
+            //         res.status = 403; // Forbidden
+            //         res.set_content("{\"error\":\"Insufficient permissions\"}", "application/json");
+            //         return;
+            //     }
+            // }
+            
+            // Parse query vector and search parameters from request body
+            auto search_request = parse_search_request_from_json(req.body);
+            auto query_vector = search_request.query_vector;
+            auto search_params = search_request.search_params;
+            
+            // Validate search parameters
+            auto validation_result = similarity_search_service_->validate_search_params(search_params);
+            if (!validation_result.has_value()) {
+                res.status = 400; // Bad Request
+                res.set_content("{\"error\":\"Invalid search parameters\"}", "application/json");
+                return;
+            }
+            
+            // Perform similarity search using the service
+            auto result = similarity_search_service_->similarity_search(database_id, query_vector, search_params);
+            
+            if (result.has_value()) {
+                // Serialize results to JSON
+                auto json_str = serialize_search_results_to_json(result.value());
+                res.status = 200; // OK
+                res.set_content(json_str, "application/json");
+            } else {
+                res.status = 400; // Bad Request
+                res.set_content("{\"error\":\"Search failed\"}", "application/json");
+            }
+        } catch (const std::exception& e) {
+            res.status = 500; // Internal Server Error
+            res.set_content("{\"error\":\"Internal server error\"}", "application/json");
+        }
+    });
+    */
 }
 
 void RestApiImpl::handle_advanced_search() {
-    // In a real implementation, this would handle POST /v1/databases/{databaseId}/search/advanced
-    // potentially combining SimilaritySearchService with metadata filtering
-    LOG_DEBUG(logger_, "Registered advanced search endpoint at /v1/databases/{databaseId}/search/advanced");
+    LOG_DEBUG(logger_, "Setting up advanced search endpoint at /v1/databases/{databaseId}/search/advanced");
+    
+    // In a real implementation, this would register a POST endpoint
+    // that connects to the SimilaritySearchService with advanced filtering
+    // Example pseudo-code for the actual web framework integration:
+    /*
+    POST("/v1/databases/:databaseId/search/advanced", [&](const Request& req, Response& res) {
+        try {
+            // Extract database ID from path
+            std::string database_id = req.path_params.at("databaseId");
+            
+            // Extract API key from header
+            std::string api_key = req.get_header_value("Authorization");
+            if (api_key.substr(0, 7) == "Bearer ") {
+                api_key = api_key.substr(7);
+            } else if (api_key.substr(0, 5) == "ApiKey ") {
+                api_key = api_key.substr(5);
+            }
+            
+            // Authenticate request
+            auto auth_result = authenticate_request(api_key);
+            if (!auth_result.has_value()) {
+                res.status = 401; // Unauthorized
+                res.set_content("{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}", "application/json");
+                return;
+            }
+            
+            // Check if user has permission to perform advanced search in this database
+            // auto auth_manager = AuthManager::get_instance();
+            // auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+            // if (user_id_result.has_value()) {
+            //     auto perm_result = auth_manager->has_permission_with_api_key(api_key, "search:execute");
+            //     if (!perm_result.has_value() || !perm_result.value()) {
+            //         res.status = 403; // Forbidden
+            //         res.set_content("{\"error\":\"Insufficient permissions\"}", "application/json");
+            //         return;
+            //     }
+            // }
+            
+            // Parse query vector and advanced search parameters from request body
+            auto search_request = parse_advanced_search_request_from_json(req.body);
+            auto query_vector = search_request.query_vector;
+            auto search_params = search_request.search_params;  // Includes filters
+            
+            // Validate search parameters
+            auto validation_result = similarity_search_service_->validate_search_params(search_params);
+            if (!validation_result.has_value()) {
+                res.status = 400; // Bad Request
+                res.set_content("{\"error\":\"Invalid search parameters\"}", "application/json");
+                return;
+            }
+            
+            // Perform advanced similarity search using the service
+            auto result = similarity_search_service_->similarity_search(database_id, query_vector, search_params);
+            
+            if (result.has_value()) {
+                // Serialize results to JSON
+                auto json_str = serialize_search_results_to_json(result.value());
+                res.status = 200; // OK
+                res.set_content(json_str, "application/json");
+            } else {
+                res.status = 400; // Bad Request
+                res.set_content("{\"error\":\"Search failed\"}", "application/json");
+            }
+        } catch (const std::exception& e) {
+            res.status = 500; // Internal Server Error
+            res.set_content("{\"error\":\"Internal server error\"}", "application/json");
+        }
+    });
+    */
 }
 
 // Index management endpoints

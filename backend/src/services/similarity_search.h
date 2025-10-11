@@ -14,6 +14,7 @@
 #include "lib/logging.h"
 #include "services/vector_storage.h"
 #include "services/database_layer.h"
+#include "search_utils.h"
 
 namespace jadevectordb {
 
@@ -49,6 +50,8 @@ private:
     // Metrics for performance monitoring
     std::shared_ptr<Counter> search_requests_counter_;
     std::shared_ptr<Histogram> search_latency_histogram_;
+    std::shared_ptr<Counter> search_results_counter_;
+    std::shared_ptr<Gauge> active_searches_gauge_;
 
 public:
     explicit SimilaritySearchService(std::unique_ptr<VectorStorageService> vector_storage = nullptr);
