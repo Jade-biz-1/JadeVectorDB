@@ -27,6 +27,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(eigen)
 
+# FlatBuffers
+FetchContent_Declare(
+    flatbuffers
+    GIT_REPOSITORY https://github.com/google/flatbuffers.git
+    GIT_TAG v23.5.26
+)
+FetchContent_MakeAvailable(flatbuffers)
+
 # gRPC
 find_package(gRPC CONFIG REQUIRED)
 if(NOT gRPC_FOUND)
@@ -41,6 +49,7 @@ endif()
 
 # Include directories
 include_directories(${eigen_SOURCE_DIR})
+include_directories(${flatbuffers_SOURCE_DIR}/include)
 
 # For FlatBuffers, Apache Arrow and other dependencies, we'll use package managers or find modules
 # These may need to be installed separately or via vcpkg/conan
