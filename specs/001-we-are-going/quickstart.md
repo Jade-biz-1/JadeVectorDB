@@ -17,7 +17,7 @@ The following examples assume your JadeVectorDB instance is running at `http://l
 First, let's create a new database for 128-dimensional vectors.
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/databases \
+curl -X POST http://localhost:8080/v1/databases \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_API_KEY" \
   -d '{
@@ -48,7 +48,7 @@ Now, let's add some vectors to our new database. Replace `{databaseId}` with the
 
 ```bash
 # Store two vectors in a batch request
-curl -X POST http://localhost:8080/api/v1/databases/{databaseId}/vectors/batch \
+curl -X POST http://localhost:8080/v1/databases/{databaseId}/vectors \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_API_KEY" \
   -d '{
@@ -72,7 +72,7 @@ curl -X POST http://localhost:8080/api/v1/databases/{databaseId}/vectors/batch \
 Finally, let's find vectors similar to a query vector.
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/databases/{databaseId}/search \
+curl -X POST http://localhost:8080/v1/databases/{databaseId}/search \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_API_KEY" \
   -d '{
@@ -102,4 +102,4 @@ curl -X POST http://localhost:8080/api/v1/databases/{databaseId}/search \
 
 ## Next Steps
 
-This guide covered the very basics. To learn more, explore the full [API documentation](contracts/vector-db-api.yaml).
+This guide covered the very basics. To learn more, explore the full [API documentation](../contracts/vector-db-api.yaml).

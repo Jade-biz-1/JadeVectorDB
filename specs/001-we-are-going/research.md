@@ -112,6 +112,12 @@ For JadeVectorDB, implement memory-mapped files for efficient large vector datas
 
 **Rationale:** Memory-mapped files allow efficient handling of large datasets without full RAM loading. SIMD instructions accelerate vector operations significantly. Lock-free data structures reduce contention in high-concurrency scenarios. These optimizations are essential for achieving the performance goals of a vector database.
 
+**Connection to Performance Benchmarks:** These optimizations specifically target the performance requirements defined in the spec document:
+- Similarity search response times under 100ms for datasets up to 10M vectors (spec PB-004)
+- Filtered similarity searches returning results in under 150 milliseconds (spec PB-009)
+- Support for 10,000+ vectors per second ingestion (spec SC-001)
+- Concurrent requests from 1000+ simultaneous users (spec SC-010)
+
 **Alternatives considered:**
 - Traditional file I/O: Simpler but less efficient for large datasets
 - Traditional locking: Simpler but creates contention
