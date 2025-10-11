@@ -76,48 +76,56 @@ Most tasks within each user story phase can be developed in parallel ([P] marks 
 **File**: `.gitignore`  
 **Dependencies**: None  
 Create appropriate .gitignore for C++ project with build artifacts, IDE files, and logs
+**Status**: [X] COMPLETE
 
 ### T002: Set up project directory structure
 **[P] Setup Task**  
 **File**: `backend/src/`, `backend/tests/`, `frontend/src/`, `cli/python/`, `cli/shell/`  
 **Dependencies**: None  
 Create the directory structure as specified in the plan.md
+**Status**: [X] COMPLETE
 
 ### T003: Configure build system for C++ backend
 **[P] Setup Task**  
 **File**: `backend/CMakeLists.txt`  
 **Dependencies**: None  
 Set up CMake build system with support for required libraries (Eigen, OpenBLAS, FlatBuffers, gRPC, Google Test)
+**Status**: [X] COMPLETE
 
 ### T004: Configure Next.js project for frontend
 **[P] Setup Task**  
 **File**: `frontend/package.json`  
 **Dependencies**: None  
 Initialize Next.js project with shadcn UI components and required dependencies
+**Status**: [X] COMPLETE
 
 ### T005: Set up Python CLI structure
 **[P] Setup Task**  
 **File**: `cli/python/setup.py`  
 **Dependencies**: None  
 Create Python package structure with setup.py for CLI tools
+**Status**: [X] COMPLETE
 
 ### T006: Set up shell CLI structure
 **[P] Setup Task**  
 **File**: `cli/shell/bin/`, `cli/shell/lib/`, `cli/shell/scripts/`  
 **Dependencies**: None  
 Create directory structure for shell-based CLI tools
+**Status**: [X] COMPLETE
 
 ### T007: Configure Docker and containerization
 **[P] Setup Task**  
 **File**: `Dockerfile`, `docker-compose.yml`  
 **Dependencies**: None  
 Set up Dockerfiles for backend services and docker-compose for local development
+**Status**: [X] COMPLETE
 
 ### T008: Define initial documentation structure
 **[P] Setup Task**  
 **File**: `README.md`, `docs/`  
 **Dependencies**: None  
 Create initial documentation files and structure
+**Status**: [X] COMPLETE
 
 ---
 
@@ -1298,7 +1306,7 @@ Implement data privacy controls required for GDPR compliance including right to 
 
 | Phase | Tasks | Completed | Remaining |
 |-------|-------|-----------|-----------|
-| Setup | T001-T008 | 0 | 8 |
+| Setup | T001-T008 | 8 | 0 |
 | Foundational | T009-T027 | 0 | 19 |
 | US1 - Vector Storage | T028-T042 | 0 | 15 |
 | US2 - Similarity Search | T043-T057 | 0 | 15 |
