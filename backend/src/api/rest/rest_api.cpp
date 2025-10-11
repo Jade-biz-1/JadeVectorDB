@@ -115,6 +115,7 @@ void RestApiImpl::register_routes() {
     handle_update_vector();
     handle_delete_vector();
     handle_batch_store_vectors();
+    handle_batch_get_vectors();
     
     // Search endpoints
     handle_similarity_search();
@@ -563,16 +564,16 @@ void RestApiImpl::handle_store_vector() {
             }
             
             // Check if user has permission to store vectors in this database
-            // auto auth_manager = AuthManager::get_instance();
-            // auto user_id_result = auth_manager->get_user_from_api_key(api_key);
-            // if (user_id_result.has_value()) {
-            //     auto perm_result = auth_manager->has_permission_with_api_key(api_key, "vector:add");
-            //     if (!perm_result.has_value() || !perm_result.value()) {
-            //         res.status = 403; // Forbidden
-            //         res.set_content("{\"error\":\"Insufficient permissions\"}", "application/json");
-            //         return;
-            //     }
-            // }
+            auto auth_manager = AuthManager::get_instance();
+            auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+            if (user_id_result.has_value()) {
+                auto perm_result = auth_manager->has_permission_with_api_key(api_key, "vector:add");
+                if (!perm_result.has_value() || !perm_result.value()) {
+                    res.status = 403; // Forbidden
+                    res.set_content("{\"error\":\"Insufficient permissions\"}", "application/json");
+                    return;
+                }
+            }
             
             // Validate database exists
             auto db_exists_result = vector_storage_service_->db_layer_->database_exists(database_id);
@@ -614,13 +615,13 @@ void RestApiImpl::handle_store_vector() {
 void RestApiImpl::handle_get_vector() {
     LOG_DEBUG(logger_, "Setting up get vector endpoint at /v1/databases/{databaseId}/vectors/{vectorId}");
     
-    // In a real implementation, this would register a GET endpoint
-    // that connects to the VectorStorageService to retrieve vectors
+    // In a real implementation with a web framework, this would register a GET endpoint
+    // that connects to the VectorStorageService for retrieving vectors
     // Example pseudo-code for the actual web framework integration:
     /*
     GET("/v1/databases/:databaseId/vectors/:vectorId", [&](const Request& req, Response& res) {
         try {
-            // Extract database and vector IDs from path
+            // Extract database ID and vector ID from path
             std::string database_id = req.path_params.at("databaseId");
             std::string vector_id = req.path_params.at("vectorId");
             
@@ -641,23 +642,41 @@ void RestApiImpl::handle_get_vector() {
             }
             
             // Check if user has permission to retrieve vectors from this database
-            // auto auth_manager = AuthManager::get_instance();
-            // auto user_id_result = auth_manager->get_user_from_api_key(api_key);
-            // if (user_id_result.has_value()) {
-            //     auto perm_result = auth_manager->has_permission_with_api_key(api_key, "vector:read");
-            //     if (!perm_result.has_value() || !perm_result.value()) {
-            //         res.status = 403; // Forbidden
-            //         res.set_content("{\"error\":\"Insufficient permissions\"}", "application/json");
-            //         return;
-            //     }
-            // }
+            auto auth_manager = AuthManager::get_instance();
+            auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+            if (user_id_result.has_value()) {
+                auto perm_result = auth_manager->has_permission_with_api_key(api_key, "vector:read");
+                if (!perm_result.has_value() || !perm_result.value()) {
+                    res.status = 403; // Forbidden
+                    res.set_content("{\"error\":\"Insufficient permissions\"}", "application/json");
+                    return;
+                }
+            }
+            
+            // Validate database exists
+            auto db_exists_result = vector_storage_service_->db_layer_->database_exists(database_id);
+            if (!db_exists_result.has_value() || !db_exists_result.value()) {
+                res.status = 404; // Not Found
+                res.set_content("{\"error\":\"Database not found\"}", "application/json");
+                return;
+            }
+            
+            // Check if vector exists
+            auto vector_exists_result = vector_storage_service_->vector_exists(database_id, vector_id);
+            if (!vector_exists_result.has_value() || !vector_exists_result.value()) {
+                res.status = 404; // Not Found
+                res.set_content("{\"error\":\"Vector not found\"}", "application/json");
+                return;
+            }
             
             // Retrieve the vector using the service
             auto result = vector_storage_service_->retrieve_vector(database_id, vector_id);
             
             if (result.has_value()) {
+                auto vector = result.value();
+                
                 // Serialize vector to JSON
-                auto json_str = serialize_vector_to_json(result.value());
+                auto json_str = serialize_vector_to_json(vector);
                 res.status = 200; // OK
                 res.set_content(json_str, "application/json");
             } else {
@@ -1131,6 +1150,91 @@ void RestApiImpl::setup_request_validation() {
 void RestApiImpl::setup_response_serialization() {
     LOG_DEBUG(logger_, "Setting up response serialization");
     // In a real implementation, this would set up JSON serialization
+}
+
+void RestApiImpl::handle_batch_get_vectors() {
+    LOG_DEBUG(logger_, "Setting up batch get vectors endpoint at /v1/databases/{databaseId}/vectors/batch-get");
+    
+    // In a real implementation with a web framework, this would register a POST endpoint
+    // that connects to the VectorStorageService for retrieving multiple vectors by ID
+    // Example pseudo-code for the actual web framework integration:
+    /*
+    POST("/v1/databases/:databaseId/vectors/batch-get", [&](const Request& req, Response& res) {
+        try {
+            // Extract database ID from path
+            std::string database_id = req.path_params.at("databaseId");
+            
+            // Extract API key from header
+            std::string api_key = req.get_header_value("Authorization");
+            if (api_key.substr(0, 7) == "Bearer ") {
+                api_key = api_key.substr(7);
+            } else if (api_key.substr(0, 5) == "ApiKey ") {
+                api_key = api_key.substr(5);
+            }
+            
+            // Authenticate request
+            auto auth_result = authenticate_request(api_key);
+            if (!auth_result.has_value()) {
+                res.status = 401; // Unauthorized
+                res.set_content("{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}", "application/json");
+                return;
+            }
+            
+            // Check if user has permission to retrieve vectors from this database
+            auto auth_manager = AuthManager::get_instance();
+            auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+            if (user_id_result.has_value()) {
+                auto perm_result = auth_manager->has_permission_with_api_key(api_key, "vector:read");
+                if (!perm_result.has_value() || !perm_result.value()) {
+                    res.status = 403; // Forbidden
+                    res.set_content("{\"error\":\"Insufficient permissions\"}", "application/json");
+                    return;
+                }
+            }
+            
+            // Parse vector IDs from request body
+            auto vector_ids = parse_vector_ids_from_json(req.body);
+            
+            // Validate vector IDs
+            if (vector_ids.empty()) {
+                res.status = 400; // Bad Request
+                res.set_content("{\"error\":\"No vector IDs provided\"}", "application/json");
+                return;
+            }
+            
+            if (vector_ids.size() > 1000) {
+                res.status = 400; // Bad Request
+                res.set_content("{\"error\":\"Too many vector IDs (max 1000)\"}", "application/json");
+                return;
+            }
+            
+            // Retrieve vectors using the service
+            auto result = vector_storage_service_->retrieve_vectors(database_id, vector_ids);
+            
+            if (result.has_value()) {
+                auto vectors = result.value();
+                
+                // Serialize vectors to JSON
+                auto json_str = serialize_vectors_to_json(vectors);
+                res.status = 200; // OK
+                res.set_content(json_str, "application/json");
+                
+                LOG_DEBUG(logger_, "Retrieved " << vectors.size() << " vectors from database: " << database_id);
+            } else {
+                res.status = 400; // Bad Request
+                res.set_content("{\"error\":\"Failed to retrieve vectors\"}", "application/json");
+                
+                LOG_ERROR(logger_, "Failed to retrieve vectors from database " << database_id << ": " 
+                          << ErrorHandler::format_error(result.error()));
+            }
+        } catch (const std::exception& e) {
+            res.status = 500; // Internal Server Error
+            res.set_content("{\"error\":\"Internal server error\"}", "application/json");
+            
+            LOG_ERROR(logger_, "Exception in batch get vectors: " + std::string(e.what()));
+        }
+    });
+    */
 }
 
 } // namespace jadevectordb
