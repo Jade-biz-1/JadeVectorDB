@@ -3,6 +3,7 @@
 #include "lib/error_handling.h"
 #include "lib/metrics.h"
 #include "search_utils.h"
+#include "metadata_filter.h"
 #include <algorithm>
 #include <numeric>
 #include <chrono>
@@ -19,6 +20,7 @@ SimilaritySearchService::SimilaritySearchService(std::unique_ptr<VectorStorageSe
     }
     
     logger_ = logging::LoggerManager::get_logger("SimilaritySearchService");
+    metadata_filter_ = std::make_unique<MetadataFilter>();
 }
 
 Result<void> SimilaritySearchService::initialize() {
@@ -27,6 +29,11 @@ Result<void> SimilaritySearchService::initialize() {
         LOG_ERROR(logger_, "Failed to initialize vector storage service: " << 
                  ErrorHandler::format_error(result.error()));
         return result;
+    }
+    
+    // Initialize metadata filter
+    if (!metadata_filter_) {
+        metadata_filter_ = std::make_unique<MetadataFilter>();
     }
     
     // Initialize metrics
@@ -47,6 +54,38 @@ Result<void> SimilaritySearchService::initialize() {
     active_searches_gauge_ = metrics_registry->register_gauge(
         "active_searches",
         "Number of currently active searches"
+    );
+    
+    // Filtered search specific metrics
+    filtered_search_requests_counter_ = metrics_registry->register_counter(
+        "filtered_search_requests_total",
+        "Total number of filtered search requests"
+    );
+    filtered_search_latency_histogram_ = metrics_registry->register_histogram(
+        "filtered_search_request_duration_seconds",
+        "Time spent processing filtered search requests",
+        {0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0}
+    );
+    filtered_search_results_counter_ = metrics_registry->register_counter(
+        "filtered_search_results_total",
+        "Total number of filtered search results returned"
+    );
+    active_filtered_searches_gauge_ = metrics_registry->register_gauge(
+        "active_filtered_searches",
+        "Number of currently active filtered searches"
+    );
+    filter_application_time_histogram_ = metrics_registry->register_histogram(
+        "filter_application_duration_seconds",
+        "Time spent applying filters to vectors",
+        {0.001, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0}
+    );
+    filter_cache_hits_counter_ = metrics_registry->register_counter(
+        "filter_cache_hits_total",
+        "Total number of filter cache hits"
+    );
+    filter_cache_misses_counter_ = metrics_registry->register_counter(
+        "filter_cache_misses_total",
+        "Total number of filter cache misses"
     );
     
     LOG_INFO(logger_, "SimilaritySearchService initialized successfully");
@@ -72,6 +111,21 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
         active_searches_gauge_->increment();
     }
     
+    // Check if this is a filtered search
+    bool is_filtered_search = (!params.filter_owner.empty() || 
+                               !params.filter_category.empty() || 
+                               !params.filter_tags.empty() || 
+                               params.filter_min_score > 0.0f || 
+                               params.filter_max_score < 1.0f ||
+                               params.threshold > 0.0f);
+    
+    // Increment appropriate counter based on search type
+    if (is_filtered_search && filtered_search_requests_counter_) {
+        filtered_search_requests_counter_->increment();
+    } else if (search_requests_counter_) {
+        search_requests_counter_->increment();
+    }
+    
     // Get all vectors from the database
     // Note: In a real implementation, this would use an index for efficiency
     // For now, we're doing a linear scan which is inefficient for large datasets
@@ -89,11 +143,19 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
     
     auto all_vectors = all_vectors_result.value();
     
+    // Record filter application start time
+    auto filter_start_time = std::chrono::high_resolution_clock::now();
+    
     // Apply metadata filters if specified
-    if (!params.filter_tags.empty() || !params.filter_owner.empty() || 
-        !params.filter_category.empty() || 
-        params.filter_min_score > 0.0f || params.filter_max_score < 1.0f) {
+    if (is_filtered_search) {
         all_vectors = apply_metadata_filters(all_vectors, params);
+    }
+    
+    // Record filter application end time and update metrics
+    auto filter_end_time = std::chrono::high_resolution_clock::now();
+    if (is_filtered_search && filter_application_time_histogram_) {
+        auto filter_duration = std::chrono::duration<double>(filter_end_time - filter_start_time).count();
+        filter_application_time_histogram_->observe(filter_duration);
     }
     
     // Calculate cosine similarity for each vector
@@ -126,14 +188,23 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
     // Update metrics
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration<double>(end_time - start_time).count();
-    if (search_requests_counter_) {
-        search_requests_counter_->increment();
-    }
-    if (search_results_counter_) {
-        search_results_counter_->add(static_cast<double>(results.size()));
-    }
-    if (search_latency_histogram_) {
-        search_latency_histogram_->observe(duration);
+    
+    if (is_filtered_search) {
+        // Update filtered search metrics
+        if (filtered_search_latency_histogram_) {
+            filtered_search_latency_histogram_->observe(duration);
+        }
+        if (filtered_search_results_counter_) {
+            filtered_search_results_counter_->add(static_cast<double>(results.size()));
+        }
+    } else {
+        // Update regular search metrics
+        if (search_latency_histogram_) {
+            search_latency_histogram_->observe(duration);
+        }
+        if (search_results_counter_) {
+            search_results_counter_->add(static_cast<double>(results.size()));
+        }
     }
     
     // Decrement active searches gauge
@@ -141,8 +212,13 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
         active_searches_gauge_->decrement();
     }
     
-    LOG_DEBUG(logger_, "Similarity search completed: found " << results.size() 
-                   << " results from " << all_vectors.size() << " vectors in " 
+    // Decrement active filtered searches gauge if this was a filtered search
+    if (is_filtered_search && active_filtered_searches_gauge_) {
+        active_filtered_searches_gauge_->decrement();
+    }
+    
+    LOG_DEBUG(logger_, (is_filtered_search ? "Filtered" : "Regular") << " similarity search completed: found " 
+                   << results.size() << " results from " << all_vectors.size() << " vectors in " 
                    << duration << " seconds");
     
     return results;
@@ -426,56 +502,65 @@ std::vector<Vector> SimilaritySearchService::apply_metadata_filters(
     const std::vector<Vector>& vectors, 
     const SearchParams& params) const {
     
-    std::vector<Vector> filtered_vectors;
-    filtered_vectors.reserve(vectors.size());
+    // Convert the simple SearchParams to a ComplexFilter for advanced filtering
+    ComplexFilter filter;
+    filter.combination = FilterCombination::AND;
     
-    for (const auto& vector : vectors) {
-        bool include = true;
-        
-        // Filter by tags
-        if (!params.filter_tags.empty()) {
-            bool has_tag = false;
-            for (const auto& required_tag : params.filter_tags) {
-                for (const auto& vector_tag : vector.metadata.tags) {
-                    if (required_tag == vector_tag) {
-                        has_tag = true;
-                        break;
-                    }
-                }
-                if (has_tag) break;
-            }
-            if (!has_tag) {
-                include = false;
-            }
+    // Add tag filter if specified in params
+    if (!params.filter_tags.empty()) {
+        FilterCondition tag_condition;
+        tag_condition.field = "metadata.tags";
+        tag_condition.op = FilterOperator::IN;
+        tag_condition.values = params.filter_tags;
+        filter.conditions.push_back(tag_condition);
+    }
+    
+    // Add owner filter if specified in params
+    if (!params.filter_owner.empty()) {
+        FilterCondition owner_condition;
+        owner_condition.field = "metadata.owner";
+        owner_condition.op = FilterOperator::EQUALS;
+        owner_condition.value = params.filter_owner;
+        filter.conditions.push_back(owner_condition);
+    }
+    
+    // Add category filter if specified in params
+    if (!params.filter_category.empty()) {
+        FilterCondition category_condition;
+        category_condition.field = "metadata.category";
+        category_condition.op = FilterOperator::EQUALS;
+        category_condition.value = params.filter_category;
+        filter.conditions.push_back(category_condition);
+    }
+    
+    // Add score range filter if specified in params
+    if (params.filter_min_score > 0.0f || params.filter_max_score < 1.0f) {
+        if (params.filter_min_score > 0.0f) {
+            FilterCondition min_score_condition;
+            min_score_condition.field = "metadata.score";
+            min_score_condition.op = FilterOperator::GREATER_THAN_OR_EQUAL;
+            min_score_condition.value = std::to_string(params.filter_min_score);
+            filter.conditions.push_back(min_score_condition);
         }
         
-        // Filter by owner
-        if (include && !params.filter_owner.empty()) {
-            if (vector.metadata.owner != params.filter_owner) {
-                include = false;
-            }
-        }
-        
-        // Filter by category
-        if (include && !params.filter_category.empty()) {
-            if (vector.metadata.category != params.filter_category) {
-                include = false;
-            }
-        }
-        
-        // Filter by score
-        if (include && 
-            (vector.metadata.score < params.filter_min_score || 
-             vector.metadata.score > params.filter_max_score)) {
-            include = false;
-        }
-        
-        if (include) {
-            filtered_vectors.push_back(vector);
+        if (params.filter_max_score < 1.0f) {
+            FilterCondition max_score_condition;
+            max_score_condition.field = "metadata.score";
+            max_score_condition.op = FilterOperator::LESS_THAN_OR_EQUAL;
+            max_score_condition.value = std::to_string(params.filter_max_score);
+            filter.conditions.push_back(max_score_condition);
         }
     }
     
-    return filtered_vectors;
+    // Apply the complex filter to the vectors
+    auto result = metadata_filter_->apply_complex_filters(filter, vectors);
+    if (!result.has_value()) {
+        LOG_ERROR(logger_, "Failed to apply metadata filters: " << 
+                 ErrorHandler::format_error(result.error()));
+        return vectors; // Return original vectors if filter fails
+    }
+    
+    return result.value();
 }
 
 std::vector<SearchResult> SimilaritySearchService::sort_and_limit_results(
@@ -502,6 +587,14 @@ std::vector<SearchResult> SimilaritySearchService::sort_and_limit_results(
     }
     
     return results;
+}
+
+Result<std::vector<Vector>> SimilaritySearchService::apply_advanced_filters(
+    const ComplexFilter& filter,
+    const std::vector<Vector>& vectors) const {
+    
+    // Use the metadata filter service to apply the complex filter
+    return metadata_filter_->apply_complex_filters(filter, vectors);
 }
 
 } // namespace jadevectordb
