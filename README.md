@@ -35,4 +35,4 @@ This `README.md` is a work in progress and will be updated soon with more detail
 
 ## Getting Started
 
-Further details on functional and non-functional requirements, API design, data persistence, and implementation roadmap can be found in the `spec.md` document located in the `specs/001-we-are-going/` directory.
+Further details on functional and non-functional requirements, API design, data persistence, and implementation roadmap can be found in the `spec.md` document located in the `specs/002-check-if-we/` directory.
