@@ -1,6 +1,6 @@
 # Task Execution Plan: High-Performance Distributed Vector Database
 
-**Feature**: 001-we-are-going | **Date**: 2025-10-10 | **Spec**: [spec.md](spec.md)  
+**Feature: 002-check-if-we  | **Date**: 2025-10-10 | **Spec**: [spec.md](spec.md)  
 **Tasks**: Generated from `/speckit.tasks` command execution
 
 ## Executive Summary

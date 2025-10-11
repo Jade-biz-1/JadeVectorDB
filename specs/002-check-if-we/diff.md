@@ -2,19 +2,19 @@
 
 ## Summary
 This document outlines the identified inconsistencies and errors across the JadeVectorDB specification documents. The review covered:
-1. `specs/001-we-are-going/spec.md`
-2. `specs/001-we-are-going/research.md`
-3. `specs/001-we-are-going/plan.md`
-4. `specs/001-we-are-going/data-model.md`
-5. `specs/001-we-are-going/quickstart.md`
-6. `specs/001-we-are-going/tasks.md`
+1. `specs/002-check-if-we/spec.md`
+2. `specs/002-check-if-we/research.md`
+3. `specs/002-check-if-we/plan.md`
+4. `specs/002-check-if-we/data-model.md`
+5. `specs/002-check-if-we/quickstart.md`
+6. `specs/002-check-if-we/tasks.md`
 
 ## Identified Inconsistencies
 
 ### 1. Missing Document Reference Issue
 **Issue**: The `plan.md` document references a `contracts/vector-db-api.yaml` file in the "Next Steps" section of `quickstart.md`, but this file does not appear to exist in the repository structure.
 
-**Location**: `specs/001-we-are-going/quickstart.md`
+**Location**: `specs/002-check-if-we/quickstart.md`
 **Reference**: "To learn more, explore the full [API documentation](contracts/vector-db-api.yaml)."
 
 **Impact**: Users cannot access the detailed API documentation referenced in the quickstart guide.
@@ -40,7 +40,7 @@ This document outlines the identified inconsistencies and errors across the Jade
 ### 3. Task Dependency Inconsistency
 **Issue**: The `tasks.md` document mentions a task T192 "Gather UI wireframe requirements from user" that should be completed before T181, but this creates a circular dependency since UI development (T181) is planned after the foundational tasks that would be needed to implement even basic wireframe capabilities.
 
-**Location**: `specs/001-we-are-going/tasks.md` - Task T192
+**Location**: `specs/002-check-if-we/tasks.md` - Task T192
 
 **Impact**: Task planning issue that could slow down development.
 

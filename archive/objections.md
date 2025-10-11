@@ -106,4 +106,4 @@ This document summarizes objections to the architectural decisions taken for Jad
 ---
 
 # References
-- See research documents in `specs/001-we-are-going/research/` for detailed analysis and recommendations.
+- See research documents in `specs/002-check-if-we/research/` for detailed analysis and recommendations.
