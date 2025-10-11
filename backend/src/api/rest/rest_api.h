@@ -91,6 +91,7 @@ public:
     void handle_update_vector();          // PUT /v1/databases/{databaseId}/vectors/{vectorId}
     void handle_delete_vector();          // DELETE /v1/databases/{databaseId}/vectors/{vectorId}
     void handle_batch_store_vectors();    // POST /v1/databases/{databaseId}/vectors/batch
+    void handle_batch_get_vectors();       // POST /v1/databases/{databaseId}/vectors/batch-get
     
     // Search routes
     void handle_similarity_search();      // POST /v1/databases/{databaseId}/search
