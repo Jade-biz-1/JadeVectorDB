@@ -113,10 +113,7 @@ Result<bool> VectorStorageService::vector_exists(const std::string& database_id,
 }
 
 Result<size_t> VectorStorageService::get_vector_count(const std::string& database_id) const {
-    // This would require adding a method to the database layer
-    // For now, we'll return 0 - a proper implementation would require 
-    // a count method in the database layer interface
-    return 0;
+    return db_layer_->get_vector_count(database_id);
 }
 
 Result<void> VectorStorageService::validate_vector(const std::string& database_id, 
@@ -156,10 +153,7 @@ Result<void> VectorStorageService::validate_vector(const std::string& database_i
 }
 
 Result<std::vector<std::string>> VectorStorageService::get_all_vector_ids(const std::string& database_id) const {
-    // This would require implementing a method in the database layer to get all vector IDs
-    // For now, we'll return an empty vector - a proper implementation would require 
-    // a method to fetch all vector IDs in the database layer
-    return std::vector<std::string>{};
+    return db_layer_->get_all_vector_ids(database_id);
 }
 
 } // namespace jadevectordb
