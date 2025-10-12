@@ -39,7 +39,7 @@ FetchContent_MakeAvailable(flatbuffers)
 FetchContent_Declare(
     crow
     GIT_REPOSITORY https://github.com/CrowCpp/Crow.git
-    GIT_TAG v1.0-develop
+    GIT_TAG v1.0+5
 )
 FetchContent_MakeAvailable(crow)
 
@@ -135,6 +135,16 @@ add_executable(jadevectordb_tests
     tests/test_vector_storage.cpp
     tests/test_similarity_search.cpp
     tests/test_database_service.cpp
+    tests/test_vector_storage_service.cpp
+    tests/test_vector_api_integration.cpp
+    tests/test_similarity_search_unit.cpp
+    tests/test_search_api_integration.cpp
+    tests/test_metadata_filter_unit.cpp
+    tests/test_advanced_search_integration.cpp
+    tests/test_database_service_unit.cpp
+    tests/test_database_api_integration.cpp
+    tests/test_e2e_filtered_search.cpp
+    tests/test_search_quality.cpp
 )
 
 target_link_libraries(jadevectordb_tests 
@@ -145,3 +155,70 @@ target_link_libraries(jadevectordb_tests
 
 enable_testing()
 add_test(NAME VectorStorageTest COMMAND jadevectordb_tests)
+
+# Add Google Benchmark executable for performance testing
+find_package(benchmark REQUIRED)
+if(NOT benchmark_FOUND)
+    message(FATAL_ERROR "Google Benchmark not found. Please install Google Benchmark.")
+endif()
+
+add_executable(search_benchmarks
+    tests/benchmarks/search_benchmarks.cpp
+    src/services/vector_storage.cpp
+    src/services/similarity_search.cpp
+    src/services/database_service.cpp
+    src/services/database_layer.cpp
+    src/models/vector.cpp
+    src/models/database.cpp
+    src/models/index.cpp
+    src/models/embedding_model.cpp
+    src/lib/mmap_utils.cpp
+    src/lib/simd_ops.cpp
+    src/lib/serialization.cpp
+    src/lib/storage_format.cpp
+    src/lib/logging.cpp
+    src/lib/error_handling.cpp
+    src/lib/config.cpp
+    src/lib/thread_pool.cpp
+    src/lib/auth.cpp
+    src/lib/metrics.cpp
+)
+
+target_link_libraries(search_benchmarks
+    benchmark::benchmark
+    benchmark::benchmark_main
+    Threads::Threads
+    Arrow::arrow
+    ${CMAKE_DL_LIBS}
+)
+
+add_executable(filtered_search_benchmarks
+    tests/benchmarks/filtered_search_benchmarks.cpp
+    src/services/vector_storage.cpp
+    src/services/similarity_search.cpp
+    src/services/database_service.cpp
+    src/services/database_layer.cpp
+    src/services/metadata_filter.cpp
+    src/models/vector.cpp
+    src/models/database.cpp
+    src/models/index.cpp
+    src/models/embedding_model.cpp
+    src/lib/mmap_utils.cpp
+    src/lib/simd_ops.cpp
+    src/lib/serialization.cpp
+    src/lib/storage_format.cpp
+    src/lib/logging.cpp
+    src/lib/error_handling.cpp
+    src/lib/config.cpp
+    src/lib/thread_pool.cpp
+    src/lib/auth.cpp
+    src/lib/metrics.cpp
+)
+
+target_link_libraries(filtered_search_benchmarks
+    benchmark::benchmark
+    benchmark::benchmark_main
+    Threads::Threads
+    Arrow::arrow
+    ${CMAKE_DL_LIBS}
+)
