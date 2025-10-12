@@ -1219,6 +1219,197 @@ void RestApiImpl::handle_generate_embedding() {
 }
 
 // Metrics endpoint
+void RestApiImpl::handle_health_check() {
+    LOG_DEBUG(logger_, "Setting up health check endpoint at /health");
+    
+    app_->route_dynamic("/health")
+    ([this](const crow::request& req) {
+        try {
+            // Extract API key from header (optional for health checks)
+            std::string api_key;
+            auto auth_header = req.get_header_value("Authorization");
+            if (!auth_header.empty()) {
+                if (auth_header.substr(0, 7) == "Bearer ") {
+                    api_key = auth_header.substr(7);
+                } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                    api_key = auth_header.substr(5);
+                }
+                
+                // If API key provided, validate it
+                if (!api_key.empty()) {
+                    auto auth_result = authenticate_request(api_key);
+                    if (!auth_result.has_value()) {
+                        return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+                    }
+                }
+            }
+            
+            LOG_INFO(logger_, "Health check request received");
+            
+            // In a real implementation, this would call the MonitoringService to check system health
+            // For now, returning a basic health status
+            crow::json::wvalue response;
+            response["status"] = "healthy";
+            response["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            response["version"] = "1.0.0";
+            response["checks"] = crow::json::wvalue::object();
+            response["checks"]["database"] = "ok";
+            response["checks"]["storage"] = "ok";
+            response["checks"]["network"] = "ok";
+            
+            crow::response resp(200, response);
+            resp.set_header("Content-Type", "application/json");
+            return resp;
+        } catch (const std::exception& e) {
+            LOG_ERROR(logger_, "Error in health check: " + std::string(e.what()));
+            return crow::response(500, "{\"error\":\"Internal server error\"}");
+        }
+    });
+}
+
+void RestApiImpl::handle_system_status() {
+    LOG_DEBUG(logger_, "Setting up system status endpoint at /status");
+    
+    app_->route_dynamic("/status")
+    ([this](const crow::request& req) {
+        try {
+            // Extract API key from header
+            std::string api_key;
+            auto auth_header = req.get_header_value("Authorization");
+            if (!auth_header.empty()) {
+                if (auth_header.substr(0, 7) == "Bearer ") {
+                    api_key = auth_header.substr(7);
+                } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                    api_key = auth_header.substr(5);
+                }
+            }
+            
+            // Authenticate request
+            auto auth_result = authenticate_request(api_key);
+            if (!auth_result.has_value()) {
+                return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+            }
+
+            // Check if user has permission to view system status
+            auto auth_manager = AuthManager::get_instance();
+            auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+            if (user_id_result.has_value()) {
+                auto perm_result = auth_manager->has_permission_with_api_key(api_key, "monitoring:read");
+                if (!perm_result.has_value() || !perm_result.value()) {
+                    return crow::response(403, "{\"error\":\"Insufficient permissions\"}");
+                }
+            }
+            
+            LOG_INFO(logger_, "System status request received");
+            
+            // In a real implementation, this would call the MonitoringService for detailed status
+            // For now, returning placeholder status information
+            crow::json::wvalue response;
+            response["status"] = "operational";
+            response["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            response["uptime"] = "placeholder_uptime";
+            response["version"] = "1.0.0";
+            
+            // Add detailed system information
+            response["system"] = crow::json::wvalue::object();
+            response["system"]["cpu_usage"] = 15.3;
+            response["system"]["memory_usage"] = 45.7;
+            response["system"]["disk_usage"] = 67.2;
+            response["system"]["network_io"] = "placeholder_network_io";
+            
+            // Add performance metrics
+            response["performance"] = crow::json::wvalue::object();
+            response["performance"]["avg_query_time_ms"] = 2.5;
+            response["performance"]["qps"] = 1250;
+            response["performance"]["active_connections"] = 42;
+            response["performance"]["total_vectors"] = 1000000;
+            
+            crow::response resp(200, response);
+            resp.set_header("Content-Type", "application/json");
+            return resp;
+        } catch (const std::exception& e) {
+            LOG_ERROR(logger_, "Error in system status: " + std::string(e.what()));
+            return crow::response(500, "{\"error\":\"Internal server error\"}");
+        }
+    });
+}
+
+void RestApiImpl::handle_database_status() {
+    LOG_DEBUG(logger_, "Setting up database status endpoint at /v1/databases/{databaseId}/status");
+    
+    app_->route_dynamic("/v1/databases/<string>/status")
+    ([this](const crow::request& req, std::string database_id) {
+        try {
+            // Extract API key from header
+            std::string api_key;
+            auto auth_header = req.get_header_value("Authorization");
+            if (!auth_header.empty()) {
+                if (auth_header.substr(0, 7) == "Bearer ") {
+                    api_key = auth_header.substr(7);
+                } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                    api_key = auth_header.substr(5);
+                }
+            }
+            
+            // Authenticate request
+            auto auth_result = authenticate_request(api_key);
+            if (!auth_result.has_value()) {
+                return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+            }
+
+            // Check if user has permission to view database status
+            auto auth_manager = AuthManager::get_instance();
+            auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+            if (user_id_result.has_value()) {
+                auto perm_result = auth_manager->has_permission_with_api_key(api_key, "monitoring:read");
+                if (!perm_result.has_value() || !perm_result.value()) {
+                    return crow::response(403, "{\"error\":\"Insufficient permissions\"}");
+                }
+            }
+            
+            LOG_INFO(logger_, "Database status request received for database: " << database_id);
+            
+            // Validate database exists
+            auto db_exists_result = db_service_->database_exists(database_id);
+            if (!db_exists_result.has_value() || !db_exists_result.value()) {
+                return crow::response(404, "{\"error\":\"Database not found\"}");
+            }
+            
+            // In a real implementation, this would call the MonitoringService for database status
+            // For now, returning placeholder status information
+            crow::json::wvalue response;
+            response["databaseId"] = database_id;
+            response["status"] = "online";
+            response["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            
+            // Add database-specific metrics
+            response["metrics"] = crow::json::wvalue::object();
+            response["metrics"]["vector_count"] = 50000;
+            response["metrics"]["index_count"] = 3;
+            response["metrics"]["storage_used_mb"] = 1024.5;
+            response["metrics"]["avg_query_time_ms"] = 1.8;
+            response["metrics"]["qps"] = 850;
+            
+            // Add index status
+            crow::json::wvalue indexes_status = crow::json::wvalue::object();
+            indexes_status["hnsw_index_1"] = "ready";
+            indexes_status["ivf_index_1"] = "ready";
+            indexes_status["flat_index_1"] = "ready";
+            response["indexes"] = indexes_status;
+            
+            crow::response resp(200, response);
+            resp.set_header("Content-Type", "application/json");
+            return resp;
+        } catch (const std::exception& e) {
+            LOG_ERROR(logger_, "Error in database status: " + std::string(e.what()));
+            return crow::response(500, "{\"error\":\"Internal server error\"}");
+        }
+    });
+}
+
 void RestApiImpl::handle_metrics() {
     // Implementation would register GET /metrics endpoint for Prometheus format
     LOG_DEBUG(logger_, "Registered metrics endpoint at /metrics");
@@ -2121,6 +2312,622 @@ void RestApiImpl::setup_request_validation() {
 void RestApiImpl::setup_response_serialization() {
     LOG_DEBUG(logger_, "Setting up response serialization");
     // In a real implementation, this would set up JSON serialization
+}
+
+crow::response RestApiImpl::handle_generate_embedding_request(const crow::request& req) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+
+        // Check if user has permission to generate embeddings
+        auto auth_manager = AuthManager::get_instance();
+        auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+        if (user_id_result.has_value()) {
+            auto perm_result = auth_manager->has_permission_with_api_key(api_key, "embedding:generate");
+            if (!perm_result.has_value() || !perm_result.value()) {
+                return crow::response(403, "{\"error\":\"Insufficient permissions\"}");
+            }
+        }
+
+        LOG_INFO(logger_, "Generate embedding request received");
+
+        // Parse request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            LOG_ERROR(logger_, "Invalid JSON in handle_generate_embedding_request");
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        // Extract required parameters
+        if (!body_json.has("input")) {
+            LOG_ERROR(logger_, "Missing 'input' parameter in embedding generation request");
+            return crow::response(400, "{\"error\":\"Missing 'input' parameter\"}");
+        }
+
+        std::string input = body_json["input"].s();
+        std::string input_type = "text"; // Default to text
+        if (body_json.has("input_type")) {
+            input_type = body_json["input_type"].s();
+        }
+
+        std::string model = "default"; // Default model
+        if (body_json.has("model")) {
+            model = body_json["model"].s();
+        }
+
+        std::string provider = "default"; // Default provider
+        if (body_json.has("provider")) {
+            provider = body_json["provider"].s();
+        }
+
+        // In a real implementation, we would use the EmbeddingService to generate the embedding
+        // For now, returning a placeholder response
+        crow::json::wvalue response;
+        response["input"] = input;
+        response["input_type"] = input_type;
+        response["model"] = model;
+        response["provider"] = provider;
+        // Placeholder embedding - in a real implementation, this would be generated by the embedding service
+        crow::json::wvalue emb_list = crow::json::wvalue::list();
+        emb_list.push_back(0.1f);
+        emb_list.push_back(0.2f);
+        emb_list.push_back(0.3f);
+        emb_list.push_back(0.4f);
+        emb_list.push_back(0.5f);
+        response["embedding"] = emb_list;
+        response["dimension"] = 5; // Placeholder dimension
+        response["status"] = "success";
+        response["generated_at"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+
+        LOG_INFO(logger_, "Embedding generated successfully");
+        crow::response resp(200, response);
+        resp.set_header("Content-Type", "application/json");
+        return resp;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Error in handle_generate_embedding_request: " + std::string(e.what()));
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_create_index_request(const crow::request& req, const std::string& database_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+
+        // Check if user has permission to create indexes
+        auto auth_manager = AuthManager::get_instance();
+        auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+        if (user_id_result.has_value()) {
+            auto perm_result = auth_manager->has_permission_with_api_key(api_key, "index:create");
+            if (!perm_result.has_value() || !perm_result.value()) {
+                return crow::response(403, "{\"error\":\"Insufficient permissions\"}");
+            }
+        }
+
+        LOG_INFO(logger_, "Create index request received for database: " << database_id);
+
+        // Validate database exists
+        auto db_exists_result = db_service_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+
+        // Parse request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            LOG_ERROR(logger_, "Invalid JSON in handle_create_index_request");
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        // Extract required parameters
+        if (!body_json.has("type")) {
+            LOG_ERROR(logger_, "Missing 'type' parameter in index creation request");
+            return crow::response(400, "{\"error\":\"Missing 'type' parameter\"}");
+        }
+
+        std::string index_type = body_json["type"].s();
+        std::string index_name = database_id + "_" + index_type; // Default name
+        if (body_json.has("name")) {
+            index_name = body_json["name"].s();
+        }
+
+        // Extract optional parameters
+        std::unordered_map<std::string, std::string> parameters;
+        if (body_json.has("parameters")) {
+            auto params_obj = body_json["parameters"];
+            for (const auto& member : params_obj.object()) {
+                parameters[member.first] = member.second.s();
+            }
+        }
+
+        // Create index config
+        IndexConfig config;
+        if (index_type == "HNSW") {
+            config.type = IndexType::HNSW;
+        } else if (index_type == "IVF") {
+            config.type = IndexType::IVF;
+        } else if (index_type == "LSH") {
+            config.type = IndexType::LSH;
+        } else if (index_type == "FLAT") {
+            config.type = IndexType::FLAT;
+        } else {
+            LOG_ERROR(logger_, "Invalid index type: " << index_type);
+            return crow::response(400, "{\"error\":\"Invalid index type\"}");
+        }
+        config.database_id = database_id;
+        config.parameters = parameters;
+
+        // Create the index using the service
+        auto result = index_service_->create_index(config);
+        if (!result.has_value()) {
+            LOG_ERROR(logger_, "Failed to create index: " + ErrorHandler::format_error(result.error()));
+            return crow::response(400, "{\"error\":\"Failed to create index\"}");
+        }
+
+        std::string index_id = result.value();
+        crow::json::wvalue response;
+        response["indexId"] = index_id;
+        response["databaseId"] = database_id;
+        response["type"] = index_type;
+        response["parameters"] = crow::json::wvalue::object();
+        for (const auto& param : parameters) {
+            response["parameters"][param.first] = param.second;
+        }
+        response["status"] = "created";
+        response["createdAt"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+
+        crow::response resp(201, response);
+        resp.set_header("Content-Type", "application/json");
+        LOG_INFO(logger_, "Index created successfully with ID: " << index_id);
+        return resp;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Error in handle_create_index_request: " + std::string(e.what()));
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_list_indexes_request(const crow::request& req, const std::string& database_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+
+        // Check if user has permission to list indexes
+        auto auth_manager = AuthManager::get_instance();
+        auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+        if (user_id_result.has_value()) {
+            auto perm_result = auth_manager->has_permission_with_api_key(api_key, "index:read");
+            if (!perm_result.has_value() || !perm_result.value()) {
+                return crow::response(403, "{\"error\":\"Insufficient permissions\"}");
+            }
+        }
+
+        LOG_INFO(logger_, "List indexes request received for database: " << database_id);
+
+        // Validate database exists
+        auto db_exists_result = db_service_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+
+        // Get indexes for the database using the service
+        auto result = index_service_->get_indexes_for_database(database_id);
+        if (!result.has_value()) {
+            LOG_ERROR(logger_, "Failed to list indexes: " + ErrorHandler::format_error(result.error()));
+            return crow::response(400, "{\"error\":\"Failed to list indexes\"}");
+        }
+
+        auto indexes = result.value();
+        crow::json::wvalue response = crow::json::wvalue::list();
+        
+        for (const auto& index : indexes) {
+            crow::json::wvalue index_obj;
+            index_obj["indexId"] = index.indexId;
+            index_obj["databaseId"] = index.databaseId;
+            index_obj["type"] = index.type;
+            index_obj["status"] = index.status;
+            
+            // Convert parameters to JSON object
+            crow::json::wvalue params_obj = crow::json::wvalue::object();
+            for (const auto& param : index.parameters) {
+                params_obj[param.first] = param.second;
+            }
+            index_obj["parameters"] = params_obj;
+            
+            index_obj["createdAt"] = index.created_at;
+            index_obj["updatedAt"] = index.updated_at;
+            response.push_back(index_obj);
+        }
+
+        crow::response resp(200, response);
+        resp.set_header("Content-Type", "application/json");
+        LOG_DEBUG(logger_, "Listed " << indexes.size() << " indexes for database: " << database_id);
+        return resp;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Error in handle_list_indexes_request: " + std::string(e.what()));
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_update_index_request(const crow::request& req, const std::string& database_id, const std::string& index_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+
+        // Check if user has permission to update indexes
+        auto auth_manager = AuthManager::get_instance();
+        auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+        if (user_id_result.has_value()) {
+            auto perm_result = auth_manager->has_permission_with_api_key(api_key, "index:update");
+            if (!perm_result.has_value() || !perm_result.value()) {
+                return crow::response(403, "{\"error\":\"Insufficient permissions\"}");
+            }
+        }
+
+        LOG_INFO(logger_, "Update index request received for index: " << index_id << " in database: " << database_id);
+
+        // Validate database exists
+        auto db_exists_result = db_service_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+
+        // Check if index exists
+        if (!index_service_->index_exists(index_id)) {
+            return crow::response(404, "{\"error\":\"Index not found\"}");
+        }
+
+        // Parse request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            LOG_ERROR(logger_, "Invalid JSON in handle_update_index_request");
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        // Extract parameters to update
+        std::unordered_map<std::string, std::string> parameters;
+        if (body_json.has("parameters")) {
+            auto params_obj = body_json["parameters"];
+            for (const auto& member : params_obj.object()) {
+                parameters[member.first] = member.second.s();
+            }
+        }
+
+        // Update the index using the service
+        auto result = index_service_->update_index_config(index_id, parameters);
+        if (!result.has_value() || !result.value()) {
+            LOG_ERROR(logger_, "Failed to update index: ");
+            if (result.has_value()) {
+                LOG_ERROR(logger_, "Error details: " + ErrorHandler::format_error(result.error()));
+            }
+            return crow::response(400, "{\"error\":\"Failed to update index\"}");
+        }
+
+        crow::json::wvalue response;
+        response["indexId"] = index_id;
+        response["databaseId"] = database_id;
+        response["status"] = "updated";
+        response["updatedAt"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+
+        crow::response resp(200, response);
+        resp.set_header("Content-Type", "application/json");
+        LOG_INFO(logger_, "Index updated successfully: " << index_id);
+        return resp;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Error in handle_update_index_request: " + std::string(e.what()));
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_delete_index_request(const crow::request& req, const std::string& database_id, const std::string& index_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+
+        // Check if user has permission to delete indexes
+        auto auth_manager = AuthManager::get_instance();
+        auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+        if (user_id_result.has_value()) {
+            auto perm_result = auth_manager->has_permission_with_api_key(api_key, "index:delete");
+            if (!perm_result.has_value() || !perm_result.value()) {
+                return crow::response(403, "{\"error\":\"Insufficient permissions\"}");
+            }
+        }
+
+        LOG_INFO(logger_, "Delete index request received for index: " << index_id << " in database: " << database_id);
+
+        // Validate database exists
+        auto db_exists_result = db_service_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+
+        // Check if index exists
+        if (!index_service_->index_exists(index_id)) {
+            return crow::response(404, "{\"error\":\"Index not found\"}");
+        }
+
+        // Delete the index using the service
+        auto result = index_service_->delete_index(index_id);
+        if (!result.has_value() || !result.value()) {
+            LOG_ERROR(logger_, "Failed to delete index: ");
+            if (result.has_value()) {
+                LOG_ERROR(logger_, "Error details: " + ErrorHandler::format_error(result.error()));
+            }
+            return crow::response(400, "{\"error\":\"Failed to delete index\"}");
+        }
+
+        crow::json::wvalue response;
+        response["indexId"] = index_id;
+        response["databaseId"] = database_id;
+        response["status"] = "deleted";
+        response["deletedAt"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+
+        crow::response resp(200, response);
+        resp.set_header("Content-Type", "application/json");
+        LOG_INFO(logger_, "Index deleted successfully: " << index_id);
+        return resp;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Error in handle_delete_index_request: " + std::string(e.what()));
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_configure_retention_request(const crow::request& req, const std::string& database_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+
+        // Check if user has permission to configure retention
+        auto auth_manager = AuthManager::get_instance();
+        auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+        if (user_id_result.has_value()) {
+            auto perm_result = auth_manager->has_permission_with_api_key(api_key, "lifecycle:configure");
+            if (!perm_result.has_value() || !perm_result.value()) {
+                return crow::response(403, "{\"error\":\"Insufficient permissions\"}");
+            }
+        }
+
+        LOG_INFO(logger_, "Configure retention request received for database: " << database_id);
+
+        // Validate database exists
+        auto db_exists_result = db_service_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+
+        // Parse request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            LOG_ERROR(logger_, "Invalid JSON in handle_configure_retention_request");
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        // Extract retention policy parameters
+        RetentionPolicy policy;
+        
+        if (body_json.has("maxAgeDays")) {
+            policy.max_age_days = body_json["maxAgeDays"].i();
+        }
+        if (body_json.has("archiveOnExpire")) {
+            policy.archive_on_expire = body_json["archiveOnExpire"].b();
+        }
+        if (body_json.has("archiveThresholdDays")) {
+            policy.archive_threshold_days = body_json["archiveThresholdDays"].i();
+        }
+        if (body_json.has("enableCleanup")) {
+            policy.enable_cleanup = body_json["enableCleanup"].b();
+        }
+        if (body_json.has("cleanupSchedule")) {
+            policy.cleanup_schedule = body_json["cleanupSchedule"].s();
+        }
+
+        // Create lifecycle configuration
+        LifecycleConfig config;
+        config.database_id = database_id;
+        config.retention_policy = policy;
+        config.enabled = true;  // Enable lifecycle management for this DB
+
+        // Configure retention policy using the service
+        auto result = lifecycle_service_->configure_retention_policy(config);
+        if (!result.has_value() || !result.value()) {
+            LOG_ERROR(logger_, "Failed to configure retention policy: ");
+            if (result.has_value()) {
+                LOG_ERROR(logger_, "Error details: " + ErrorHandler::format_error(result.error()));
+            }
+            return crow::response(400, "{\"error\":\"Failed to configure retention policy\"}");
+        }
+
+        crow::json::wvalue response;
+        response["databaseId"] = database_id;
+        response["retentionPolicy"]["maxAgeDays"] = policy.max_age_days;
+        response["retentionPolicy"]["archiveOnExpire"] = policy.archive_on_expire;
+        response["retentionPolicy"]["archiveThresholdDays"] = policy.archive_threshold_days;
+        response["retentionPolicy"]["enableCleanup"] = policy.enable_cleanup;
+        response["retentionPolicy"]["cleanupSchedule"] = policy.cleanup_schedule;
+        response["status"] = "configured";
+        response["updatedAt"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+
+        crow::response resp(200, response);
+        resp.set_header("Content-Type", "application/json");
+        LOG_INFO(logger_, "Retention policy configured for database: " << database_id);
+        return resp;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Error in handle_configure_retention_request: " + std::string(e.what()));
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_lifecycle_status_request(const crow::request& req, const std::string& database_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+
+        // Check if user has permission to view lifecycle status
+        auto auth_manager = AuthManager::get_instance();
+        auto user_id_result = auth_manager->get_user_from_api_key(api_key);
+        if (user_id_result.has_value()) {
+            auto perm_result = auth_manager->has_permission_with_api_key(api_key, "lifecycle:read");
+            if (!perm_result.has_value() || !perm_result.value()) {
+                return crow::response(403, "{\"error\":\"Insufficient permissions\"}");
+            }
+        }
+
+        LOG_INFO(logger_, "Lifecycle status request received for database: " << database_id);
+
+        // Validate database exists
+        auto db_exists_result = db_service_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+
+        // Get retention policy for the database
+        auto policy_result = lifecycle_service_->get_retention_policy(database_id);
+        if (!policy_result.has_value()) {
+            LOG_ERROR(logger_, "Failed to get retention policy: " + ErrorHandler::format_error(policy_result.error()));
+            return crow::response(400, "{\"error\":\"Failed to get retention policy\"}");
+        }
+
+        // Get lifecycle statistics
+        auto stats_result = lifecycle_service_->get_lifecycle_stats(database_id);
+        if (!stats_result.has_value()) {
+            LOG_ERROR(logger_, "Failed to get lifecycle stats: " + ErrorHandler::format_error(stats_result.error()));
+            return crow::response(400, "{\"error\":\"Failed to get lifecycle stats\"}");
+        }
+
+        auto policy = policy_result.value();
+        auto stats = stats_result.value();
+
+        crow::json::wvalue response;
+        response["databaseId"] = database_id;
+        
+        // Add retention policy
+        response["retentionPolicy"]["maxAgeDays"] = policy.max_age_days;
+        response["retentionPolicy"]["archiveOnExpire"] = policy.archive_on_expire;
+        response["retentionPolicy"]["archiveThresholdDays"] = policy.archive_threshold_days;
+        response["retentionPolicy"]["enableCleanup"] = policy.enable_cleanup;
+        response["retentionPolicy"]["cleanupSchedule"] = policy.cleanup_schedule;
+        
+        // Add lifecycle statistics
+        for (const auto& stat : stats) {
+            response["stats"][stat.first] = stat.second;
+        }
+        
+        // Add timestamp
+        response["status"] = "active";
+        response["retrievedAt"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+
+        crow::response resp(200, response);
+        resp.set_header("Content-Type", "application/json");
+        LOG_DEBUG(logger_, "Lifecycle status retrieved for database: " << database_id);
+        return resp;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Error in handle_lifecycle_status_request: " + std::string(e.what()));
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
 }
 
 void RestApiImpl::handle_batch_get_vectors() {

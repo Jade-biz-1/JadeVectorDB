@@ -65,6 +65,8 @@ private:
     std::unique_ptr<DatabaseService> db_service_;
     std::unique_ptr<VectorStorageService> vector_storage_service_;
     std::unique_ptr<SimilaritySearchService> similarity_search_service_;
+    std::unique_ptr<IndexService> index_service_;
+    std::unique_ptr<LifecycleService> lifecycle_service_;
     
     // Crow app instance
     std::unique_ptr<crow::App<>> app_;
@@ -111,6 +113,10 @@ public:
     crow::response handle_delete_index_request(const crow::request& req, const std::string& database_id, const std::string& index_id);
     
     crow::response handle_generate_embedding_request(const crow::request& req);
+    
+    // Lifecycle management request handlers
+    crow::response handle_configure_retention_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_lifecycle_status_request(const crow::request& req, const std::string& database_id);
     
     // Database management routes
     void handle_create_database();        // POST /v1/databases
