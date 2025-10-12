@@ -7,6 +7,9 @@
 #include "services/similarity_search.h"
 #include <chrono>
 #include <thread>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 namespace jadevectordb {
 
@@ -54,10 +57,8 @@ void RestApiService::stop() {
 void RestApiService::run_server() {
     LOG_INFO(logger_, "REST API server thread started");
     
-    // In a real implementation, this would run the HTTP server loop
-    // For now, we'll just simulate the server running
-    while (running_) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    if (api_impl_) {
+        api_impl_->start_server();
     }
     
     LOG_INFO(logger_, "REST API server thread ended");
@@ -68,9 +69,6 @@ RestApiImpl::RestApiImpl() {
 }
 
 bool RestApiImpl::initialize(int port) {
-    // In a real implementation, this would initialize the web framework
-    // e.g., Crow, Pistache, or another C++ HTTP framework
-    
     LOG_INFO(logger_, "Initializing REST API on port " << port);
     
     // Initialize services that the API will use
@@ -83,6 +81,10 @@ bool RestApiImpl::initialize(int port) {
     vector_storage_service_->initialize();
     similarity_search_service_->initialize();
     
+    // Create Crow app instance
+    app_ = std::make_unique<crow::App<>>(crow::renderer::load_cached());
+    server_port_ = port;
+    
     // Perform any initialization needed
     setup_error_handling();
     setup_authentication();
@@ -92,46 +94,159 @@ bool RestApiImpl::initialize(int port) {
     return true;
 }
 
+void RestApiImpl::start_server() {
+    if (app_) {
+        LOG_INFO(logger_, "Starting Crow server on port " << server_port_);
+        app_->port(server_port_).multithreaded().run();
+    }
+}
+
 void RestApiImpl::register_routes() {
     LOG_INFO(logger_, "Registering REST API routes");
     
-    // Register all the routes with the web framework
-    // In a real implementation, this would connect URL paths to handler functions
-    
     // Health and monitoring endpoints
+    app_->route_dynamic("/health")
+        ([]() {
+            crow::json::wvalue response;
+            response["status"] = "healthy";
+            response["timestamp"] = std::to_string(std::time(nullptr));
+            return crow::response(response);
+        });
     handle_health_check();
+    
+    app_->route_dynamic("/status")
+        ([this]() {
+            crow::json::wvalue response;
+            response["status"] = "running";
+            response["version"] = "1.0.0";
+            response["service"] = "JadeVectorDB";
+            return crow::response(response);
+        });
     handle_system_status();
     
     // Database management endpoints
+    app_->route_dynamic("/v1/databases")
+        ([this](const crow::request& req) {
+            // Handle HTTP method
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_create_database_request(req);
+            } else if (req.method == crow::HTTPMethod::GET) {
+                return handle_list_databases_request(req);
+            }
+            return crow::response(405, "Method not allowed");
+        });
     handle_create_database();
     handle_list_databases();
+    
+    app_->route_dynamic("/v1/databases/<string>")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method == crow::HTTPMethod::GET) {
+                return handle_get_database_request(req, database_id);
+            } else if (req.method == crow::HTTPMethod::PUT) {
+                return handle_update_database_request(req, database_id);
+            } else if (req.method == crow::HTTPMethod::DELETE) {
+                return handle_delete_database_request(req, database_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
     handle_get_database();
     handle_update_database();
     handle_delete_database();
     
     // Vector management endpoints
+    app_->route_dynamic("/v1/databases/<string>/vectors")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_store_vector_request(req, database_id);
+            }
+            // For batch operations, we might need to check request body content
+            // Or add separate endpoints like /v1/databases/{db}/vectors/batch
+            return crow::response(405, "Method not allowed");
+        });
+    app_->route_dynamic("/v1/databases/<string>/vectors/batch")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_batch_store_vectors_request(req, database_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+    app_->route_dynamic("/v1/databases/<string>/vectors/batch-get")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_batch_get_vectors_request(req, database_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
     handle_store_vector();
-    handle_get_vector();
-    handle_update_vector();
-    handle_delete_vector();
     handle_batch_store_vectors();
     handle_batch_get_vectors();
     
+    app_->route_dynamic("/v1/databases/<string>/vectors/<string>")
+        ([this](const crow::request& req, std::string database_id, std::string vector_id) {
+            if (req.method == crow::HTTPMethod::GET) {
+                return handle_get_vector_request(req, database_id, vector_id);
+            } else if (req.method == crow::HTTPMethod::PUT) {
+                return handle_update_vector_request(req, database_id, vector_id);
+            } else if (req.method == crow::HTTPMethod::DELETE) {
+                return handle_delete_vector_request(req, database_id, vector_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+    handle_get_vector();
+    handle_update_vector();
+    handle_delete_vector();
+    
     // Search endpoints
+    app_->route_dynamic("/v1/databases/<string>/search")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_similarity_search_request(req, database_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+    app_->route_dynamic("/v1/databases/<string>/search/advanced")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_advanced_search_request(req, database_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
     handle_similarity_search();
     handle_advanced_search();
     
     // Index management endpoints
+    app_->route_dynamic("/v1/databases/<string>/indexes")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_create_index_request(req, database_id);
+            } else if (req.method == crow::HTTPMethod::GET) {
+                return handle_list_indexes_request(req, database_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+    app_->route_dynamic("/v1/databases/<string>/indexes/<string>")
+        ([this](const crow::request& req, std::string database_id, std::string index_id) {
+            if (req.method == crow::HTTPMethod::PUT) {
+                return handle_update_index_request(req, database_id, index_id);
+            } else if (req.method == crow::HTTPMethod::DELETE) {
+                return handle_delete_index_request(req, database_id, index_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
     handle_create_index();
     handle_list_indexes();
     handle_update_index();
     handle_delete_index();
     
     // Embedding generation endpoints
+    app_->route_dynamic("/v1/embeddings/generate")
+        ([this](const crow::request& req) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_generate_embedding_request(req);
+            }
+            return crow::response(405, "Method not allowed");
+        });
     handle_generate_embedding();
-    
-    // Metrics endpoint
-    handle_metrics();
     
     LOG_INFO(logger_, "All REST API routes registered successfully");
 }
@@ -600,13 +715,19 @@ void RestApiImpl::handle_store_vector() {
             if (result.has_value()) {
                 res.status = 201; // Created
                 res.set_content("{\"status\":\"success\",\"vectorId\":\"" + vector_data.id + "\"}", "application/json");
+                
+                LOG_DEBUG(logger_, "Stored vector: " + vector_data.id + " in database: " + database_id);
             } else {
                 res.status = 400; // Bad Request
                 res.set_content("{\"error\":\"" + ErrorHandler::format_error(result.error()) + "\"}", "application/json");
+                
+                LOG_ERROR(logger_, "Failed to store vector: " + ErrorHandler::format_error(result.error()));
             }
         } catch (const std::exception& e) {
             res.status = 500; // Internal Server Error
             res.set_content("{\"error\":\"Internal server error\"}", "application/json");
+            
+            LOG_ERROR(logger_, "Exception in store vector: " << e.what());
         }
     });
     */
@@ -1101,6 +1222,856 @@ void RestApiImpl::handle_generate_embedding() {
 void RestApiImpl::handle_metrics() {
     // Implementation would register GET /metrics endpoint for Prometheus format
     LOG_DEBUG(logger_, "Registered metrics endpoint at /metrics");
+}
+
+// Request handling methods implementation
+
+crow::response RestApiImpl::handle_store_vector_request(const crow::request& req, const std::string& database_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+        
+        // Check if user has permission to store vectors in this database
+        // This would check permissions in a real implementation
+
+        // Validate database exists
+        auto db_exists_result = vector_storage_service_->db_layer_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+        
+        // Parse vector from request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+        
+        // Create a Vector object from JSON
+        Vector vector_data;
+        vector_data.id = body_json["id"].s();
+        if (!body_json["values"].is_list()) {
+            return crow::response(400, "{\"error\":\"Vector values must be an array\"}");
+        }
+        
+        // Parse values
+        for (const auto& val : body_json["values"].list()) {
+            vector_data.values.push_back(val.d());
+        }
+        
+        // Parse metadata if present
+        if (body_json.has("metadata")) {
+            // Parse the metadata object
+            vector_data.metadata = body_json["metadata"];
+        }
+        
+        // Validate vector data
+        auto validation_result = vector_storage_service_->validate_vector(database_id, vector_data);
+        if (!validation_result.has_value()) {
+            return crow::response(400, "{\"error\":\"" + ErrorHandler::format_error(validation_result.error()) + "\"}");
+        }
+        
+        // Store the vector using the service
+        auto result = vector_storage_service_->store_vector(database_id, vector_data);
+        
+        if (result.has_value()) {
+            crow::json::wvalue response;
+            response["status"] = "success";
+            response["vectorId"] = vector_data.id;
+            crow::response resp(201, response);
+            resp.set_header("Content-Type", "application/json");
+            
+            LOG_DEBUG(logger_, "Stored vector: " << vector_data.id << " in database: " << database_id);
+            return resp;
+        } else {
+            return crow::response(400, "{\"error\":\"" + ErrorHandler::format_error(result.error()) + "\"}");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in store vector: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_get_vector_request(const crow::request& req, const std::string& database_id, const std::string& vector_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+        
+        // Check if user has permission to retrieve vectors from this database
+        // This would check permissions in a real implementation
+
+        // Validate database exists
+        auto db_exists_result = vector_storage_service_->db_layer_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+        
+        // Check if vector exists
+        auto vector_exists_result = vector_storage_service_->vector_exists(database_id, vector_id);
+        if (!vector_exists_result.has_value() || !vector_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Vector not found\"}");
+        }
+        
+        // Retrieve the vector using the service
+        auto result = vector_storage_service_->retrieve_vector(database_id, vector_id);
+        
+        if (result.has_value()) {
+            auto vector = result.value();
+            
+            crow::json::wvalue response;
+            response["id"] = vector.id;
+            
+            // Add values as an array
+            crow::json::wvalue values_array = crow::json::wvalue::list();
+            for (auto val : vector.values) {
+                values_array.push_back(val);
+            }
+            response["values"] = values_array;
+            
+            // Add metadata if present
+            if (!vector.metadata.isEmpty()) {
+                response["metadata"] = vector.metadata.dump();
+            }
+            
+            crow::response resp(200, response);
+            resp.set_header("Content-Type", "application/json");
+            
+            LOG_DEBUG(logger_, "Retrieved vector: " << vector.id << " from database: " << database_id);
+            return resp;
+        } else {
+            return crow::response(404, "{\"error\":\"Vector not found\"}");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in get vector: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_update_vector_request(const crow::request& req, const std::string& database_id, const std::string& vector_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+        
+        // Check if user has permission to update vectors in this database
+        // This would check permissions in a real implementation
+
+        // Parse updated vector from request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+        
+        // Create a Vector object from JSON
+        Vector vector_data;
+        vector_data.id = vector_id;  // Ensure vector ID matches the path parameter
+        if (!body_json["values"].is_list()) {
+            return crow::response(400, "{\"error\":\"Vector values must be an array\"}");
+        }
+        
+        // Parse values
+        for (const auto& val : body_json["values"].list()) {
+            vector_data.values.push_back(val.d());
+        }
+        
+        // Parse metadata if present
+        if (body_json.has("metadata")) {
+            // Parse the metadata object
+            vector_data.metadata = body_json["metadata"];
+        }
+        
+        // Update the vector using the service
+        auto result = vector_storage_service_->update_vector(database_id, vector_data);
+        
+        if (result.has_value()) {
+            crow::json::wvalue response;
+            response["status"] = "success";
+            crow::response resp(200, response);
+            resp.set_header("Content-Type", "application/json");
+            
+            LOG_DEBUG(logger_, "Updated vector: " << vector_data.id << " in database: " << database_id);
+            return resp;
+        } else {
+            return crow::response(400, "{\"error\":\"" + ErrorHandler::format_error(result.error()) + "\"}");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in update vector: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_delete_vector_request(const crow::request& req, const std::string& database_id, const std::string& vector_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+        
+        // Check if user has permission to delete vectors from this database
+        // This would check permissions in a real implementation
+
+        // Delete the vector using the service
+        auto result = vector_storage_service_->delete_vector(database_id, vector_id);
+        
+        if (result.has_value()) {
+            crow::json::wvalue response;
+            response["status"] = "success";
+            crow::response resp(200, response);
+            resp.set_header("Content-Type", "application/json");
+            
+            LOG_DEBUG(logger_, "Deleted vector: " << vector_id << " from database: " << database_id);
+            return resp;
+        } else {
+            return crow::response(400, "{\"error\":\"" + ErrorHandler::format_error(result.error()) + "\"}");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in delete vector: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_batch_store_vectors_request(const crow::request& req, const std::string& database_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+        
+        // Validate database exists
+        auto db_exists_result = vector_storage_service_->db_layer_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+        
+        // Parse vector list from request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+        
+        // Parse vectors
+        std::vector<Vector> vectors;
+        if (!body_json["vectors"].is_list()) {
+            return crow::response(400, "{\"error\":\"Request body must contain a 'vectors' array\"}");
+        }
+        
+        for (const auto& vec_json : body_json["vectors"].list()) {
+            Vector vector_data;
+            vector_data.id = vec_json["id"].s();
+            
+            if (!vec_json["values"].is_list()) {
+                return crow::response(400, "{\"error\":\"Vector values must be an array\"}");
+            }
+            
+            // Parse values
+            for (const auto& val : vec_json["values"].list()) {
+                vector_data.values.push_back(val.d());
+            }
+            
+            // Parse metadata if present
+            if (vec_json.has("metadata")) {
+                // Parse the metadata object
+                vector_data.metadata = vec_json["metadata"];
+            }
+            
+            vectors.push_back(vector_data);
+        }
+        
+        // Validate all vectors before storing
+        for (const auto& vector : vectors) {
+            auto validation_result = vector_storage_service_->validate_vector(database_id, vector);
+            if (!validation_result.has_value()) {
+                return crow::response(400, "{\"error\":\"Invalid vector data\"}");
+            }
+        }
+        
+        // Store the vectors using the service
+        auto result = vector_storage_service_->batch_store_vectors(database_id, vectors);
+        
+        if (result.has_value()) {
+            crow::json::wvalue response;
+            response["status"] = "success";
+            response["count"] = (int)vectors.size();
+            crow::response resp(201, response);
+            resp.set_header("Content-Type", "application/json");
+            
+            LOG_DEBUG(logger_, "Batch stored " << vectors.size() << " vectors in database: " << database_id);
+            return resp;
+        } else {
+            return crow::response(400, "{\"error\":\"" + ErrorHandler::format_error(result.error()) + "\"}");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in batch store vectors: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_similarity_search_request(const crow::request& req, const std::string& database_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+        
+        // Validate database exists
+        auto db_exists_result = vector_storage_service_->db_layer_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+        
+        // Parse query vector and search parameters from request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+        
+        // Parse query vector
+        if (!body_json["queryVector"].is_list()) {
+            return crow::response(400, "{\"error\":\"'queryVector' must be an array\"}");
+        }
+        
+        Vector query_vector;
+        for (const auto& val : body_json["queryVector"].list()) {
+            query_vector.values.push_back(val.d());
+        }
+        
+        // Parse search parameters
+        SearchParams search_params;
+        if (body_json.has("topK")) {
+            search_params.top_k = body_json["topK"].i();
+        }
+        if (body_json.has("threshold")) {
+            search_params.threshold = body_json["threshold"].d();
+        }
+        if (body_json.has("includeMetadata")) {
+            search_params.include_metadata = body_json["includeMetadata"].b();
+        }
+        if (body_json.has("includeVectorData")) {
+            search_params.include_vector_data = body_json["includeVectorData"].b();
+        }
+        
+        // Validate search parameters
+        auto validation_result = similarity_search_service_->validate_search_params(search_params);
+        if (!validation_result.has_value()) {
+            return crow::response(400, "{\"error\":\"Invalid search parameters\"}");
+        }
+        
+        // Perform similarity search using the service
+        auto result = similarity_search_service_->similarity_search(database_id, query_vector, search_params);
+        
+        if (result.has_value()) {
+            // Serialize results to JSON
+            auto search_results = result.value();
+            crow::json::wvalue response = crow::json::wvalue::list();
+            
+            for (const auto& search_result : search_results) {
+                crow::json::wvalue result_obj;
+                result_obj["vectorId"] = search_result.vector_id;
+                result_obj["similarityScore"] = search_result.similarity_score;
+                
+                if (search_params.include_vector_data || search_params.include_metadata) {
+                    crow::json::wvalue vector_obj;
+                    vector_obj["id"] = search_result.vector_data.id;
+                    
+                    // Add values as an array
+                    crow::json::wvalue values_array = crow::json::wvalue::list();
+                    for (auto val : search_result.vector_data.values) {
+                        values_array.push_back(val);
+                    }
+                    vector_obj["values"] = values_array;
+                    
+                    result_obj["vector"] = vector_obj;
+                }
+                
+                response.push_back(result_obj);
+            }
+            
+            crow::response resp(200, response);
+            resp.set_header("Content-Type", "application/json");
+            
+            LOG_DEBUG(logger_, "Similarity search completed: found " << search_results.size() << " results in database: " << database_id);
+            return resp;
+        } else {
+            return crow::response(400, "{\"error\":\"Search failed\"}");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in similarity search: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_advanced_search_request(const crow::request& req, const std::string& database_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+        
+        // Validate database exists
+        auto db_exists_result = vector_storage_service_->db_layer_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+        
+        // Parse query vector and advanced search parameters from request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+        
+        // Parse query vector
+        if (!body_json["queryVector"].is_list()) {
+            return crow::response(400, "{\"error\":\"'queryVector' must be an array\"}");
+        }
+        
+        Vector query_vector;
+        for (const auto& val : body_json["queryVector"].list()) {
+            query_vector.values.push_back(val.d());
+        }
+        
+        // Parse search parameters
+        SearchParams search_params;
+        if (body_json.has("topK")) {
+            search_params.top_k = body_json["topK"].i();
+        }
+        if (body_json.has("threshold")) {
+            search_params.threshold = body_json["threshold"].d();
+        }
+        if (body_json.has("includeMetadata")) {
+            search_params.include_metadata = body_json["includeMetadata"].b();
+        }
+        if (body_json.has("includeVectorData")) {
+            search_params.include_vector_data = body_json["includeVectorData"].b();
+        }
+        
+        // Parse filters
+        if (body_json.has("filters")) {
+            auto filters = body_json["filters"];
+            // This would be implemented with more complex filter logic in a real implementation
+        }
+        
+        // Validate search parameters
+        auto validation_result = similarity_search_service_->validate_search_params(search_params);
+        if (!validation_result.has_value()) {
+            return crow::response(400, "{\"error\":\"Invalid search parameters\"}");
+        }
+        
+        // Perform advanced similarity search using the service
+        auto result = similarity_search_service_->similarity_search(database_id, query_vector, search_params);
+        
+        if (result.has_value()) {
+            // Serialize results to JSON
+            auto search_results = result.value();
+            crow::json::wvalue response = crow::json::wvalue::list();
+            
+            for (const auto& search_result : search_results) {
+                crow::json::wvalue result_obj;
+                result_obj["vectorId"] = search_result.vector_id;
+                result_obj["similarityScore"] = search_result.similarity_score;
+                
+                if (search_params.include_vector_data || search_params.include_metadata) {
+                    crow::json::wvalue vector_obj;
+                    vector_obj["id"] = search_result.vector_data.id;
+                    
+                    // Add values as an array
+                    crow::json::wvalue values_array = crow::json::wvalue::list();
+                    for (auto val : search_result.vector_data.values) {
+                        values_array.push_back(val);
+                    }
+                    vector_obj["values"] = values_array;
+                    
+                    result_obj["vector"] = vector_obj;
+                }
+                
+                response.push_back(result_obj);
+            }
+            
+            crow::response resp(200, response);
+            resp.set_header("Content-Type", "application/json");
+            
+            LOG_DEBUG(logger_, "Advanced search completed: found " << search_results.size() << " results in database: " << database_id);
+            return resp;
+        } else {
+            return crow::response(400, "{\"error\":\"Search failed\"}");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in advanced search: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_create_database_request(const crow::request& req) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+        
+        // Parse database creation parameters from request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+        
+        // Create a Database object from JSON
+        Database db_config;
+        if (body_json.has("name")) {
+            db_config.name = body_json["name"].s();
+        }
+        if (body_json.has("description")) {
+            db_config.description = body_json["description"].s();
+        }
+        if (body_json.has("vectorDimension")) {
+            db_config.vectorDimension = body_json["vectorDimension"].i();
+        }
+        if (body_json.has("indexType")) {
+            db_config.indexType = body_json["indexType"].s();
+        }
+        
+        // Validate database creation parameters
+        auto validation_result = db_service_->validate_creation_params(db_config);
+        if (!validation_result.has_value()) {
+            return crow::response(400, "{\"error\":\"Invalid database creation parameters\"}");
+        }
+        
+        // Create the database using the service
+        auto result = db_service_->create_database(db_config);
+        
+        if (result.has_value()) {
+            std::string database_id = result.value();
+            crow::json::wvalue response;
+            response["databaseId"] = database_id;
+            response["status"] = "success";
+            
+            crow::response resp(201, response);
+            resp.set_header("Content-Type", "application/json");
+            
+            LOG_INFO(logger_, "Created database: " << database_id << " (Name: " << db_config.name << ")");
+            return resp;
+        } else {
+            return crow::response(400, "{\"error\":\"Failed to create database\"}");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in create database: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_list_databases_request(const crow::request& req) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+        
+        // Parse query parameters for filtering and pagination
+        DatabaseListParams list_params;
+        // For now, we'll use default parameters, but could parse from URL params
+        
+        // List databases using the service
+        auto result = db_service_->list_databases(list_params);
+        
+        if (result.has_value()) {
+            auto databases = result.value();
+            
+            // Serialize databases to JSON
+            crow::json::wvalue response = crow::json::wvalue::list();
+            
+            for (const auto& db : databases) {
+                crow::json::wvalue db_obj;
+                db_obj["databaseId"] = db.databaseId;
+                db_obj["name"] = db.name;
+                db_obj["description"] = db.description;
+                db_obj["vectorDimension"] = db.vectorDimension;
+                db_obj["indexType"] = db.indexType;
+                db_obj["created_at"] = db.created_at;
+                db_obj["updated_at"] = db.updated_at;
+                
+                response.push_back(db_obj);
+            }
+            
+            crow::response resp(200, response);
+            resp.set_header("Content-Type", "application/json");
+            
+            LOG_DEBUG(logger_, "Listed " << databases.size() << " databases");
+            return resp;
+        } else {
+            return crow::response(400, "{\"error\":\"Failed to list databases\"}");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in list databases: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_get_database_request(const crow::request& req, const std::string& database_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+        
+        // Get database using the service
+        auto result = db_service_->get_database(database_id);
+        
+        if (result.has_value()) {
+            auto database = result.value();
+            
+            // Serialize database to JSON
+            crow::json::wvalue response;
+            response["databaseId"] = database.databaseId;
+            response["name"] = database.name;
+            response["description"] = database.description;
+            response["vectorDimension"] = database.vectorDimension;
+            response["indexType"] = database.indexType;
+            response["created_at"] = database.created_at;
+            response["updated_at"] = database.updated_at;
+            
+            crow::response resp(200, response);
+            resp.set_header("Content-Type", "application/json");
+            
+            LOG_DEBUG(logger_, "Retrieved database: " << database_id);
+            return resp;
+        } else {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in get database: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_update_database_request(const crow::request& req, const std::string& database_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+        
+        // Parse database update parameters from request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+        
+        // Create a Database object from JSON
+        Database update_params;
+        if (body_json.has("name")) {
+            update_params.name = body_json["name"].s();
+        }
+        if (body_json.has("description")) {
+            update_params.description = body_json["description"].s();
+        }
+        if (body_json.has("vectorDimension")) {
+            update_params.vectorDimension = body_json["vectorDimension"].i();
+        }
+        if (body_json.has("indexType")) {
+            update_params.indexType = body_json["indexType"].s();
+        }
+        
+        // Validate database update parameters
+        auto validation_result = db_service_->validate_update_params(update_params);
+        if (!validation_result.has_value()) {
+            return crow::response(400, "{\"error\":\"Invalid database update parameters\"}");
+        }
+        
+        // Update the database using the service
+        auto result = db_service_->update_database(database_id, update_params);
+        
+        if (result.has_value()) {
+            crow::json::wvalue response;
+            response["status"] = "success";
+            response["message"] = "Database updated successfully";
+            
+            crow::response resp(200, response);
+            resp.set_header("Content-Type", "application/json");
+            
+            LOG_INFO(logger_, "Updated database: " << database_id);
+            return resp;
+        } else {
+            return crow::response(400, "{\"error\":\"Failed to update database\"}");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in update database: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_delete_database_request(const crow::request& req, const std::string& database_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+        
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+        
+        // Delete the database using the service
+        auto result = db_service_->delete_database(database_id);
+        
+        if (result.has_value()) {
+            crow::json::wvalue response;
+            response["status"] = "success";
+            response["message"] = "Database deleted successfully";
+            
+            crow::response resp(200, response);
+            resp.set_header("Content-Type", "application/json");
+            
+            LOG_INFO(logger_, "Deleted database: " << database_id);
+            return resp;
+        } else {
+            return crow::response(400, "{\"error\":\"Failed to delete database\"}");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in delete database: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
 }
 
 // Helper methods

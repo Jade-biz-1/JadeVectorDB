@@ -55,6 +55,10 @@ public:
     virtual Result<bool> database_exists(const std::string& database_id) const = 0;
     virtual Result<bool> vector_exists(const std::string& database_id, const std::string& vector_id) const = 0;
     virtual Result<bool> index_exists(const std::string& database_id, const std::string& index_id) const = 0;
+    
+    // Utility methods
+    virtual Result<size_t> get_vector_count(const std::string& database_id) const = 0;
+    virtual Result<std::vector<std::string>> get_all_vector_ids(const std::string& database_id) const = 0;
 };
 
 // In-memory implementation of the database persistence interface
@@ -106,6 +110,10 @@ public:
     Result<bool> database_exists(const std::string& database_id) const override;
     Result<bool> vector_exists(const std::string& database_id, const std::string& vector_id) const override;
     Result<bool> index_exists(const std::string& database_id, const std::string& index_id) const override;
+    
+    // Utility methods
+    Result<size_t> get_vector_count(const std::string& database_id) const override;
+    Result<std::vector<std::string>> get_all_vector_ids(const std::string& database_id) const override;
     
 private:
     std::string generate_id() const;
@@ -162,6 +170,9 @@ public:
     Result<size_t> get_database_count() const;
     Result<size_t> get_vector_count(const std::string& database_id) const;
     Result<size_t> get_index_count(const std::string& database_id) const;
+    
+    // Additional utility methods
+    Result<std::vector<std::string>> get_all_vector_ids(const std::string& database_id) const;
 };
 
 } // namespace jadevectordb

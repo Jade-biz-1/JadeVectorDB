@@ -35,6 +35,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(flatbuffers)
 
+# Crow web framework
+FetchContent_Declare(
+    crow
+    GIT_REPOSITORY https://github.com/CrowCpp/Crow.git
+    GIT_TAG v1.0-develop
+)
+FetchContent_MakeAvailable(crow)
+
 # Apache Arrow
 find_package(Arrow REQUIRED)
 if(NOT Arrow_FOUND)
