@@ -1,113 +1,253 @@
-# Similarity Search Functionality Documentation
+# Search Functionality Documentation
 
 ## Overview
 
-The JadeVectorDB similarity search functionality provides high-performance vector similarity search capabilities supporting multiple algorithms and advanced filtering options. The system implements cosine similarity, Euclidean distance, and dot product algorithms with K-nearest neighbor (KNN) search capabilities.
+The JadeVectorDB provides multiple search algorithms to find similar vectors efficiently. The system supports exact and approximate similarity search methods with various filtering capabilities.
 
 ## Search Algorithms
 
-### 1. Cosine Similarity
-- Measures the cosine of the angle between two vectors
-- Formula: `cos(θ) = (A·B) / (||A|| ||B||)`
-- Range: [-1, 1], where 1 means vectors are identical in direction
-- Use case: Text similarity, document comparison
+### 1. Cosine Similarity Search
 
-### 2. Euclidean Distance
-- Measures the straight-line distance between two points
-- Formula: `d = √[(x₁-x₂)² + (y₁-y₂)² + ...]`
-- Range: [0, ∞], where 0 means identical vectors
-- Use case: Spatial similarity, geometric relationships
+Cosine similarity measures the cosine of the angle between two vectors, indicating their directional similarity regardless of magnitude.
 
-### 3. Dot Product
-- Measures the product of vector magnitudes and cosine of angle
-- Formula: `A·B = Σ(Aᵢ * Bᵢ)`
-- Range: [-∞, ∞]
-- Use case: Neural network similarity, unnormalized similarity
+**Formula:**
+```
+cos(θ) = (A · B) / (||A|| × ||B||)
+```
+
+**Characteristics:**
+- Output range: [-1, 1] (or [0, 1] for non-negative vectors)
+- Higher values indicate greater similarity
+- Invariant to vector magnitude
+
+**Usage Example:**
+```cpp
+Vector query_vector = /* your query */;
+SearchParams params;
+params.top_k = 10;  // Return top 10 results
+params.threshold = 0.7;  // Minimum similarity threshold
+params.include_metadata = true;  // Include metadata in results
+
+auto results = search_service->similarity_search(db_id, query_vector, params);
+```
+
+### 2. Euclidean Distance Search
+
+Euclidean distance measures the straight-line distance between two vectors in Euclidean space.
+
+**Formula:**
+```
+d = √(Σ(Ai - Bi)²)
+```
+
+**Characteristics:**
+- Output range: [0, ∞)
+- Lower values indicate greater similarity
+- Sensitive to vector magnitude
+
+**Usage Example:**
+```cpp
+auto results = search_service->euclidean_search(db_id, query_vector, params);
+```
+
+### 3. Dot Product Search
+
+Dot product measures the product of vector magnitudes and the cosine of the angle between them.
+
+**Formula:**
+```
+A · B = Σ(Ai × Bi)
+```
+
+**Characteristics:**
+- Output range: [-∞, ∞]
+- Higher values indicate greater similarity
+- Sensitive to vector magnitude
+
+**Usage Example:**
+```cpp
+auto results = search_service->dot_product_search(db_id, query_vector, params);
+```
 
 ## Search Parameters
 
-The search functionality supports the following parameters:
+### SearchParams Structure
 
 ```cpp
 struct SearchParams {
-    int top_k = 10;  // Number of nearest neighbors to return
-    float threshold = 0.0f;  // Minimum similarity threshold
+    int top_k = 10;                    // Number of nearest neighbors to return
+    float threshold = 0.0f;            // Minimum similarity threshold
     bool include_vector_data = false;  // Include vector values in results
-    bool include_metadata = false;  // Include metadata in results
+    bool include_metadata = false;     // Include metadata in results
     std::vector<std::string> filter_tags;  // Tags to filter by
-    std::string filter_owner;  // Owner to filter by
-    std::string filter_category;  // Category to filter by
-    float filter_min_score = 0.0f;  // Minimum score filter
-    float filter_max_score = 1.0f;  // Maximum score filter
+    std::string filter_owner;          // Owner to filter by
+    std::string filter_category;       // Category to filter by
+    float filter_min_score = 0.0f;     // Minimum score filter
+    float filter_max_score = 1.0f;     // Maximum score filter
 };
 ```
 
+## Metadata Filtering
+
+The system supports filtering search results based on vector metadata using a flexible filtering system.
+
+### Available Filter Operators
+
+- `EQUALS`: Exact match
+- `NOT_EQUALS`: Inverse match
+- `GREATER_THAN`: Numerical comparison
+- `GREATER_THAN_OR_EQUAL`: Numerical comparison
+- `LESS_THAN`: Numerical comparison
+- `LESS_THAN_OR_EQUAL`: Numerical comparison
+- `IN`: Check if value is in a list
+- `NOT_IN`: Check if value is not in a list
+
+### Complex Filters
+
+Multiple conditions can be combined using AND/OR logic:
+
+```cpp
+ComplexFilter filter;
+filter.combination = FilterCombination::AND;  // or FilterCombination::OR
+
+FilterCondition condition1;
+condition1.field = "metadata.category";
+condition1.op = FilterOperator::EQUALS;
+condition1.value = "technology";
+filter.conditions.push_back(condition1);
+
+FilterCondition condition2;
+condition2.field = "metadata.score";
+condition2.op = FilterOperator::GREATER_THAN;
+condition2.value = "0.7";
+filter.conditions.push_back(condition2);
+```
+
+## Performance Characteristics
+
+### Time Complexity
+
+- **Linear Search**: O(n×d) where n is the number of vectors and d is the vector dimension
+- **With Filtering**: Additional O(n) for metadata filtering
+
+### Performance Benchmarks
+
+The system is designed to meet the following performance targets:
+
+- **Similarity searches**: Return results for 1 million vectors in under 50ms with 95% accuracy
+- **Filtered similarity searches**: Return results in under 150 milliseconds for complex queries with multiple metadata filters
+
 ## API Endpoints
 
-### Basic Similarity Search
-- **Endpoint**: `POST /v1/databases/{databaseId}/search`
-- **Description**: Performs cosine similarity search
-- **Request Body**:
-  ```json
+### POST /v1/databases/{databaseId}/search
+
+Perform similarity search with the specified algorithm and parameters.
+
+**Request Body:**
+```json
+{
+  "queryVector": [0.1, 0.2, 0.3, ...],
+  "topK": 10,
+  "threshold": 0.7,
+  "includeMetadata": true,
+  "includeVectorData": false,
+  "filters": {
+    // Filter conditions here
+  }
+}
+```
+
+**Response:**
+```json
+[
   {
-    "queryVector": [0.1, 0.2, 0.3, ...],
-    "topK": 10,
-    "threshold": 0.5,
-    "includeMetadata": true,
-    "includeVectorData": false,
-    "filters": {
-      "tags": ["tag1", "tag2"],
-      "owner": "user1",
-      "category": "documents",
-      "minScore": 0.0,
-      "maxScore": 1.0
+    "vectorId": "string",
+    "similarityScore": float,
+    "vector": {  // Included if includeVectorData is true
+      "id": "string",
+      "values": [float],
+      "metadata": {}
     }
   }
-  ```
+]
+```
 
-### Advanced Similarity Search
-- **Endpoint**: `POST /v1/databases/{databaseId}/search/advanced`
-- **Description**: Performs advanced search with metadata filtering
-- **Request Body**: Same as basic search
+### POST /v1/databases/{databaseId}/search/advanced
 
-## Performance Optimizations
+Perform similarity search with advanced filtering capabilities.
 
-The search implementation includes several performance optimizations:
+**Request Body:**
+```json
+{
+  "queryVector": [0.1, 0.2, 0.3, ...],
+  "topK": 10,
+  "threshold": 0.7,
+  "filters": {
+    "combination": "AND",  // "AND" or "OR"
+    "conditions": [
+      {
+        "field": "metadata.category",
+        "op": "EQUALS",
+        "value": "technology"
+      }
+    ]
+  }
+}
+```
 
-1. **Top-K Selection**: Uses heap-based selection for efficient K-nearest neighbor retrieval
-2. **Early Termination**: Optimized algorithms that can terminate early when possible
-3. **Memory Efficiency**: Optimized data structures to reduce memory footprint
-4. **SIMD Instructions**: Optimized calculations using SIMD when available
+## Best Practices
 
-## Metrics and Monitoring
+1. **Set appropriate thresholds** to filter out low-quality results
+2. **Use metadata filtering** to narrow down the search space before similarity computation
+3. **Optimize top_k values** based on your application needs
+4. **Consider pre-filtering** when possible to improve search performance
+5. **Use the right algorithm** for your specific use case:
+   - Cosine similarity for directional similarity
+   - Euclidean distance for spatial proximity
+   - Dot product when magnitude matters
 
-The system provides the following metrics for monitoring search performance:
+## Error Handling
 
-- `search_requests_total`: Total number of search requests
-- `search_results_total`: Total number of search results returned
-- `search_request_duration_seconds`: Histogram of search request durations
-- `active_searches`: Current number of active searches
+Common error responses include:
 
-## Quality Validation
+- `400 Bad Request`: Invalid query parameters or vector format
+- `401 Unauthorized`: Invalid or missing API key
+- `404 Not Found`: Database or vector not found
+- `500 Internal Server Error`: Server-side processing error
 
-The system includes search result quality validation to ensure accuracy:
+## Examples
 
-- Brute-force comparison against ground truth for small datasets
-- Tolerance-based validation for approximate algorithms
-- Performance validation against defined benchmarks
+### Basic Similarity Search
 
-## Security Considerations
+```cpp
+// Create a query vector
+Vector query_vector;
+query_vector.id = "my_query";
+query_vector.values = {0.5, 0.3, 0.8, 0.1};  // Example 4-dimensional vector
 
-- All search endpoints require valid API key authentication
-- Granular permissions control via role-based access
-- Request rate limiting to prevent abuse
-- Input validation to prevent injection attacks
+// Set search parameters
+SearchParams params;
+params.top_k = 5;
+params.threshold = 0.6;
 
-## Performance Benchmarks
+// Perform the search
+auto results = search_service->similarity_search("my_database_id", query_vector, params);
 
-The system targets the following performance benchmarks:
+// Process results
+for (const auto& result : results.value()) {
+    std::cout << "Vector ID: " << result.vector_id 
+              << ", Similarity: " << result.similarity_score << std::endl;
+}
+```
 
-- Sub-50ms response times for datasets up to 10 million vectors
-- 95% accuracy compared to brute-force search
-- Support for 10,000+ vectors per second ingestion
-- 1000+ concurrent users support
+### Filtered Search
+
+```cpp
+// Set up filtering parameters
+SearchParams params;
+params.top_k = 10;
+params.include_metadata = true;
+
+// The filtering is handled internally based on the parameters
+auto results = search_service->similarity_search("my_database_id", query_vector, params);
+```

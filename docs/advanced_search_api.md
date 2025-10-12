@@ -1,327 +1,369 @@
-# Advanced Search API Documentation
+# Advanced Search API Endpoints Documentation
 
 ## Overview
 
-The JadeVectorDB Advanced Search API provides powerful vector similarity search capabilities with rich metadata filtering options. This API extends the basic similarity search functionality with complex filtering, advanced query composition, and customizable result formatting.
+The Advanced Search API provides sophisticated vector similarity search capabilities with complex metadata filtering, multi-condition queries, and enhanced result options. This API extends the basic search functionality with more powerful filtering and querying mechanisms.
 
-## Base URL
+## API Base URL
 
 ```
-https://api.jadevectordb.com/v1
+https://your-jadevectordb-host.com/v1
 ```
 
 ## Authentication
 
-All API requests require authentication using an API key:
+All API requests require a valid API key in the Authorization header:
 
 ```
 Authorization: Bearer YOUR_API_KEY
-```
-
-or
-
-```
+# or
 Authorization: ApiKey YOUR_API_KEY
 ```
 
-## Endpoints
+## API Endpoints
 
-### Advanced Similarity Search
+### 1. Basic Similarity Search
 
-#### POST `/databases/{databaseId}/search/advanced`
+**Endpoint:** `POST /databases/{databaseId}/search`
 
-Performs advanced similarity search with complex metadata filtering and result customization options.
+**Description:** Performs a basic similarity search using cosine similarity by default.
 
-**Path Parameters:**
-- `databaseId` (string, required): The unique identifier of the database to search in
+#### Request Parameters
+- `{databaseId}` (path): The ID of the database to search in
 
-**Request Headers:**
-```
-Content-Type: application/json
-Authorization: Bearer YOUR_API_KEY
-```
-
-**Request Body:**
-
+#### Request Body
 ```json
 {
-  "queryVector": [0.1, 0.2, 0.3, 0.4],
-  "searchParams": {
-    "topK": 10,
-    "threshold": 0.0,
-    "includeVectorData": false,
-    "includeMetadata": true
-  },
-  "filters": {
-    "simpleFilters": [
-      {
-        "field": "metadata.owner",
-        "operator": "equals",
-        "value": "user1"
-      },
-      {
-        "field": "metadata.category",
-        "operator": "in",
-        "values": ["documents", "images"]
-      },
-      {
-        "field": "metadata.score",
-        "operator": "greaterThanOrEqual",
-        "value": "0.8"
-      }
-    ],
-    "complexFilters": [
-      {
-        "combination": "and",
-        "conditions": [
-          {
-            "field": "metadata.tags",
-            "operator": "contains",
-            "value": "important"
-          },
-          {
-            "field": "metadata.status",
-            "operator": "equals",
-            "value": "active"
-          }
-        ]
-      }
-    ]
-  },
-  "sortBy": [
-    {
-      "field": "metadata.score",
-      "order": "desc"
-    },
-    {
-      "field": "metadata.created_at",
-      "order": "asc"
-    }
-  ]
+  "queryVector": [float, float, ...],
+  "topK": int,
+  "threshold": float,
+  "includeMetadata": boolean,
+  "includeVectorData": boolean
 }
 ```
 
-**Response:**
+**Fields:**
+- `queryVector`: Array of floats representing the query vector
+- `topK`: Number of nearest neighbors to return (default: 10)
+- `threshold`: Minimum similarity threshold [0.0, 1.0] (default: 0.0)
+- `includeMetadata`: Include metadata in results (default: false)
+- `includeVectorData`: Include vector values in results (default: false)
 
+#### Example Request
+```bash
+curl -X POST \
+  https://your-jadevectordb-host.com/v1/databases/my_db_id/search \
+  -H 'Authorization: Bearer YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "queryVector": [0.1, 0.2, 0.3, 0.4, 0.5],
+    "topK": 5,
+    "threshold": 0.7,
+    "includeMetadata": true
+  }'
+```
+
+#### Example Response
 ```json
 {
   "results": [
     {
-      "vectorId": "vector_123",
-      "similarityScore": 0.95,
-      "vectorData": {
-        "id": "vector_123",
-        "values": [0.1, 0.2, 0.3, 0.4],
+      "vectorId": "vec_123",
+      "similarityScore": 0.92,
+      "vector": {
+        "id": "vec_123",
         "metadata": {
-          "owner": "user1",
-          "category": "documents",
-          "tags": ["important", "review"],
-          "score": 0.95,
-          "status": "active",
-          "created_at": "2025-01-01T00:00:00Z",
-          "updated_at": "2025-01-02T00:00:00Z",
-          "custom": {
-            "project": "project-alpha",
-            "department": "engineering"
-          }
+          "category": "technology",
+          "tags": ["ai", "ml"],
+          "score": 0.85
         }
       }
-    }
-  ],
-  "totalResults": 1,
-  "searchTimeMs": 15.2
-}
-```
-
-### Filter Operators
-
-The following operators are supported for filtering:
-
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `equals` | Exact match | `"value" == "target"` |
-| `notEquals` | Not equal | `"value" != "target"` |
-| `greaterThan` | Greater than | `"score" > 0.8` |
-| `greaterThanOrEqual` | Greater than or equal | `"score" >= 0.8` |
-| `lessThan` | Less than | `"score" < 0.9` |
-| `lessThanOrEqual` | Less than or equal | `"score" <= 0.9` |
-| `contains` | String/array contains | `"tags" contains "important"` |
-| `notContains` | String/array does not contain | `"tags" not contains "spam"` |
-| `in` | Value in list | `"owner" in ["user1", "user2"]` |
-| `notIn` | Value not in list | `"category" not in ["spam", "trash"]` |
-| `exists` | Field exists | `"custom.field" exists` |
-| `notExists` | Field does not exist | `"custom.field" not exists` |
-| `matchesRegex` | Regular expression match | `"text" matches "/pattern/i"` |
-
-### Complex Filter Combinations
-
-Complex filters allow combining multiple conditions with logical operators:
-
-```json
-{
-  "combination": "and",  // or "or"
-  "conditions": [
-    {
-      "field": "metadata.owner",
-      "operator": "equals",
-      "value": "user1"
-    }
-  ],
-  "nestedFilters": [
-    {
-      "combination": "or",
-      "conditions": [
-        {
-          "field": "metadata.category",
-          "operator": "equals",
-          "value": "documents"
-        },
-        {
-          "field": "metadata.category",
-          "operator": "equals",
-          "value": "images"
-        }
-      ]
     }
   ]
 }
 ```
 
-## Request Parameters
+### 2. Advanced Search with Filtering
 
-### Query Vector
-- `queryVector` (array of floats, required): The vector to search for similar vectors
+**Endpoint:** `POST /databases/{databaseId}/search/advanced`
 
-### Search Parameters
-- `topK` (integer, optional, default: 10): Maximum number of results to return
-- `threshold` (float, optional, default: 0.0): Minimum similarity score threshold (0.0 to 1.0)
-- `includeVectorData` (boolean, optional, default: false): Whether to include vector values in results
-- `includeMetadata` (boolean, optional, default: true): Whether to include metadata in results
+**Description:** Performs similarity search with complex metadata filtering capabilities.
 
-### Filters
-- `simpleFilters` (array, optional): Simple filter conditions
-- `complexFilters` (array, optional): Complex filter combinations
+#### Request Parameters
+- `{databaseId}` (path): The ID of the database to search in
 
-### Sorting
-- `sortBy` (array, optional): Fields to sort results by
-
-## Response Fields
-
-- `results` (array): Array of search results
-- `totalResults` (integer): Total number of results found
-- `searchTimeMs` (float): Time taken for the search in milliseconds
-
-### Result Object
-- `vectorId` (string): Unique identifier of the matching vector
-- `similarityScore` (float): Similarity score (0.0 to 1.0)
-- `vectorData` (object): Vector data if requested (see Vector Model)
-
-## Error Responses
-
-All error responses follow this format:
-
+#### Request Body
 ```json
 {
-  "error": "Error message describing what went wrong"
+  "queryVector": [float, float, ...],
+  "topK": int,
+  "threshold": float,
+  "includeMetadata": boolean,
+  "includeVectorData": boolean,
+  "filters": {
+    "combination": "AND" | "OR",
+    "conditions": [
+      {
+        "field": "metadata.category",
+        "op": "EQUALS" | "NOT_EQUALS" | "GREATER_THAN" | "GREATER_THAN_OR_EQUAL" | "LESS_THAN" | "LESS_THAN_OR_EQUAL" | "IN" | "NOT_IN",
+        "value": "value_to_compare"
+      }
+    ]
+  }
 }
 ```
 
-Common HTTP status codes:
-- `400 Bad Request`: Invalid request parameters
-- `401 Unauthorized`: Missing or invalid API key
-- `403 Forbidden`: Insufficient permissions
-- `404 Not Found`: Database not found
-- `500 Internal Server Error`: Server-side error
+**Fields:**
+- `queryVector`: Array of floats representing the query vector
+- `topK`: Number of nearest neighbors to return (default: 10)
+- `threshold`: Minimum similarity threshold [0.0, 1.0] (default: 0.0)
+- `includeMetadata`: Include metadata in results (default: false)
+- `includeVectorData`: Include vector values in results (default: false)
+- `filters`: Object containing filtering conditions
+  - `combination`: How to combine multiple conditions ("AND" or "OR")
+  - `conditions`: Array of filter conditions
+    - `field`: The metadata field to filter on (e.g., "metadata.category", "metadata.tags")
+    - `op`: The comparison operator
+    - `value`: The value to compare against
 
-## Rate Limits
+#### Filter Operators
 
-The API implements rate limiting to ensure fair usage:
-- Free tier: 100 requests per minute
-- Paid tiers: Higher limits based on subscription
+| Operator | Description | Value Type |
+|----------|-------------|------------|
+| `EQUALS` | Exact match | string, number |
+| `NOT_EQUALS` | Inverse match | string, number |
+| `GREATER_THAN` | Numerical comparison | number |
+| `GREATER_THAN_OR_EQUAL` | Numerical comparison | number |
+| `LESS_THAN` | Numerical comparison | number |
+| `LESS_THAN_OR_EQUAL` | Numerical comparison | number |
+| `IN` | Check if value is in a list | string, number |
+| `NOT_IN` | Check if value is not in a list | string, number |
 
-Rate limit responses include:
-```
-HTTP/1.1 429 Too Many Requests
-Retry-After: 60
-```
-
-## Examples
-
-### Basic Advanced Search
-
+#### Example Request
 ```bash
-curl -X POST "https://api.jadevectordb.com/v1/databases/my_database/search/advanced" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
+curl -X POST \
+  https://your-jadevectordb-host.com/v1/databases/my_db_id/search/advanced \
+  -H 'Authorization: Bearer YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
   -d '{
-    "queryVector": [0.5, 0.6, 0.7, 0.8],
-    "searchParams": {
-      "topK": 5,
-      "threshold": 0.7
-    },
+    "queryVector": [0.1, 0.2, 0.3, 0.4, 0.5],
+    "topK": 10,
+    "threshold": 0.6,
+    "includeMetadata": true,
     "filters": {
-      "simpleFilters": [
+      "combination": "AND",
+      "conditions": [
         {
-          "field": "metadata.owner",
-          "operator": "equals",
-          "value": "user1"
+          "field": "metadata.category",
+          "op": "EQUALS",
+          "value": "technology"
+        },
+        {
+          "field": "metadata.score",
+          "op": "GREATER_THAN_OR_EQUAL",
+          "value": "0.7"
+        },
+        {
+          "field": "metadata.tags",
+          "op": "IN",
+          "value": "ai"
         }
       ]
     }
   }'
 ```
 
-### Complex Filter Search
-
-```bash
-curl -X POST "https://api.jadevectordb.com/v1/databases/my_database/search/advanced" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "queryVector": [0.1, 0.2, 0.3, 0.4],
-    "searchParams": {
-      "topK": 10,
-      "includeMetadata": true
-    },
-    "filters": {
-      "complexFilters": [
-        {
-          "combination": "and",
-          "conditions": [
-            {
-              "field": "metadata.score",
-              "operator": "greaterThanOrEqual",
-              "value": "0.8"
-            }
-          ],
-          "nestedFilters": [
-            {
-              "combination": "or",
-              "conditions": [
-                {
-                  "field": "metadata.category",
-                  "operator": "equals",
-                  "value": "documents"
-                },
-                {
-                  "field": "metadata.tags",
-                  "operator": "contains",
-                  "value": "important"
-                }
-              ]
-            }
-          ]
+#### Example Response
+```json
+{
+  "results": [
+    {
+      "vectorId": "vec_456",
+      "similarityScore": 0.88,
+      "vector": {
+        "id": "vec_456",
+        "metadata": {
+          "category": "technology",
+          "tags": ["ai", "ml", "research"],
+          "score": 0.85,
+          "created_at": "2023-10-15T10:30:00Z"
         }
-      ]
+      }
+    },
+    {
+      "vectorId": "vec_789",
+      "similarityScore": 0.82,
+      "vector": {
+        "id": "vec_789",
+        "metadata": {
+          "category": "technology",
+          "tags": ["ai", "deep_learning"],
+          "score": 0.78,
+          "created_at": "2023-10-16T14:20:00Z"
+        }
+      }
     }
-  }'
+  ]
+}
 ```
+
+### 3. Euclidean Distance Search
+
+**Endpoint:** `POST /databases/{databaseId}/search/euclidean`
+
+**Description:** Performs similarity search using Euclidean distance metric.
+
+#### Request Body
+Same as basic search but optimized for Euclidean distance:
+```json
+{
+  "queryVector": [float, float, ...],
+  "topK": int,
+  "threshold": float,
+  "includeMetadata": boolean,
+  "includeVectorData": boolean
+}
+```
+
+### 4. Dot Product Search
+
+**Endpoint:** `POST /databases/{databaseId}/search/dotproduct`
+
+**Description:** Performs similarity search using dot product metric.
+
+#### Request Body
+Same as basic search but optimized for dot product:
+```json
+{
+  "queryVector": [float, float, ...],
+  "topK": int,
+  "threshold": float,
+  "includeMetadata": boolean,
+  "includeVectorData": boolean
+}
+```
+
+## Common Response Codes
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 400 | Bad request (invalid parameters) |
+| 401 | Unauthorized (invalid API key) |
+| 404 | Database or vector not found |
+| 429 | Rate limited (too many requests) |
+| 500 | Internal server error |
+
+## Request/Response Examples
+
+### Example 1: Search with Multiple Conditions
+
+```json
+{
+  "queryVector": [0.5, 0.2, 0.8, 0.1],
+  "topK": 5,
+  "threshold": 0.65,
+  "includeMetadata": true,
+  "filters": {
+    "combination": "AND",
+    "conditions": [
+      {
+        "field": "metadata.category",
+        "op": "EQUALS",
+        "value": "finance"
+      },
+      {
+        "field": "metadata.score",
+        "op": "GREATER_THAN",
+        "value": "0.5"
+      }
+    ]
+  }
+}
+```
+
+### Example 2: Search with OR Combination
+
+```json
+{
+  "queryVector": [0.3, 0.9, 0.1, 0.7],
+  "topK": 8,
+  "threshold": 0.5,
+  "includeMetadata": false,
+  "filters": {
+    "combination": "OR",
+    "conditions": [
+      {
+        "field": "metadata.tags",
+        "op": "IN",
+        "value": "ai"
+      },
+      {
+        "field": "metadata.tags",
+        "op": "IN",
+        "value": "blockchain"
+      }
+    ]
+  }
+}
+```
+
+### Example 3: Search with Range Filter
+
+```json
+{
+  "queryVector": [0.6, 0.4, 0.3, 0.7],
+  "topK": 10,
+  "threshold": 0.4,
+  "includeMetadata": true,
+  "filters": {
+    "combination": "AND",
+    "conditions": [
+      {
+        "field": "metadata.score",
+        "op": "GREATER_THAN_OR_EQUAL",
+        "value": "0.6"
+      },
+      {
+        "field": "metadata.score",
+        "op": "LESS_THAN_OR_EQUAL",
+        "value": "0.9"
+      }
+    ]
+  }
+}
+```
+
+## Performance Considerations
+
+1. **Vector Dimension**: Higher dimensional vectors require more processing time
+2. **Database Size**: Search time scales with the number of vectors in the database
+3. **Filtering Complexity**: Complex filters with multiple conditions may impact performance
+4. **Result Size**: Larger topK values will take more time to return
+
+## Error Responses
+
+All error responses follow the same format:
+
+```json
+{
+  "error": "Error message",
+  "code": "error_code",
+  "timestamp": "ISO 8601 timestamp"
+}
+```
+
+### Common Error Codes
+- `INVALID_ARGUMENT`: Request contains invalid parameters
+- `NOT_FOUND`: Requested resource does not exist
+- `RESOURCE_EXHAUSTED`: Request exceeds rate limits
+- `INTERNAL_ERROR`: Server-side error occurred
+- `UNAUTHENTICATED`: Failed to authenticate request
 
 ## Best Practices
 
-1. **Use appropriate thresholds**: Set meaningful thresholds to reduce unnecessary results
-2. **Limit topK**: Keep topK reasonable (typically < 100) for optimal performance
-3. **Cache results**: Cache search results when appropriate to reduce API calls
-4. **Handle rate limits**: Implement exponential backoff for rate limit handling
-5. **Validate inputs**: Always validate query vectors and filter parameters before sending
-6. **Use specific filters**: The more specific your filters, the better the performance
+1. **Set appropriate thresholds** to optimize results and performance
+2. **Use filters effectively** to narrow down the search space
+3. **Consider vector dimension** when designing your search strategy
+4. **Monitor API usage** to stay within rate limits
+5. **Optimize topK values** based on actual requirements
