@@ -403,6 +403,33 @@ Result<bool> InMemoryDatabasePersistence::index_exists(const std::string& databa
     return db_it->second.find(index_id) != db_it->second.end();
 }
 
+Result<size_t> InMemoryDatabasePersistence::get_vector_count(const std::string& database_id) const {
+    std::shared_lock<std::shared_mutex> lock(vectors_mutex_);
+    
+    auto db_it = vectors_by_db_.find(database_id);
+    if (db_it == vectors_by_db_.end()) {
+        return 0; // If database doesn't exist, return 0
+    }
+    
+    return db_it->second.size();
+}
+
+Result<std::vector<std::string>> InMemoryDatabasePersistence::get_all_vector_ids(const std::string& database_id) const {
+    std::shared_lock<std::shared_mutex> lock(vectors_mutex_);
+    
+    auto db_it = vectors_by_db_.find(database_id);
+    if (db_it == vectors_by_db_.end()) {
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "Database not found: " + database_id);
+    }
+    
+    std::vector<std::string> vector_ids;
+    for (const auto& [id, vector] : db_it->second) {
+        vector_ids.push_back(id);
+    }
+    
+    return vector_ids;
+}
+
 std::string InMemoryDatabasePersistence::generate_id() const {
     // Generate a unique ID
     // In a real implementation, this should use a more robust ID generation method
@@ -564,15 +591,7 @@ Result<size_t> DatabaseLayer::get_database_count() const {
 }
 
 Result<size_t> DatabaseLayer::get_vector_count(const std::string& database_id) const {
-    auto db_result = persistence_layer_->get_database(database_id);
-    if (!db_result.has_value()) {
-        return 0; // If database doesn't exist, return 0
-    }
-    
-    // This is a simplified implementation - in a real system we'd have a method to count vectors efficiently
-    auto all_vectors = persistence_layer_->retrieve_vectors(database_id, {}); // This wouldn't work as implemented
-    // For now, we'll just return 0 as counting would require a new method in the persistence layer
-    return 0;
+    return persistence_layer_->get_vector_count(database_id);
 }
 
 Result<size_t> DatabaseLayer::get_index_count(const std::string& database_id) const {
@@ -582,6 +601,10 @@ Result<size_t> DatabaseLayer::get_index_count(const std::string& database_id) co
     }
     
     return result.value().size();
+}
+
+Result<std::vector<std::string>> DatabaseLayer::get_all_vector_ids(const std::string& database_id) const {
+    return persistence_layer_->get_all_vector_ids(database_id);
 }
 
 } // namespace jadevectordb

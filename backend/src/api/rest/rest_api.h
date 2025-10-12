@@ -9,6 +9,9 @@
 #include "lib/logging.h"
 #include "lib/config.h"
 
+// Include Crow web framework
+#include <crow.h>
+
 // Forward declarations for services
 namespace jadevectordb {
     class DatabaseService;
@@ -63,6 +66,10 @@ private:
     std::unique_ptr<VectorStorageService> vector_storage_service_;
     std::unique_ptr<SimilaritySearchService> similarity_search_service_;
     
+    // Crow app instance
+    std::unique_ptr<crow::App<>> app_;
+    int server_port_;
+    
 public:
     explicit RestApiImpl();
     ~RestApiImpl() = default;
@@ -73,10 +80,37 @@ public:
     // Register all API routes
     void register_routes();
     
+    // Start the server
+    void start_server();
+    
     // Individual route handlers
     void handle_health_check();           // GET /health
     void handle_system_status();          // GET /status
     void handle_database_status();        // GET /v1/databases/{databaseId}/status
+    
+    // Request handling methods
+    crow::response handle_create_database_request(const crow::request& req);
+    crow::response handle_list_databases_request(const crow::request& req);
+    crow::response handle_get_database_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_update_database_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_delete_database_request(const crow::request& req, const std::string& database_id);
+    
+    crow::response handle_store_vector_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_get_vector_request(const crow::request& req, const std::string& database_id, const std::string& vector_id);
+    crow::response handle_update_vector_request(const crow::request& req, const std::string& database_id, const std::string& vector_id);
+    crow::response handle_delete_vector_request(const crow::request& req, const std::string& database_id, const std::string& vector_id);
+    crow::response handle_batch_store_vectors_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_batch_get_vectors_request(const crow::request& req, const std::string& database_id);
+    
+    crow::response handle_similarity_search_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_advanced_search_request(const crow::request& req, const std::string& database_id);
+    
+    crow::response handle_create_index_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_list_indexes_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_update_index_request(const crow::request& req, const std::string& database_id, const std::string& index_id);
+    crow::response handle_delete_index_request(const crow::request& req, const std::string& database_id, const std::string& index_id);
+    
+    crow::response handle_generate_embedding_request(const crow::request& req);
     
     // Database management routes
     void handle_create_database();        // POST /v1/databases
