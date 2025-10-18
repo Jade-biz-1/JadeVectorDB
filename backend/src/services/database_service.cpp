@@ -8,8 +8,13 @@
 
 namespace jadevectordb {
 
-DatabaseService::DatabaseService(std::unique_ptr<DatabaseLayer> db_layer)
-    : db_layer_(std::move(db_layer)) {
+DatabaseService::DatabaseService(
+    std::unique_ptr<DatabaseLayer> db_layer,
+    std::shared_ptr<ClusterService> cluster_service,
+    std::shared_ptr<ShardingService> sharding_service)
+    : db_layer_(std::move(db_layer))
+    , cluster_service_(cluster_service)
+    , sharding_service_(sharding_service) {
     
     if (!db_layer_) {
         // If no database layer is provided, create a default one
@@ -70,14 +75,14 @@ Result<std::string> DatabaseService::create_database(const DatabaseCreationParam
 
 Result<Database> DatabaseService::get_database(const std::string& database_id) const {
     auto result = db_layer_->get_database(database_id);
-    if (!result.has_value()) {
+    if (!result) {
         LOG_ERROR(logger_, "Failed to get database " << database_id << ": " << 
                  ErrorHandler::format_error(result.error()));
-        return Database{};
+        return result;
     }
     
     LOG_DEBUG(logger_, "Retrieved database: " << database_id);
-    return result.value();
+    return result;
 }
 
 Result<std::vector<Database>> DatabaseService::list_databases(const DatabaseListParams& params) const {
@@ -156,7 +161,7 @@ Result<void> DatabaseService::update_database(const std::string& database_id, co
         return {};
     }
     
-    Database database = get_result.value();
+    Database& database = get_result.value();
     
     // Apply update parameters
     apply_update_params_to_database(database, params);
@@ -332,11 +337,20 @@ Database DatabaseService::convert_params_to_database(const DatabaseCreationParam
     database.description = params.description;
     database.vectorDimension = params.vectorDimension;
     database.indexType = params.indexType;
-    database.indexParameters = params.indexParameters;
+    
+    // Convert unordered_map to map for indexParameters
+    for (const auto& [key, value] : params.indexParameters) {
+        database.indexParameters[key] = value;
+    }
+    
     database.sharding = params.sharding;
     database.replication = params.replication;
     database.embeddingModels = params.embeddingModels;
-    database.metadataSchema = params.metadataSchema;
+    
+    // Convert unordered_map to map for metadataSchema
+    for (const auto& [key, value] : params.metadataSchema) {
+        database.metadataSchema[key] = value;
+    }
     
     if (params.retentionPolicy) {
         database.retentionPolicy = std::make_unique<Database::RetentionPolicy>(*params.retentionPolicy);
@@ -365,7 +379,11 @@ void DatabaseService::apply_update_params_to_database(Database& database, const 
     }
     
     if (params.indexParameters.has_value()) {
-        database.indexParameters = params.indexParameters.value();
+        // Convert unordered_map to map
+        database.indexParameters.clear();
+        for (const auto& [key, value] : params.indexParameters.value()) {
+            database.indexParameters[key] = value;
+        }
     }
     
     if (params.sharding.has_value()) {
@@ -381,7 +399,11 @@ void DatabaseService::apply_update_params_to_database(Database& database, const 
     }
     
     if (params.metadataSchema.has_value()) {
-        database.metadataSchema = params.metadataSchema.value();
+        // Convert unordered_map to map
+        database.metadataSchema.clear();
+        for (const auto& [key, value] : params.metadataSchema.value()) {
+            database.metadataSchema[key] = value;
+        }
     }
     
     if (params.retentionPolicy.has_value()) {

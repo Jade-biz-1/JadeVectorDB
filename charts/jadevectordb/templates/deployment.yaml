@@ -1,0 +1,116 @@
+{{- if not .Values.cluster.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "jadevectordb.fullname" . }}
+  labels:
+    {{- include "jadevectordb.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.jadevectordb.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "jadevectordb.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "jadevectordb.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.jadevectordb.config.port }}
+              protocol: TCP
+            - name: rpc
+              containerPort: {{ .Values.jadevectordb.config.rpcPort }}
+              protocol: TCP
+          env:
+            - name: JADE_DB_LOG_LEVEL
+              value: {{ .Values.jadevectordb.config.logLevel | quote }}
+            - name: JADE_DB_PORT
+              value: {{ .Values.jadevectordb.config.port | quote }}
+            - name: JADE_DB_RPC_PORT
+              value: {{ .Values.jadevectordb.config.rpcPort | quote }}
+            {{- range $key, $value := .Values.jadevectordb.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.jadevectordb.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /config
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: data
+          {{- if .Values.jadevectordb.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "jadevectordb.fullname" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: config
+          {{- if .Values.jadevectordb.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "jadevectordb.fullname" . }}-config
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+{{- if .Values.jadevectordb.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "jadevectordb.fullname" . }}-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.jadevectordb.persistence.size }}
+  {{- if .Values.jadevectordb.persistence.storageClass }}
+  storageClassName: {{ .Values.jadevectordb.persistence.storageClass }}
+  {{- end }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "jadevectordb.fullname" . }}-config
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  {{- if .Values.jadevectordb.persistence.storageClass }}
+  storageClassName: {{ .Values.jadevectordb.persistence.storageClass }}
+  {{- end }}
+{{- end }}
+{{- end }}

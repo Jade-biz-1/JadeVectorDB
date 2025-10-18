@@ -10,6 +10,7 @@
 
 #include "models/database.h"
 #include "models/vector.h"
+#include "models/index.h"
 #include "lib/error_handling.h"
 #include "lib/logging.h"
 

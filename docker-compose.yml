@@ -1,53 +1,91 @@
 version: '3.8'
 
 services:
-  jadevectordb-master:
-    build: .
-    container_name: jadevectordb-master
+  jadevectordb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jadevectordb/jadevectordb:latest
+    container_name: jadevectordb
     ports:
       - "8080:8080"
     environment:
-      - NODE_TYPE=master
-      - PORT=8080
-      - CLUSTER_SIZE=3
+      - JADE_DB_PORT=8080
+      - JADE_DB_LOG_LEVEL=INFO
+      - JADE_DB_DATA_DIR=/data
+      - JADE_DB_CONFIG_DIR=/config
     volumes:
       - jadevectordb_data:/data
+      - jadevectordb_config:/config
     networks:
       - jadevectordb_network
     restart: unless-stopped
-  
-  jadevectordb-worker-1:
-    build: .
-    container_name: jadevectordb-worker-1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  jadevectordb-ui:
+    image: jadevectordb/ui:latest
+    container_name: jadevectordb-ui
+    ports:
+      - "3000:3000"
     environment:
-      - NODE_TYPE=worker
-      - MASTER_HOST=jadevectordb-master
-      - PORT=8081
-    volumes:
-      - jadevectordb_data:/data
+      - NEXT_PUBLIC_API_URL=http://jadevectordb:8080
     networks:
       - jadevectordb_network
     depends_on:
-      - jadevectordb-master
+      - jadevectordb
     restart: unless-stopped
-  
-  jadevectordb-worker-2:
-    build: .
-    container_name: jadevectordb-worker-2
-    environment:
-      - NODE_TYPE=worker
-      - MASTER_HOST=jadevectordb-master
-      - PORT=8082
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
     volumes:
-      - jadevectordb_data:/data
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - jadevectordb_network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-enterprise
+    container_name: grafana
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
     networks:
       - jadevectordb_network
     depends_on:
-      - jadevectordb-master
+      - prometheus
     restart: unless-stopped
 
 volumes:
   jadevectordb_data:
+    driver: local
+  jadevectordb_config:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
 
 networks:
   jadevectordb_network:

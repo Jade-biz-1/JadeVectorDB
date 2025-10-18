@@ -4,8 +4,15 @@
 
 namespace jadevectordb {
 
-VectorStorageService::VectorStorageService(std::unique_ptr<DatabaseLayer> db_layer)
-    : db_layer_(std::move(db_layer)) {
+VectorStorageService::VectorStorageService(
+    std::unique_ptr<DatabaseLayer> db_layer,
+    std::shared_ptr<ShardingService> sharding_service,
+    std::shared_ptr<QueryRouter> query_router,
+    std::shared_ptr<ReplicationService> replication_service)
+    : db_layer_(std::move(db_layer))
+    , sharding_service_(sharding_service)
+    , query_router_(query_router)
+    , replication_service_(replication_service) {
     
     if (!db_layer_) {
         // If no database layer is provided, create a default one

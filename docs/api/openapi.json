@@ -1,0 +1,2087 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "JadeVectorDB API",
+    "description": "High-Performance Distributed Vector Database API",
+    "version": "1.0.0",
+    "contact": {
+      "name": "JadeVectorDB Team",
+      "email": "support@jadevectordb.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.jadevectordb.com/v1",
+      "description": "Production server"
+    },
+    {
+      "url": "https://staging-api.jadevectordb.com/v1",
+      "description": "Staging server"
+    },
+    {
+      "url": "http://localhost:8080/v1",
+      "description": "Local development server"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "System health check",
+        "description": "Check the health status of the vector database system",
+        "operationId": "healthCheck",
+        "tags": [
+          "Monitoring"
+        ],
+        "responses": {
+          "200": {
+            "description": "System is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "System is unhealthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/status": {
+      "get": {
+        "summary": "Detailed system status",
+        "description": "Get detailed status and metrics of the vector database system",
+        "operationId": "systemStatus",
+        "tags": [
+          "Monitoring"
+        ],
+        "responses": {
+          "200": {
+            "description": "System status and metrics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          }
+        }
+      }
+    },
+    "/databases": {
+      "get": {
+        "summary": "List all vector databases",
+        "description": "Retrieve a list of all available vector databases",
+        "operationId": "listDatabases",
+        "tags": [
+          "Database Management"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of databases",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "databases": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Database"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "Total number of databases"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a new vector database",
+        "description": "Create a new vector database instance with specific configuration",
+        "operationId": "createDatabase",
+        "tags": [
+          "Database Management"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDatabaseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Database created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Database"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictError"
+          }
+        }
+      }
+    },
+    "/databases/{databaseId}": {
+      "get": {
+        "summary": "Get database details",
+        "description": "Retrieve configuration and status of a specific database",
+        "operationId": "getDatabase",
+        "tags": [
+          "Database Management"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the database"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Database details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Database"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update database configuration",
+        "description": "Update configuration of a specific database",
+        "operationId": "updateDatabase",
+        "tags": [
+          "Database Management"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the database"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDatabaseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Database updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Database"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a database",
+        "description": "Delete a database and all its data",
+        "operationId": "deleteDatabase",
+        "tags": [
+          "Database Management"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the database"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Database deleted successfully"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      }
+    },
+    "/databases/{databaseId}/status": {
+      "get": {
+        "summary": "Database-specific status",
+        "description": "Get status information for a specific database",
+        "operationId": "databaseStatus",
+        "tags": [
+          "Monitoring"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the database"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Database status information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      }
+    },
+    "/databases/{databaseId}/vectors": {
+      "post": {
+        "summary": "Store a vector",
+        "description": "Store a new vector with optional metadata",
+        "operationId": "storeVector",
+        "tags": [
+          "Vector Operations"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the database"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Vector"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Vector stored successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Vector"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      }
+    },
+    "/databases/{databaseId}/vectors/batch": {
+      "post": {
+        "summary": "Store multiple vectors in batch",
+        "description": "Store multiple vectors in a single request",
+        "operationId": "storeVectorsBatch",
+        "tags": [
+          "Vector Operations"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the database"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "vectors": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Vector"
+                    }
+                  },
+                  "upsert": {
+                    "type": "boolean",
+                    "description": "Whether to update existing vectors (default: false)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Vectors stored successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "inserted": {
+                      "type": "integer",
+                      "description": "Number of vectors inserted"
+                    },
+                    "updated": {
+                      "type": "integer",
+                      "description": "Number of vectors updated (if upsert=true)"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "Vector ID that had an error"
+                          },
+                          "error": {
+                            "type": "string",
+                            "description": "Error message"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      }
+    },
+    "/databases/{databaseId}/vectors/{vectorId}": {
+      "get": {
+        "summary": "Retrieve a vector by ID",
+        "description": "Get a specific vector by its unique identifier",
+        "operationId": "getVector",
+        "tags": [
+          "Vector Operations"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the database"
+          },
+          {
+            "name": "vectorId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the vector"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vector retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Vector"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update a vector",
+        "description": "Update an existing vector's metadata or values",
+        "operationId": "updateVector",
+        "tags": [
+          "Vector Operations"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the database"
+          },
+          {
+            "name": "vectorId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the vector"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Vector"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Vector updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Vector"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a vector",
+        "description": "Remove a vector from the database",
+        "operationId": "deleteVector",
+        "tags": [
+          "Vector Operations"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the database"
+          },
+          {
+            "name": "vectorId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the vector"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Vector deleted successfully"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      }
+    },
+    "/databases/{databaseId}/search": {
+      "post": {
+        "summary": "Perform similarity search",
+        "description": "Find vectors similar to the query vector",
+        "operationId": "searchVectors",
+        "tags": [
+          "Vector Operations"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the database"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      }
+    },
+    "/databases/{databaseId}/search/advanced": {
+      "post": {
+        "summary": "Perform advanced similarity search with filters",
+        "description": "Find vectors similar to query vector with metadata filters",
+        "operationId": "searchVectorsAdvanced",
+        "tags": [
+          "Vector Operations"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the database"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdvancedSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Advanced search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      }
+    },
+    "/databases/{databaseId}/indexes": {
+      "post": {
+        "summary": "Create a new index",
+        "description": "Create a new index with specified algorithm and parameters",
+        "operationId": "createIndex",
+        "tags": [
+          "Index Management"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the database"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIndexRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Index created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Index"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      },
+      "get": {
+        "summary": "List all indexes in database",
+        "description": "Retrieve all indexes in the specified database",
+        "operationId": "listIndexes",
+        "tags": [
+          "Index Management"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the database"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of indexes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "indexes": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Index"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      }
+    },
+    "/databases/{databaseId}/indexes/{indexId}": {
+      "get": {
+        "summary": "Get index details",
+        "description": "Retrieve configuration and status of a specific index",
+        "operationId": "getIndex",
+        "tags": [
+          "Index Management"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the database"
+          },
+          {
+            "name": "indexId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the index"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Index details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Index"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update index configuration",
+        "description": "Update parameters of an existing index",
+        "operationId": "updateIndex",
+        "tags": [
+          "Index Management"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the database"
+          },
+          {
+            "name": "indexId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the index"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateIndexRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Index updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Index"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete an index",
+        "description": "Remove an index from the database",
+        "operationId": "deleteIndex",
+        "tags": [
+          "Index Management"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the database"
+          },
+          {
+            "name": "indexId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier of the index"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Index deleted successfully"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      }
+    },
+    "/embeddings/generate": {
+      "post": {
+        "summary": "Generate vector embedding",
+        "description": "Generate vector embedding from text or other input data",
+        "operationId": "generateEmbedding",
+        "tags": [
+          "Embedding Management"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateEmbeddingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Embedding generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateEmbeddingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Database": {
+        "type": "object",
+        "required": [
+          "databaseId",
+          "name",
+          "vectorDimension",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "databaseId": {
+            "type": "string",
+            "description": "Unique identifier for the database"
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the database",
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the database",
+            "maxLength": 1000
+          },
+          "vectorDimension": {
+            "type": "integer",
+            "description": "Dimension of vectors in this database",
+            "minimum": 1,
+            "maximum": 16384
+          },
+          "indexType": {
+            "type": "string",
+            "description": "Default index type for this database",
+            "enum": [
+              "HNSW",
+              "IVF",
+              "LSH",
+              "FLAT"
+            ]
+          },
+          "indexParameters": {
+            "type": "object",
+            "description": "Default parameters for the index",
+            "additionalProperties": true
+          },
+          "sharding": {
+            "type": "object",
+            "properties": {
+              "strategy": {
+                "type": "string",
+                "enum": [
+                  "hash",
+                  "range",
+                  "vector-based"
+                ]
+              },
+              "numShards": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "replication": {
+            "type": "object",
+            "properties": {
+              "factor": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "sync": {
+                "type": "boolean"
+              }
+            }
+          },
+          "embeddingModels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EmbeddingModel"
+            }
+          },
+          "metadataSchema": {
+            "type": "object",
+            "description": "Schema definition for metadata",
+            "additionalProperties": true
+          },
+          "retentionPolicy": {
+            "type": "object",
+            "properties": {
+              "maxAgeDays": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "archiveOnExpire": {
+                "type": "boolean"
+              }
+            }
+          },
+          "accessControl": {
+            "type": "object",
+            "properties": {
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "defaultPermissions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "status": {
+            "type": "string",
+            "description": "Current status of the database",
+            "enum": [
+              "active",
+              "paused",
+              "deleted"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+          }
+        }
+      },
+      "CreateDatabaseRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "vectorDimension"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the database",
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the database",
+            "maxLength": 1000
+          },
+          "vectorDimension": {
+            "type": "integer",
+            "description": "Dimension of vectors in this database",
+            "minimum": 1,
+            "maximum": 16384
+          },
+          "indexType": {
+            "type": "string",
+            "description": "Default index type for this database",
+            "enum": [
+              "HNSW",
+              "IVF",
+              "LSH",
+              "FLAT"
+            ]
+          },
+          "indexParameters": {
+            "type": "object",
+            "description": "Default parameters for the index",
+            "additionalProperties": true
+          },
+          "sharding": {
+            "type": "object",
+            "properties": {
+              "strategy": {
+                "type": "string",
+                "enum": [
+                  "hash",
+                  "range",
+                  "vector-based"
+                ]
+              },
+              "numShards": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "replication": {
+            "type": "object",
+            "properties": {
+              "factor": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "sync": {
+                "type": "boolean"
+              }
+            }
+          },
+          "accessControl": {
+            "type": "object",
+            "properties": {
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "defaultPermissions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "UpdateDatabaseRequest": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "New description of the database",
+            "maxLength": 1000
+          },
+          "sharding": {
+            "type": "object",
+            "properties": {
+              "numShards": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "replication": {
+            "type": "object",
+            "properties": {
+              "factor": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "sync": {
+                "type": "boolean"
+              }
+            }
+          },
+          "autoScaling": {
+            "type": "boolean",
+            "description": "Whether to enable auto-scaling"
+          }
+        }
+      },
+      "Vector": {
+        "type": "object",
+        "required": [
+          "id",
+          "values"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the vector"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            },
+            "description": "The vector values",
+            "minItems": 1,
+            "maxItems": 16384
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Associated metadata for the vector",
+            "additionalProperties": true
+          },
+          "embeddingModel": {
+            "type": "string",
+            "description": "Model used to generate this vector"
+          },
+          "shard": {
+            "type": "string",
+            "description": "Shard identifier for distributed storage"
+          },
+          "version": {
+            "type": "integer",
+            "description": "Version number for the vector record"
+          },
+          "deleted": {
+            "type": "boolean",
+            "description": "Whether the vector is logically deleted",
+            "default": false
+          }
+        }
+      },
+      "SearchRequest": {
+        "type": "object",
+        "required": [
+          "queryVector",
+          "topK"
+        ],
+        "properties": {
+          "queryVector": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            },
+            "description": "The query vector to find similar vectors to",
+            "minItems": 1,
+            "maxItems": 16384
+          },
+          "topK": {
+            "type": "integer",
+            "description": "Number of similar vectors to return",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "threshold": {
+            "type": "number",
+            "format": "float",
+            "description": "Minimum similarity threshold (0.0 to 1.0)",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "includeMetadata": {
+            "type": "boolean",
+            "description": "Whether to include metadata in results",
+            "default": false
+          },
+          "includeValues": {
+            "type": "boolean",
+            "description": "Whether to include vector values in results",
+            "default": false
+          },
+          "index": {
+            "type": "string",
+            "description": "Specific index to use for search"
+          }
+        }
+      },
+      "AdvancedSearchRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SearchRequest"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "filters": {
+                "type": "object",
+                "description": "Metadata filters to apply",
+                "additionalProperties": true
+              },
+              "embeddingModel": {
+                "type": "string",
+                "description": "Embedding model to use for the query vector"
+              }
+            }
+          }
+        ]
+      },
+      "SearchResponse": {
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchResult"
+            }
+          },
+          "queryTimeMs": {
+            "type": "number",
+            "format": "float",
+            "description": "Time taken to execute the query in milliseconds"
+          },
+          "indexUsed": {
+            "type": "string",
+            "description": "Index used for the search"
+          }
+        }
+      },
+      "SearchResult": {
+        "type": "object",
+        "required": [
+          "id",
+          "similarity"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Vector ID"
+          },
+          "similarity": {
+            "type": "number",
+            "format": "float",
+            "description": "Similarity score between 0.0 and 1.0"
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Vector metadata (if requested)",
+            "additionalProperties": true
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            },
+            "description": "Vector values (if requested)"
+          }
+        }
+      },
+      "Index": {
+        "type": "object",
+        "required": [
+          "indexId",
+          "databaseId",
+          "type",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "indexId": {
+            "type": "string",
+            "description": "Unique identifier for the index"
+          },
+          "databaseId": {
+            "type": "string",
+            "description": "Reference to the parent database"
+          },
+          "type": {
+            "type": "string",
+            "description": "Type of index",
+            "enum": [
+              "HNSW",
+              "IVF",
+              "LSH",
+              "FLAT"
+            ]
+          },
+          "parameters": {
+            "type": "object",
+            "description": "Index-specific configuration parameters",
+            "additionalProperties": true
+          },
+          "status": {
+            "type": "string",
+            "description": "Status of the index",
+            "enum": [
+              "building",
+              "ready",
+              "failed"
+            ]
+          },
+          "stats": {
+            "type": "object",
+            "description": "Statistics about the index",
+            "properties": {
+              "vectorCount": {
+                "type": "integer",
+                "description": "Number of vectors indexed"
+              },
+              "sizeBytes": {
+                "type": "integer",
+                "description": "Size of the index in bytes"
+              },
+              "buildTimeMs": {
+                "type": "integer",
+                "description": "Time to build the index in milliseconds"
+              }
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+          }
+        }
+      },
+      "CreateIndexRequest": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Type of index to create",
+            "enum": [
+              "HNSW",
+              "IVF",
+              "LSH",
+              "FLAT"
+            ]
+          },
+          "parameters": {
+            "type": "object",
+            "description": "Index-specific configuration parameters",
+            "additionalProperties": true
+          },
+          "buildOnSubset": {
+            "type": "boolean",
+            "description": "Whether to build index on a subset of data first"
+          }
+        }
+      },
+      "UpdateIndexRequest": {
+        "type": "object",
+        "properties": {
+          "parameters": {
+            "type": "object",
+            "description": "New index-specific configuration parameters",
+            "additionalProperties": true
+          }
+        }
+      },
+      "EmbeddingModel": {
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "provider",
+          "inputType"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the embedding model"
+          },
+          "version": {
+            "type": "string",
+            "description": "Version of the embedding model"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider of the embedding model"
+          },
+          "inputType": {
+            "type": "string",
+            "description": "Type of input data expected",
+            "enum": [
+              "text",
+              "image",
+              "audio"
+            ]
+          },
+          "outputDimension": {
+            "type": "integer",
+            "description": "Dimension of vectors produced by this model"
+          },
+          "parameters": {
+            "type": "object",
+            "description": "Model-specific parameters",
+            "additionalProperties": true
+          },
+          "status": {
+            "type": "string",
+            "description": "Status of the model",
+            "enum": [
+              "active",
+              "inactive",
+              "failed"
+            ]
+          }
+        }
+      },
+      "GenerateEmbeddingRequest": {
+        "type": "object",
+        "required": [
+          "input"
+        ],
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "Input data to generate embedding from"
+          },
+          "input_type": {
+            "type": "string",
+            "description": "Type of input data",
+            "enum": [
+              "text",
+              "image",
+              "audio"
+            ],
+            "default": "text"
+          },
+          "model": {
+            "type": "string",
+            "description": "Specific model to use for embedding generation",
+            "default": "default"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider of the embedding model",
+            "default": "default"
+          }
+        }
+      },
+      "GenerateEmbeddingResponse": {
+        "type": "object",
+        "required": [
+          "input",
+          "embedding",
+          "dimension"
+        ],
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "Original input data"
+          },
+          "input_type": {
+            "type": "string",
+            "description": "Type of input data processed"
+          },
+          "model": {
+            "type": "string",
+            "description": "Model used for embedding generation"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider of the embedding model"
+          },
+          "embedding": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            },
+            "description": "Generated vector embedding",
+            "minItems": 1,
+            "maxItems": 16384
+          },
+          "dimension": {
+            "type": "integer",
+            "description": "Dimension of the generated embedding"
+          },
+          "status": {
+            "type": "string",
+            "description": "Status of the embedding generation"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when embedding was generated"
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "timestamp"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "healthy",
+              "unhealthy"
+            ]
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "string",
+            "description": "Version of the vector database system"
+          },
+          "nodes": {
+            "type": "integer",
+            "description": "Number of active nodes in the cluster"
+          }
+        }
+      },
+      "StatusResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "timestamp"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "healthy",
+              "warning",
+              "critical"
+            ]
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "string",
+            "description": "Version of the vector database system"
+          },
+          "cluster": {
+            "$ref": "#/components/schemas/ClusterStatus"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/SystemMetrics"
+          }
+        }
+      },
+      "ClusterStatus": {
+        "type": "object",
+        "properties": {
+          "master": {
+            "type": "string",
+            "description": "ID of the current master node"
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NodeStatus"
+            }
+          },
+          "totalNodes": {
+            "type": "integer",
+            "description": "Total number of nodes"
+          },
+          "healthyNodes": {
+            "type": "integer",
+            "description": "Number of healthy nodes"
+          }
+        }
+      },
+      "NodeStatus": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Unique identifier for the node"
+          },
+          "host": {
+            "type": "string",
+            "description": "Host address"
+          },
+          "port": {
+            "type": "integer",
+            "description": "Port number"
+          },
+          "nodeType": {
+            "type": "string",
+            "enum": [
+              "master",
+              "worker"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "standby",
+              "failed"
+            ]
+          },
+          "resources": {
+            "$ref": "#/components/schemas/ResourceUsage"
+          },
+          "lastHeartbeat": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ResourceUsage": {
+        "type": "object",
+        "properties": {
+          "cpu": {
+            "type": "number",
+            "format": "float",
+            "description": "CPU usage percentage",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "memory": {
+            "type": "number",
+            "format": "float",
+            "description": "Memory usage percentage",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "storage": {
+            "type": "number",
+            "format": "float",
+            "description": "Storage usage percentage",
+            "minimum": 0,
+            "maximum": 100
+          }
+        }
+      },
+      "SystemMetrics": {
+        "type": "object",
+        "properties": {
+          "requestsPerSecond": {
+            "type": "number",
+            "format": "float",
+            "description": "Average requests per second"
+          },
+          "queryLatencyMs": {
+            "type": "object",
+            "description": "Query latency percentiles",
+            "properties": {
+              "p50": {
+                "type": "number",
+                "format": "float"
+              },
+              "p95": {
+                "type": "number",
+                "format": "float"
+              },
+              "p99": {
+                "type": "number",
+                "format": "float"
+              }
+            }
+          },
+          "ingestionRate": {
+            "type": "number",
+            "format": "float",
+            "description": "Vectors ingested per second"
+          },
+          "cacheHitRate": {
+            "type": "number",
+            "format": "float",
+            "description": "Cache hit rate percentage"
+          }
+        }
+      },
+      "DatabaseStatusResponse": {
+        "type": "object",
+        "required": [
+          "databaseId",
+          "status",
+          "timestamp"
+        ],
+        "properties": {
+          "databaseId": {
+            "type": "string",
+            "description": "Unique identifier for the database"
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the database"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "healthy",
+              "warning",
+              "critical"
+            ]
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/DatabaseStats"
+          }
+        }
+      },
+      "DatabaseStats": {
+        "type": "object",
+        "properties": {
+          "vectorCount": {
+            "type": "integer",
+            "description": "Total number of vectors in the database"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "description": "Total size of the database in bytes"
+          },
+          "indexCount": {
+            "type": "integer",
+            "description": "Number of indexes"
+          },
+          "queryRate": {
+            "type": "number",
+            "format": "float",
+            "description": "Average queries per second"
+          },
+          "ingestionRate": {
+            "type": "number",
+            "format": "float",
+            "description": "Average vectors ingested per second"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error code"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable error message"
+          },
+          "details": {
+            "type": "object",
+            "description": "Additional error details",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "parameters": {
+      "limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        },
+        "description": "Maximum number of items to return"
+      },
+      "offset": {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "description": "Offset for pagination"
+      }
+    },
+    "responses": {
+      "UnauthorizedError": {
+        "description": "Unauthorized - API key is missing or invalid",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ForbiddenError": {
+        "description": "Forbidden - Insufficient permissions for the requested operation",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFoundError": {
+        "description": "Not Found - The requested resource does not exist",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "InvalidRequest": {
+        "description": "Invalid Request - Request body or parameters are invalid",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ConflictError": {
+        "description": "Conflict - Resource already exists or operation conflicts with current state",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "apiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "API key for authentication and authorization"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKey": []
+    }
+  ]
+}

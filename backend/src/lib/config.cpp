@@ -316,12 +316,50 @@ void ConfigManager::set_config_value(const std::string& key, const T& value) {
     
     // This is a simplified implementation - in a real system, you would need to
     // handle different types properly, possibly with a more sophisticated approach
-    if (key == "host" && std::is_same_v<T, std::string>) {
-        config_.host = std::any_cast<std::string>(value);
-    } else if (key == "port" && std::is_same_v<T, int>) {
-        config_.port = std::any_cast<int>(value);
-    } else if (key == "thread_pool_size" && std::is_same_v<T, size_t>) {
-        config_.thread_pool_size = std::any_cast<size_t>(value);
+    if constexpr (std::is_same_v<T, std::string>) {
+        if (key == "host") {
+            config_.host = value;
+        } else if (key == "data_directory") {
+            config_.data_directory = value;
+        } else if (key == "log_level") {
+            config_.log_level = value;
+        } else if (key == "log_file") {
+            config_.log_file = value;
+        } else if (key == "default_index_type") {
+            config_.default_index_type = value;
+        } else if (key == "ssl_cert_path") {
+            config_.ssl_cert_path = value;
+        } else if (key == "ssl_key_path") {
+            config_.ssl_key_path = value;
+        }
+    } else if constexpr (std::is_same_v<T, int>) {
+        if (key == "port") {
+            config_.port = value;
+        } else if (key == "grpc_port") {
+            config_.grpc_port = value;
+        } else if (key == "log_backup_count") {
+            config_.log_backup_count = value;
+        } else if (key == "default_shard_count") {
+            config_.default_shard_count = value;
+        } else if (key == "default_replication_factor") {
+            config_.default_replication_factor = value;
+        }
+    } else if constexpr (std::is_same_v<T, size_t>) {
+        if (key == "max_connections") {
+            config_.max_connections = value;
+        } else if (key == "thread_pool_size") {
+            config_.thread_pool_size = value;
+        } else if (key == "max_request_size") {
+            config_.max_request_size = value;
+        } else if (key == "log_rotation_size") {
+            config_.log_rotation_size = value;
+        } else if (key == "default_vector_dimension") {
+            config_.default_vector_dimension = value;
+        }
+    } else if constexpr (std::is_same_v<T, bool>) {
+        if (key == "enable_ssl") {
+            config_.enable_ssl = value;
+        }
     }
     // Additional type-specific assignments would go here
 }

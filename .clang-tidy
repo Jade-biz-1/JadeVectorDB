@@ -1,0 +1,36 @@
+Checks: >-
+  *,-clang-analyzer-alpha.core.CastToStruct,-clang-analyzer-alpha.core.Conversion,
+  -clang-analyzer-alpha.core.IdenticalExpr,-clang-analyzer-alpha.core.SizeOfPtr,
+  -clang-analyzer-alpha.security.ArrayBoundV2,-clang-analyzer-alpha.security.MmapWriteExec,
+  -clang-analyzer-alpha.unix.Chroot,-clang-analyzer-alpha.unix.PthreadLock,
+  -clang-analyzer-alpha.unix.SimpleStream,-clang-analyzer-core.StackAddressEscape,
+  -clang-analyzer-cplusplus.NewDeleteLeaks,-clang-analyzer-deadcode.DeadStores,
+  -clang-analyzer-nullability.NullPassedToNonnull,-clang-analyzer-nullability.NullReturnedFromNonnull,
+  -clang-analyzer-security.insecureAPI.UncheckedReturn,
+  -cppcoreguidelines-avoid-magic-numbers,-readability-magic-numbers,
+  -modernize-use-trailing-return-type,-cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -hicpp-no-assembler,-google-readability-braces-around-statements,
+  -readability-braces-around-statements,-cppcoreguidelines-avoid-c-arrays,
+  -hicpp-avoid-c-arrays,-modernize-avoid-c-arrays,-cppcoreguidelines-owning-memory
+
+CheckOptions:
+  - key: readability-identifier-naming.VariableName
+    value: CamelCase
+  - key: readability-identifier-naming.GlobalVariableName
+    value: CamelCase
+  - key: readability-identifier-naming.MemberName
+    value: m_.*
+  - key: readability-identifier-naming.PrivateMemberName
+    value: m_.*
+  - key: readability-identifier-naming.StaticMemberName
+    value: s_.*
+  - key: readability-identifier-naming.ConstantName
+    value: k_.*
+  - key: readability-identifier-naming.ConstexprConstantName
+    value: k_.*
+  - key: readability-identifier-naming.ConstGlobalConstantName
+    value: k_.*
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*'
+AnalyzeTemporaryDtors: false
