@@ -208,8 +208,9 @@ namespace logging {
                   const std::string& function = "",
                   const std::map<std::string, std::string>& context = {});
         
-    private:
+    public:
         bool should_log(LogLevel level) const;
+    private:
         std::string get_timestamp() const;
     };
     

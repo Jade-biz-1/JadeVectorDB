@@ -84,7 +84,7 @@ public:
         // Initialize database layer
         db_layer_ = std::make_unique<DatabaseLayer>();
         auto db_result = db_layer_->initialize();
-        if (!db_result.has_value()) {
+        if (!db_result) {
             LOG_ERROR(logger_, "Failed to initialize database layer: " << 
                      ErrorHandler::format_error(db_result.error()));
             return db_result;
@@ -98,15 +98,15 @@ public:
             config.host + ":" + std::to_string(config.grpc_port));
         
         LOG_INFO(logger_, "All services initialized successfully");
-        return std::expected<std::monostate, ErrorInfo>{};
+        return Result<void>{};
     }
 
     Result<void> start() {
         LOG_INFO(logger_, "Starting JadeVectorDB application...");
         
         auto result = initialize();
-        if (!result.has_value()) {
-            LOG_ERROR(logger_, "Failed to initialize application: " << format_error(result.error()));
+        if (!result) {
+            LOG_ERROR(logger_, "Failed to initialize application: " << ErrorHandler::format_error(result.error()));
             return result;
         }
         
@@ -133,7 +133,7 @@ public:
             count++;
         }
         
-        return std::expected<std::monostate, ErrorInfo>{};
+        return Result<void>{};
     }
 
     Result<void> shutdown() {
@@ -156,7 +156,7 @@ public:
         logging::LoggerManager::shutdown();
         
         LOG_INFO(logger_, "JadeVectorDB application shutdown complete");
-        return std::expected<std::monostate, ErrorInfo>{};
+        return Result<void>{};
     }
     
     bool is_running() const { return running_; }
@@ -171,7 +171,7 @@ int main(int argc, char* argv[]) {
     
     auto result = app.start();
     
-    if (!result.has_value()) {
+    if (!result) {
         std::cerr << "Application failed to start: " << 
                      jadevectordb::ErrorHandler::format_error(result.error()) << std::endl;
         return 1;

@@ -125,3 +125,19 @@ target_link_libraries(test_metadata_filtering
 
 # Add test to CTest
 add_test(NAME MetadataFilteringTest COMMAND test_metadata_filtering)
+# Create test executable for alert service
+add_executable(test_alert_service
+    unit/test_alert_service.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/alert_service.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/error_handling.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/logging.cpp
+)
+
+target_link_libraries(test_alert_service
+    GTest::gtest
+    GTest::gtest_main
+    Threads::Threads
+    ${CMAKE_DL_LIBS}
+)
+
+add_test(NAME AlertServiceTest COMMAND test_alert_service)

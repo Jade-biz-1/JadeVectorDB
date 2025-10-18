@@ -16,6 +16,7 @@
 #include "services/database_layer.h"
 #include "search_utils.h"
 #include "metadata_filter.h"
+#include "lib/metrics.h"
 
 namespace jadevectordb {
 
