@@ -63,7 +63,9 @@ public:
     
 private:
     ConfigManager() = default;
+public:
     ~ConfigManager() = default;
+private:
     ConfigManager(const ConfigManager&) = delete;
     ConfigManager& operator=(const ConfigManager&) = delete;
 };

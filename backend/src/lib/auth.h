@@ -6,6 +6,7 @@
 #include <chrono>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <vector>
 #include <set>
 

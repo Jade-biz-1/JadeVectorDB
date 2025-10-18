@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "jadevectordb.fullname" . }}
+  labels:
+    {{- include "jadevectordb.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.jadevectordb.service.type }}
+  ports:
+    - port: {{ .Values.jadevectordb.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: {{ .Values.jadevectordb.service.rpcPort }}
+      targetPort: rpc
+      protocol: TCP
+      name: rpc
+  selector:
+    {{- include "jadevectordb.selectorLabels" . | nindent 4 }}

@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jadevectordb-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jadevectordb-config
+  namespace: jadevectordb-system
+data:
+  JADE_DB_LOG_LEVEL: "INFO"
+  JADE_DB_PORT: "8080"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jadevectordb
+  namespace: jadevectordb-system
+  labels:
+    app: jadevectordb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jadevectordb
+  template:
+    metadata:
+      labels:
+        app: jadevectordb
+    spec:
+      containers:
+      - name: jadevectordb
+        image: jadevectordb/jadevectordb:latest
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: jadevectordb-config
+        volumeMounts:
+        - name: data-volume
+          mountPath: /data
+        - name: config-volume
+          mountPath: /config
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: jadevectordb-data-pvc
+      - name: config-volume
+        persistentVolumeClaim:
+          claimName: jadevectordb-config-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jadevectordb-service
+  namespace: jadevectordb-system
+spec:
+  selector:
+    app: jadevectordb
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jadevectordb-data-pvc
+  namespace: jadevectordb-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jadevectordb-config-pvc
+  namespace: jadevectordb-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

@@ -5,10 +5,11 @@
 #include <memory>
 #include <vector>
 #include <map>
-#include <source_location>
-#include <expected>
+#include <optional>
 #include <system_error>
 #include <chrono>
+#include <source_location>
+#include "expected.hpp"
 
 namespace jadevectordb {
 
@@ -103,15 +104,9 @@ struct ErrorInfo {
           severity(ErrorSeverity::ERROR), line(0), timestamp(std::chrono::system_clock::now()) {}
 };
 
-// Result type alias using std::expected
+// Result type alias using tl::expected
 template<typename T>
-using Result = std::expected<T, ErrorInfo>;
-
-// Specialization for void return type
-template<>
-struct Result<void> {
-    using type = std::expected<std::monostate, ErrorInfo>;
-};
+using Result = tl::expected<T, ErrorInfo>;
 
 // Error handling utilities
 class ErrorHandler {
@@ -168,7 +163,7 @@ public:
     jadevectordb::ErrorHandler::create_error(code, message, ctx, std::source_location::current())
 
 #define RETURN_ERROR(code, message) \
-    return std::unexpected(jadevectordb::ErrorHandler::create_error(code, message, std::source_location::current()))
+    return tl::make_unexpected(jadevectordb::ErrorHandler::create_error(code, message, std::source_location::current()))
 
 #define RETURN_IF_ERROR(result) \
     do { \
@@ -181,7 +176,7 @@ public:
     ({ \
         auto&& result = (expr); \
         if (!(result).has_value()) { \
-            return std::unexpected(jadevectordb::ErrorHandler::create_error(code, message, std::source_location::current())); \
+            return tl::make_unexpected(jadevectordb::ErrorHandler::create_error(code, message, std::source_location::current())); \
         } \
         std::move((result).value()); \
     })

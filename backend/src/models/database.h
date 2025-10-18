@@ -59,6 +59,59 @@ struct Database {
     Database() : vectorDimension(0), indexType("HNSW"), 
                  sharding({"hash", 1}), replication({1, true}) {}
     
+    // Copy constructor
+    Database(const Database& other) 
+        : databaseId(other.databaseId)
+        , name(other.name)
+        , description(other.description)
+        , vectorDimension(other.vectorDimension)
+        , indexType(other.indexType)
+        , indexParameters(other.indexParameters)
+        , sharding(other.sharding)
+        , replication(other.replication)
+        , embeddingModels(other.embeddingModels)
+        , metadataSchema(other.metadataSchema)
+        , accessControl(other.accessControl)
+        , created_at(other.created_at)
+        , updated_at(other.updated_at)
+    {
+        if (other.retentionPolicy) {
+            retentionPolicy = std::make_unique<RetentionPolicy>(*other.retentionPolicy);
+        }
+    }
+    
+    // Copy assignment operator
+    Database& operator=(const Database& other) {
+        if (this != &other) {
+            databaseId = other.databaseId;
+            name = other.name;
+            description = other.description;
+            vectorDimension = other.vectorDimension;
+            indexType = other.indexType;
+            indexParameters = other.indexParameters;
+            sharding = other.sharding;
+            replication = other.replication;
+            embeddingModels = other.embeddingModels;
+            metadataSchema = other.metadataSchema;
+            accessControl = other.accessControl;
+            created_at = other.created_at;
+            updated_at = other.updated_at;
+            
+            if (other.retentionPolicy) {
+                retentionPolicy = std::make_unique<RetentionPolicy>(*other.retentionPolicy);
+            } else {
+                retentionPolicy.reset();
+            }
+        }
+        return *this;
+    }
+    
+    // Move constructor
+    Database(Database&&) = default;
+    
+    // Move assignment operator
+    Database& operator=(Database&&) = default;
+    
     // Methods for validation
     bool validate() const {
         return !databaseId.empty() && 

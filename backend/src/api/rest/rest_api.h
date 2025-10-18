@@ -12,11 +12,16 @@
 // Include Crow web framework
 #include <crow.h>
 
+#include "services/index_service.h"
+#include "services/lifecycle_service.h"
+
 // Forward declarations for services
 namespace jadevectordb {
     class DatabaseService;
     class VectorStorageService;
     class SimilaritySearchService;
+    class IndexService;
+    class LifecycleService;
 }
 
 // For now, we'll define a basic interface structure

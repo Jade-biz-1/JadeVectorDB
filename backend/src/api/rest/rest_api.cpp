@@ -252,20 +252,7 @@ void RestApiImpl::register_routes() {
 }
 
 // Health and monitoring endpoints
-void RestApiImpl::handle_health_check() {
-    // Implementation would register GET /health endpoint
-    LOG_DEBUG(logger_, "Registered health check endpoint at /health");
-}
 
-void RestApiImpl::handle_system_status() {
-    // Implementation would register GET /status endpoint
-    LOG_DEBUG(logger_, "Registered system status endpoint at /status");
-}
-
-void RestApiImpl::handle_database_status() {
-    // Implementation would register GET /v1/databases/{databaseId}/status endpoint
-    LOG_DEBUG(logger_, "Registered database status endpoint at /v1/databases/{databaseId}/status");
-}
 
 // Database management endpoints
 void RestApiImpl::handle_create_database() {

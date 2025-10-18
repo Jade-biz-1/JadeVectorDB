@@ -120,3 +120,11 @@ conan.lock
 vcpkg/
 vcpkg.json
 vcpkg-configuration.json
+
+# Build coverage directory
+backend/build_coverage/
+
+# Dependency sources fetched by CMake
+backend/_deps/
+backend/build/
+backend/src/lib/expected.hpp

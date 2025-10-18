@@ -131,15 +131,51 @@ The server will start on port 8080 by default.
 ### Embedding Generation
 - `POST /v1/embeddings/generate` - Generate vector embeddings
 
+## Development Tools
+
+This project includes several development tools to help maintain code quality and security:
+
+### Code Coverage
+To measure test coverage:
+```bash
+cd backend
+mkdir build
+cd build
+cmake -DCMAKE_BUILD_TYPE=Debug -DBUILD_COVERAGE=ON ..
+make
+make coverage
+```
+The coverage report will be available in the `coverage_report` directory.
+
+### Static Analysis
+To run static analysis on the codebase:
+```bash
+cd backend
+python3 ../scripts/run-static-analysis.py
+```
+
+### Security Testing
+To run security tests on the project:
+```bash
+python3 scripts/run-security-tests.py --project-dir backend
+```
+
+## Documentation
+
+Complete documentation is available in the `docs/` directory:
+
+- [Quickstart Guide](docs/quickstart.md) - Getting started with JadeVectorDB
+- [Architecture Documentation](docs/architecture.md) - System architecture and design decisions
+- [API Documentation](docs/api_documentation.md) - Complete API reference
+- [Developer Guide](DEVELOPER_GUIDE.md) - Information for contributors
+
 ## Next Steps
 
 1. **Containerization** - Docker images and Kubernetes deployment
-2. **Testing and QA** - Comprehensive unit, integration, and performance testing
-3. **Performance Tuning** - Fine-tuning indexing algorithms and system parameters
-4. **Documentation** - Complete API documentation, user guides, and tutorials
-5. **Monitoring** - Prometheus metrics and Grafana dashboards
-6. **Security** - Enhanced authentication and encryption
-7. **Production Deployment** - Configuration management and deployment scripts
+2. **Performance Tuning** - Fine-tuning indexing algorithms and system parameters
+3. **Monitoring** - Prometheus metrics and Grafana dashboards
+4. **Security** - Enhanced authentication and encryption
+5. **Production Deployment** - Configuration management and deployment scripts
 
 ## Contributing
 

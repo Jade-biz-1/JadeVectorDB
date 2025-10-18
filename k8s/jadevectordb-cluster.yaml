@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: jadevectordb-headless-service
+  namespace: jadevectordb-system
+  labels:
+    app: jadevectordb
+spec:
+  clusterIP: None
+  selector:
+    app: jadevectordb
+  ports:
+  - name: jadevectordb-port
+    port: 8080
+    targetPort: 8080
+  - name: jadevectordb-rpc-port
+    port: 8081
+    targetPort: 8081
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: jadevectordb-cluster
+  namespace: jadevectordb-system
+spec:
+  serviceName: "jadevectordb-headless-service"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: jadevectordb-cluster
+  template:
+    metadata:
+      labels:
+        app: jadevectordb-cluster
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: jadevectordb-node
+        image: jadevectordb/jadevectordb:latest
+        ports:
+        - containerPort: 8080
+          name: jadevectordb-port
+        - containerPort: 8081
+          name: jadevectordb-rpc-port
+        env:
+        - name: JADE_DB_PORT
+          value: "8080"
+        - name: JADE_DB_RPC_PORT
+          value: "8081"
+        - name: JADE_DB_LOG_LEVEL
+          value: "INFO"
+        - name: JADE_DB_CLUSTER_SIZE
+          value: "3"
+        volumeMounts:
+        - name: jadevectordb-data
+          mountPath: /data
+        - name: jadevectordb-config
+          mountPath: /config
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+  volumeClaimTemplates:
+  - metadata:
+      name: jadevectordb-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "fast-ssd"
+      resources:
+        requests:
+          storage: 50Gi
+  - metadata:
+      name: jadevectordb-config
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "standard"
+      resources:
+        requests:
+          storage: 1Gi

@@ -1,0 +1,161 @@
+version: '3.8'
+
+services:
+  jadevectordb-master:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jadevectordb/jadevectordb:latest
+    container_name: jadevectordb-master
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    environment:
+      - JADE_DB_NODE_ROLE=master
+      - JADE_DB_NODE_ID=master-1
+      - JADE_DB_CLUSTER_NODES=jadevectordb-master,jadevectordb-worker-1,jadevectordb-worker-2
+      - JADE_DB_PORT=8080
+      - JADE_DB_RPC_PORT=8081
+      - JADE_DB_LOG_LEVEL=INFO
+      - JADE_DB_DATA_DIR=/data
+      - JADE_DB_CONFIG_DIR=/config
+    volumes:
+      - jadevectordb_master_data:/data
+      - jadevectordb_master_config:/config
+    networks:
+      - jadevectordb_cluster_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  jadevectordb-worker-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jadevectordb/jadevectordb:latest
+    container_name: jadevectordb-worker-1
+    ports:
+      - "8082:8080"
+      - "8083:8081"
+    environment:
+      - JADE_DB_NODE_ROLE=worker
+      - JADE_DB_NODE_ID=worker-1
+      - JADE_DB_MASTER_NODE=jadevectordb-master
+      - JADE_DB_CLUSTER_NODES=jadevectordb-master,jadevectordb-worker-1,jadevectordb-worker-2
+      - JADE_DB_PORT=8080
+      - JADE_DB_RPC_PORT=8081
+      - JADE_DB_LOG_LEVEL=INFO
+      - JADE_DB_DATA_DIR=/data
+      - JADE_DB_CONFIG_DIR=/config
+    volumes:
+      - jadevectordb_worker_1_data:/data
+      - jadevectordb_worker_1_config:/config
+    networks:
+      - jadevectordb_cluster_network
+    depends_on:
+      - jadevectordb-master
+    restart: unless-stopped
+
+  jadevectordb-worker-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jadevectordb/jadevectordb:latest
+    container_name: jadevectordb-worker-2
+    ports:
+      - "8084:8080"
+      - "8085:8081"
+    environment:
+      - JADE_DB_NODE_ROLE=worker
+      - JADE_DB_NODE_ID=worker-2
+      - JADE_DB_MASTER_NODE=jadevectordb-master
+      - JADE_DB_CLUSTER_NODES=jadevectordb-master,jadevectordb-worker-1,jadevectordb-worker-2
+      - JADE_DB_PORT=8080
+      - JADE_DB_RPC_PORT=8081
+      - JADE_DB_LOG_LEVEL=INFO
+      - JADE_DB_DATA_DIR=/data
+      - JADE_DB_CONFIG_DIR=/config
+    volumes:
+      - jadevectordb_worker_2_data:/data
+      - jadevectordb_worker_2_config:/config
+    networks:
+      - jadevectordb_cluster_network
+    depends_on:
+      - jadevectordb-master
+    restart: unless-stopped
+
+  jadevectordb-ui:
+    image: jadevectordb/ui:latest
+    container_name: jadevectordb-ui-distributed
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://jadevectordb-master:8080
+    networks:
+      - jadevectordb_cluster_network
+    depends_on:
+      - jadevectordb-master
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus-distributed
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus-distributed.yml:/etc/prometheus/prometheus.yml
+      - prometheus_distributed_data:/prometheus
+    networks:
+      - jadevectordb_cluster_network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-enterprise
+    container_name: grafana-distributed
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_distributed_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - jadevectordb_cluster_network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  jadevectordb_master_data:
+    driver: local
+  jadevectordb_master_config:
+    driver: local
+  jadevectordb_worker_1_data:
+    driver: local
+  jadevectordb_worker_1_config:
+    driver: local
+  jadevectordb_worker_2_data:
+    driver: local
+  jadevectordb_worker_2_config:
+    driver: local
+  prometheus_distributed_data:
+    driver: local
+  grafana_distributed_data:
+    driver: local
+
+networks:
+  jadevectordb_cluster_network:
+    driver: bridge

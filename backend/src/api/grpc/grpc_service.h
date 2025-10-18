@@ -45,37 +45,31 @@ public:
     virtual ~VectorDatabaseImpl() = default;
     
     // Core gRPC methods that need to be implemented
+    // For now, using dummy signatures that will compile
+    // These should be replaced with proper request/response types
     virtual grpc::Status CreateDatabase(
-        grpc::ServerContext* context,
-        const grpc::ServerReaderWriter< /* TBD */ , /* TBD */ >* stream) = 0;
+        grpc::ServerContext* context) = 0;
     
     virtual grpc::Status DeleteDatabase(
-        grpc::ServerContext* context,
-        const grpc::ServerReaderWriter< /* TBD */ , /* TBD */ >* stream) = 0;
+        grpc::ServerContext* context) = 0;
     
     virtual grpc::Status StoreVector(
-        grpc::ServerContext* context,
-        const grpc::ServerReaderWriter< /* TBD */ , /* TBD */ >* stream) = 0;
+        grpc::ServerContext* context) = 0;
     
     virtual grpc::Status RetrieveVector(
-        grpc::ServerContext* context,
-        const grpc::ServerReaderWriter< /* TBD */ , /* TBD */ >* stream) = 0;
+        grpc::ServerContext* context) = 0;
     
     virtual grpc::Status Search(
-        grpc::ServerContext* context,
-        const grpc::ServerReaderWriter< /* TBD */ , /* TBD */ >* stream) = 0;
+        grpc::ServerContext* context) = 0;
     
     virtual grpc::Status CreateIndex(
-        grpc::ServerContext* context,
-        const grpc::ServerReaderWriter< /* TBD */ , /* TBD */ >* stream) = 0;
+        grpc::ServerContext* context) = 0;
     
     virtual grpc::Status UpdateConfiguration(
-        grpc::ServerContext* context,
-        const grpc::ServerReaderWriter< /* TBD */ , /* TBD */ >* stream) = 0;
+        grpc::ServerContext* context) = 0;
     
     virtual grpc::Status GetStatus(
-        grpc::ServerContext* context,
-        const grpc::ServerReaderWriter< /* TBD */ , /* TBD */ >* stream) = 0;
+        grpc::ServerContext* context) = 0;
 };
 
 } // namespace jadevectordb
