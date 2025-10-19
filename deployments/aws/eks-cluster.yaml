@@ -1,0 +1,53 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: jadevectordb-cluster
+  region: us-west-2
+  version: "1.27"
+
+vpc:
+  id: vpc-xxxxxxxx
+  subnets:
+    private:
+      us-west-2a: { id: subnet-xxxxxxxx }
+      us-west-2b: { id: subnet-xxxxxxxx }
+    public:
+      us-west-2a: { id: subnet-xxxxxxxx }
+      us-west-2b: { id: subnet-xxxxxxxx }
+
+nodeGroups:
+  - name: jadevectordb-ng
+    instanceType: m5.xlarge
+    desiredCapacity: 3
+    minSize: 1
+    maxSize: 10
+    volumeSize: 100
+    ssh:
+      allow: true
+      publicKeyPath: ~/.ssh/id_rsa.pub
+    iam:
+      withAddonPolicies:
+        ebs: true
+        efs: true
+        albIngress: true
+        cloudWatch: true
+    labels:
+      role: jadevectordb
+    tags:
+      Name: JadeVectorDB-NodeGroup
+      Environment: Production
+
+addons:
+  - name: vpc-cni
+  - name: coredns
+  - name: kube-proxy
+
+iam:
+  withOIDC: true
+  serviceAccounts:
+  - metadata:
+      name: efs-csi-controller-sa
+      namespace: kube-system
+    wellKnownPolicies:
+      efsCSIController: true

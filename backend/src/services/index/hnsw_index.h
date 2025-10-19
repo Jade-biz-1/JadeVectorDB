@@ -33,15 +33,17 @@ struct HnswNode {
 class HnswIndex {
 public:
     struct HnswParams {
-        int max_elements = 1000000;  // Maximum number of elements
-        int M = 16;                  // Max number of connections per element
-        int ef_construction = 200;   // Construction parameter
-        int ef_search = 64;          // Search parameter
-        int random_seed = 100;
-        float level_mult = 1.0 / log(1.0 * M);  // Multiplier for level generation
+        int max_elements;  // Maximum number of elements
+        int M;             // Max number of connections per element
+        int ef_construction;  // Construction parameter
+        int ef_search;     // Search parameter
+        int random_seed;
+        float level_mult;  // Multiplier for level generation
         
         // Constructor
-        HnswParams() = default;
+        HnswParams() : max_elements(1000000), M(16), ef_construction(200), 
+                       ef_search(64), random_seed(100),
+                       level_mult(1.0 / log(1.0 * 16)) {}  // Use M=16 for level_mult calculation
     };
 
 private:

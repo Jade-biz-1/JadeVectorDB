@@ -10,7 +10,7 @@ namespace jadevectordb {
 struct Index {
     std::string indexId;
     std::string databaseId;
-    std::string type;  // HNSW, IVF, LSH, Flat Index
+    std::string type;  // HNSW, IVF, LSH, Flat, PQ, OPQ, SQ, Composite Index
     std::map<std::string, std::string> parameters;  // Index-specific parameters
     std::string status;  // building, ready, failed
     std::string created_at;

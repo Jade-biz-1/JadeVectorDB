@@ -1,0 +1,44 @@
+# Health Check Configuration for Blue-Green Deployment
+
+---
+# Health Check Service for Blue Environment
+apiVersion: v1
+kind: Service
+metadata:
+  name: jadevectordb-blue-health-check
+  namespace: jadevectordb-system
+  annotations:
+    prometheus.io/scrape: 'true'
+    prometheus.io/port: '8080'
+    prometheus.io/path: '/health'
+spec:
+  selector:
+    app: jadevectordb
+    version: blue
+  ports:
+    - name: health
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+---
+# Health Check Service for Green Environment
+apiVersion: v1
+kind: Service
+metadata:
+  name: jadevectordb-green-health-check
+  namespace: jadevectordb-system
+  annotations:
+    prometheus.io/scrape: 'true'
+    prometheus.io/port: '8080'
+    prometheus.io/path: '/health'
+spec:
+  selector:
+    app: jadevectordb
+    version: green
+  ports:
+    - name: health
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP

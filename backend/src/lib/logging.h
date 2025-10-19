@@ -74,7 +74,7 @@ namespace logging {
     class LogAppender {
     protected:
         std::unique_ptr<LogFormatter> formatter_;
-        LogLevel min_level_;
+        std::atomic<LogLevel> min_level_;
         std::atomic<bool> enabled_;
         
     public:

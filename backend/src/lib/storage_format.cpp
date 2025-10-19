@@ -226,7 +226,7 @@ namespace storage_format {
         DatabaseStorageFormat storage_format;
         storage_format.database_id = database.databaseId;
         storage_format.name = database.name;
-        storage_format.description = database.description ? *database.description : "";
+        storage_format.description = database.description;
         storage_format.vector_dimension = static_cast<uint32_t>(database.vectorDimension);
         storage_format.index_type = database.indexType;
         
@@ -251,7 +251,7 @@ namespace storage_format {
         Database database;
         database.databaseId = storage_format.database_id;
         database.name = storage_format.name;
-        database.description = std::make_unique<std::string>(storage_format.description);
+        database.description = storage_format.description;
         database.vectorDimension = static_cast<int>(storage_format.vector_dimension);
         database.indexType = storage_format.index_type;
         
@@ -370,7 +370,7 @@ namespace storage_format {
         return sizeof(DatabaseStorageFormat) + 
                database.databaseId.size() + 
                database.name.size() + 
-               (database.description ? database.description->size() : 0) +
+               database.description.size() +
                2048; // Approximate size for JSON serialized fields
     }
     
