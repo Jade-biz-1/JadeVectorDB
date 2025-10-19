@@ -10,6 +10,9 @@
 #include <vector>
 #include <set>
 
+#include "error_handling.h"
+#include "zero_trust.h"
+
 namespace jadevectordb {
 
 // Represents a user in the system
@@ -59,6 +62,10 @@ private:
     
     mutable std::shared_mutex auth_mutex_;
     
+    // Zero-trust components
+    std::unique_ptr<zero_trust::ZeroTrustOrchestrator> zero_trust_orchestrator_;
+    std::unordered_map<std::string, zero_trust::SessionInfo> active_sessions_;
+    
     // Default roles
     static const std::string ADMIN_ROLE;
     static const std::string USER_ROLE;
@@ -103,6 +110,21 @@ public:
     Result<bool> has_permission(const std::string& user_id, const std::string& permission) const;
     Result<bool> has_permission_with_api_key(const std::string& api_key, 
                                            const std::string& permission) const;
+    
+    // Zero-trust related methods
+    Result<void> initialize_zero_trust();
+    Result<std::string> create_secure_session(const std::string& user_id, 
+                                            const std::string& device_id,
+                                            const std::string& ip_address);
+    Result<bool> validate_session(const std::string& session_id) const;
+    Result<void> update_session_activity(const std::string& session_id);
+    Result<zero_trust::TrustLevel> evaluate_session_trust(const std::string& session_id);
+    Result<zero_trust::AccessDecision> authorize_access(const std::string& session_id,
+                                                       const std::string& resource_id,
+                                                       zero_trust::AccessType access_type);
+    Result<void> terminate_session(const std::string& session_id);
+    Result<std::string> register_device(const zero_trust::DeviceIdentity& device_identity,
+                                     zero_trust::TrustLevel initial_trust_level = zero_trust::TrustLevel::LOW);
     
     // Helper methods
     std::string hash_api_key(const std::string& api_key) const;

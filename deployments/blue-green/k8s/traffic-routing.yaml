@@ -1,0 +1,71 @@
+# Traffic Routing Configuration for Blue-Green Deployment
+# This configuration includes multiple routing strategies
+
+---
+# Istio VirtualService for Blue-Green Traffic Routing
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: jadevectordb-blue-green-routing
+  namespace: jadevectordb-system
+spec:
+  hosts:
+  - jadevectordb.example.com
+  http:
+  - match:
+    - headers:
+        canary:
+          exact: "green"
+    route:
+    - destination:
+        host: jadevectordb-green-service
+        subset: green
+      weight: 100
+  - route:
+    - destination:
+        host: jadevectordb-blue-service
+        subset: blue
+      weight: 100
+---
+# Istio DestinationRule for Blue Environment
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: jadevectordb-blue-destination
+  namespace: jadevectordb-system
+spec:
+  host: jadevectordb-blue-service
+  subsets:
+  - name: blue
+    labels:
+      version: blue
+---
+# Istio DestinationRule for Green Environment
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: jadevectordb-green-destination
+  namespace: jadevectordb-system
+spec:
+  host: jadevectordb-green-service
+  subsets:
+  - name: green
+    labels:
+      version: green
+---
+# Gateway for external access
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: jadevectordb-gateway
+  namespace: jadevectordb-system
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - jadevectordb.example.com

@@ -1,6 +1,7 @@
 #include "metrics.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace jadevectordb {
 
@@ -119,10 +120,7 @@ Histogram::Histogram(const std::string& name, const std::string& description,
                      const std::map<std::string, std::string>& labels)
     : Metric(name, description, labels), buckets_(buckets), sum_(0.0), count_(0) {
     // Initialize bucket counts to 0
-    bucket_counts_.resize(buckets_.size() + 1); // +1 for the +Inf bucket
-    for (auto& count : bucket_counts_) {
-        count = 0;
-    }
+    bucket_counts_.resize(buckets_.size() + 1, 0); // +1 for the +Inf bucket
 }
 
 void Histogram::observe(double value) {
@@ -135,13 +133,13 @@ void Histogram::observe(double value) {
     // Determine which bucket this value falls into
     for (size_t i = 0; i < buckets_.size(); ++i) {
         if (value <= buckets_[i]) {
-            bucket_counts_[i].fetch_add(1, std::memory_order_relaxed);
+            ++bucket_counts_[i];
             return;
         }
     }
     
     // If the value is greater than all buckets, put it in the +Inf bucket
-    bucket_counts_.back().fetch_add(1, std::memory_order_relaxed);
+    ++bucket_counts_.back();
 }
 
 std::pair<double, uint64_t> Histogram::get_sum_and_count() const {
@@ -155,12 +153,12 @@ std::vector<std::pair<double, uint64_t>> Histogram::get_buckets() const {
     
     // Add counts for each defined bucket
     for (size_t i = 0; i < buckets_.size(); ++i) {
-        result.emplace_back(buckets_[i], bucket_counts_[i].load(std::memory_order_relaxed));
+        result.emplace_back(buckets_[i], bucket_counts_[i]);
     }
     
     // Add the +Inf bucket
     result.emplace_back(std::numeric_limits<double>::infinity(), 
-                        bucket_counts_.back().load(std::memory_order_relaxed));
+                        bucket_counts_.back());
     
     return result;
 }
@@ -346,9 +344,7 @@ std::string Summary::to_prometheus_format() const {
     return oss.str();
 }
 
-// MetricsRegistry implementation
-std::unique_ptr<MetricsRegistry> MetricsRegistry::registry_ = nullptr;
-std::once_flag MetricsRegistry::once_flag_;
+
 
 MetricsRegistry::MetricsRegistry() {
     logger_ = logging::LoggerManager::get_logger("MetricsRegistry");

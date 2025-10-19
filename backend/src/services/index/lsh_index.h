@@ -28,13 +28,14 @@ struct LshHashFunction {
 class LshIndex {
 public:
     struct LshParams {
-        int num_tables = 10;            // Number of hash tables
-        int num_projections = 16;       // Number of projections per table
-        float bucket_width = 4.0f;      // Width of hash bucket
-        int random_seed = 100;          // Seed for random projections
+        int num_tables;            // Number of hash tables
+        int num_projections;       // Number of projections per table
+        float bucket_width;        // Width of hash bucket
+        int random_seed;           // Seed for random projections
         
         // Constructor
-        LshParams() = default;
+        LshParams() : num_tables(10), num_projections(16), 
+                      bucket_width(4.0f), random_seed(100) {}
     };
 
 private:

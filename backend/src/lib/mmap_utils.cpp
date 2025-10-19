@@ -68,7 +68,7 @@ bool MMapFile::map(size_t size_hint) {
     // Get file size
     struct stat sb;
     if (fstat(fd_, &sb) == -1) {
-        close(fd_);
+        ::close(fd_);
         fd_ = -1;
         return false;
     }
@@ -78,7 +78,7 @@ bool MMapFile::map(size_t size_hint) {
     // If file is empty and size hint is provided, extend it
     if (file_size_ == 0 && size_hint > 0) {
         if (!resize(size_hint)) {
-            close(fd_);
+            ::close(fd_);
             fd_ = -1;
             return false;
         }
@@ -87,7 +87,7 @@ bool MMapFile::map(size_t size_hint) {
     
     // If file is still empty, we can't map it
     if (file_size_ == 0) {
-        close(fd_);
+        ::close(fd_);
         fd_ = -1;
         return false;
     }
@@ -95,7 +95,7 @@ bool MMapFile::map(size_t size_hint) {
     // Map file
     mapped_addr_ = mmap(nullptr, file_size_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
     if (mapped_addr_ == MAP_FAILED) {
-        close(fd_);
+        ::close(fd_);
         fd_ = -1;
         return false;
     }

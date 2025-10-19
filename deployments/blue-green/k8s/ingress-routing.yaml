@@ -1,0 +1,43 @@
+# Blue-Green Deployment with Ingress for Traffic Routing
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jadevectordb-blue-green-ingress
+  namespace: jadevectordb-system
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/canary-by-header: "canary"
+    nginx.ingress.kubernetes.io/canary-by-header-value: "green"
+spec:
+  rules:
+  - host: jadevectordb.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: jadevectordb-blue-service  # Current production (blue)
+            port:
+              number: 8080
+---
+# Alternative Ingress for the green environment (for testing)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jadevectordb-green-ingress
+  namespace: jadevectordb-system
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: green.jadevectordb.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: jadevectordb-green-service  # New version (green)
+            port:
+              number: 8080

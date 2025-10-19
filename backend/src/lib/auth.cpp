@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <set>
+#include "zero_trust.h"
 
 // Include header for string hashing (we'll use a simple approach)
 #include <functional>
@@ -19,6 +20,7 @@ const std::string AuthManager::READER_ROLE = "reader";
 
 AuthManager::AuthManager() {
     initialize_default_roles();
+    initialize_zero_trust();
 }
 
 void AuthManager::initialize_default_roles() {
@@ -469,6 +471,156 @@ std::string AuthManager::generate_id() const {
     std::stringstream ss;
     ss << std::hex << count;
     return ss.str();
+}
+
+Result<std::string> AuthManager::create_secure_session(const std::string& user_id, 
+                                                        const std::string& device_id,
+                                                        const std::string& ip_address) {
+    if (!zero_trust_orchestrator_) {
+        RETURN_ERROR(ErrorCode::CONFIGURATION_ERROR, "Zero-trust system not initialized");
+    }
+    
+    // Check if user exists
+    {
+        std::shared_lock<std::shared_mutex> lock(auth_mutex_);
+        if (users_.find(user_id) == users_.end()) {
+            RETURN_ERROR(ErrorCode::AUTHENTICATION_ERROR, "User not found: " + user_id);
+        }
+    }
+    
+    // Generate session ID
+    std::string session_id = "sess_" + generate_id();
+    
+    // Create session info
+    zero_trust::SessionInfo session_info;
+    session_info.session_id = session_id;
+    session_info.user_id = user_id;
+    session_info.device_id = device_id;
+    session_info.ip_address = ip_address;
+    session_info.created_at = std::chrono::system_clock::now();
+    session_info.last_activity = session_info.created_at;
+    session_info.expires_at = session_info.created_at + std::chrono::hours(24); // 24 hour default
+    session_info.trust_level = zero_trust::TrustLevel::MEDIUM; // Initial trust level
+    session_info.origin = "authentication";
+    
+    // Store session
+    {
+        std::unique_lock<std::shared_mutex> lock(auth_mutex_);
+        active_sessions_[session_id] = session_info;
+    }
+    
+    return Result<std::string>::success(session_id);
+}
+
+Result<bool> AuthManager::validate_session(const std::string& session_id) const {
+    std::shared_lock<std::shared_mutex> lock(auth_mutex_);
+    
+    auto it = active_sessions_.find(session_id);
+    if (it == active_sessions_.end()) {
+        return Result<bool>::success(false);
+    }
+    
+    auto now = std::chrono::system_clock::now();
+    bool is_valid = now < it->second.expires_at;
+    
+    return Result<bool>::success(is_valid);
+}
+
+Result<void> AuthManager::update_session_activity(const std::string& session_id) {
+    std::unique_lock<std::shared_mutex> lock(auth_mutex_);
+    
+    auto it = active_sessions_.find(session_id);
+    if (it == active_sessions_.end()) {
+        RETURN_ERROR(ErrorCode::AUTHENTICATION_ERROR, "Session not found: " + session_id);
+    }
+    
+    it->second.last_activity = std::chrono::system_clock::now();
+    
+    return Result<void>::success();
+}
+
+Result<zero_trust::TrustLevel> AuthManager::evaluate_session_trust(const std::string& session_id) {
+    if (!zero_trust_orchestrator_) {
+        RETURN_ERROR(ErrorCode::CONFIGURATION_ERROR, "Zero-trust system not initialized");
+    }
+    
+    std::shared_lock<std::shared_mutex> lock(auth_mutex_);
+    
+    auto it = active_sessions_.find(session_id);
+    if (it == active_sessions_.end()) {
+        RETURN_ERROR(ErrorCode::AUTHENTICATION_ERROR, "Session not found: " + session_id);
+    }
+    
+    zero_trust::TrustLevel trust_level = zero_trust_orchestrator_->continuous_evaluation(session_id);
+    
+    // Update session trust level
+    auto& session = const_cast<zero_trust::SessionInfo&>(it->second);
+    session.trust_level = trust_level;
+    
+    return Result<zero_trust::TrustLevel>::success(trust_level);
+}
+
+Result<zero_trust::AccessDecision> AuthManager::authorize_access(const std::string& session_id,
+                                                                  const std::string& resource_id,
+                                                                  zero_trust::AccessType access_type) {
+    if (!zero_trust_orchestrator_) {
+        RETURN_ERROR(ErrorCode::CONFIGURATION_ERROR, "Zero-trust system not initialized");
+    }
+    
+    std::shared_lock<std::shared_mutex> lock(auth_mutex_);
+    
+    auto it = active_sessions_.find(session_id);
+    if (it == active_sessions_.end()) {
+        RETURN_ERROR(ErrorCode::AUTHENTICATION_ERROR, "Session not found: " + session_id);
+    }
+    
+    const auto& session_info = it->second;
+    
+    // Create access request
+    zero_trust::AccessRequest request;
+    request.resource_id = resource_id;
+    request.access_type = access_type;
+    request.requester_id = session_info.user_id;
+    request.device_id = session_info.device_id;
+    request.ip_address = session_info.ip_address;
+    request.justification = "Requested by user";
+    request.requested_at = std::chrono::system_clock::now();
+    
+    // Create device identity (simplified for this example)
+    zero_trust::DeviceIdentity device_identity;
+    device_identity.device_id = session_info.device_id;
+    device_identity.is_managed = true;
+    device_identity.trust_level = session_info.trust_level;
+    
+    // Evaluate access request using zero-trust orchestrator
+    zero_trust::AccessDecision decision = zero_trust_orchestrator_->evaluate_access_request(
+        request, session_info, device_identity);
+    
+    return Result<zero_trust::AccessDecision>::success(decision);
+}
+
+Result<void> AuthManager::terminate_session(const std::string& session_id) {
+    std::unique_lock<std::shared_mutex> lock(auth_mutex_);
+    
+    auto it = active_sessions_.find(session_id);
+    if (it == active_sessions_.end()) {
+        RETURN_ERROR(ErrorCode::AUTHENTICATION_ERROR, "Session not found: " + session_id);
+    }
+    
+    active_sessions_.erase(it);
+    
+    return Result<void>::success();
+}
+
+Result<std::string> AuthManager::register_device(const zero_trust::DeviceIdentity& device_identity,
+                                                  zero_trust::TrustLevel initial_trust_level) {
+    if (!zero_trust_orchestrator_) {
+        RETURN_ERROR(ErrorCode::CONFIGURATION_ERROR, "Zero-trust system not initialized");
+    }
+    
+    std::string device_id = zero_trust_orchestrator_->register_device(device_identity, initial_trust_level);
+    
+    return Result<std::string>::success(device_id);
 }
 
 } // namespace jadevectordb

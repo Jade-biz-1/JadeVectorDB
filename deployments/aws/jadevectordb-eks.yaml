@@ -1,0 +1,235 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template to deploy JadeVectorDB on EKS'
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: 'jadevectordb-cluster'
+    Description: 'Name of the EKS cluster'
+  
+  NodeInstanceType:
+    Type: String
+    Default: 'm5.xlarge'
+    AllowedValues: 
+      - 'm5.large'
+      - 'm5.xlarge'
+      - 'm5.2xlarge'
+      - 'm5.4xlarge'
+      - 'm5.8xlarge'
+    Description: 'EC2 instance type for the node group'
+  
+  NodeCount:
+    Type: Number
+    Default: 3
+    MinValue: 1
+    MaxValue: 10
+    Description: 'Number of nodes in the node group'
+  
+  VPCId:
+    Type: AWS::EC2::VPC::Id
+    Description: 'VPC ID to deploy the EKS cluster into'
+  
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: 'Subnet IDs for the EKS cluster'
+  
+  DockerImage:
+    Type: String
+    Default: 'jadevectordb/jadevectordb:latest'
+    Description: 'Docker image for JadeVectorDB'
+
+Resources:
+  # IAM role for the EKS cluster
+  EKSClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSVPCResourceControllerPolicy
+  
+  # IAM role for the EKS node group
+  EKSNodeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+  
+  # EKS Cluster
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref ClusterName
+      Version: '1.27'
+      RoleArn: !GetAtt EKSClusterRole.Arn
+      ResourcesVpcConfig:
+        SecurityGroupIds:
+          - !Ref ClusterSecurityGroup
+        SubnetIds: !Ref SubnetIds
+  
+  # Security group for the cluster control plane communication with worker nodes
+  ClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Communication between control plane and worker nodegroups'
+      VpcId: !Ref VPCId
+  
+  # Node group for the EKS cluster
+  EKSNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      ClusterName: !Ref EKSCluster.Name
+      NodegroupName: 'jadevectordb-nodegroup'
+      NodeRole: !GetAtt EKSNodeRole.Arn
+      Subnets: !Ref SubnetIds
+      InstanceTypes:
+        - !Ref NodeInstanceType
+      ScalingConfig:
+        DesiredSize: !Ref NodeCount
+        MinSize: 1
+        MaxSize: !Ref NodeCount
+      CapacityType: 'ON_DEMAND'
+
+  # EFS for shared storage
+  JadeVectorDBEFS:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      CreationToken: !Sub '${AWS::StackName}-data'
+      Encrypted: true
+      PerformanceMode: 'generalPurpose'
+      ThroughputMode: 'provisioned'
+      ProvisionedThroughputInMibps: 100
+
+  # EFS Mount Target (we'll need one per subnet in the VPC)
+  JadeVectorDBEFSMountTarget:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref JadeVectorDBEFS
+      SecurityGroups:
+        - !Ref ClusterSecurityGroup
+      SubnetId: !Select [0, !Ref SubnetIds]
+
+  # Create a ConfigMap for K8s deployment (placeholder - actual deployment done separately)
+  JadeVectorDBK8sDeployment:
+    Type: 'Custom::K8sResource'
+    Properties:
+      ServiceToken: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:EKS-K8s-Deployer'
+      ClusterName: !Ref EKSCluster.Name
+      K8sManifest: !Sub |
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: jadevectordb
+        ---
+        apiVersion: apps/v1
+        kind: StatefulSet
+        metadata:
+          name: jadevectordb
+          namespace: jadevectordb
+        spec:
+          serviceName: jadevectordb
+          replicas: ${NodeCount}
+          selector:
+            matchLabels:
+              app: jadevectordb
+          template:
+            metadata:
+              labels:
+                app: jadevectordb
+            spec:
+              containers:
+              - name: jadevectordb
+                image: ${DockerImage}
+                ports:
+                - containerPort: 8080
+                - containerPort: 8081
+                env:
+                - name: JADE_DB_PORT
+                  value: "8080"
+                - name: JADE_DB_RPC_PORT
+                  value: "8081"
+                - name: JADE_DB_LOG_LEVEL
+                  value: "INFO"
+                - name: JADE_DB_CLUSTER_SIZE
+                  value: "${NodeCount}"
+                volumeMounts:
+                - name: data-volume
+                  mountPath: /data
+                - name: config-volume
+                  mountPath: /config
+                livenessProbe:
+                  httpGet:
+                    path: /health
+                    port: 8080
+                  initialDelaySeconds: 60
+                  periodSeconds: 30
+                readinessProbe:
+                  httpGet:
+                    path: /health
+                    port: 8080
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+              volumes:
+              - name: config-volume
+                emptyDir: {}
+          volumeClaimTemplates:
+          - metadata:
+              name: data-volume
+            spec:
+              accessModes: [ "ReadWriteMany" ]
+              storageClassName: "efs-sc"
+              resources:
+                requests:
+                  storage: 100Gi
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: jadevectordb-service
+          namespace: jadevectordb
+        spec:
+          selector:
+            app: jadevectordb
+          ports:
+            - protocol: TCP
+              port: 8080
+              targetPort: 8080
+            - protocol: TCP
+              port: 8081
+              targetPort: 8081
+          type: LoadBalancer
+
+Outputs:
+  ClusterEndpoint:
+    Description: 'Endpoint for EKS control plane'
+    Value: !GetAtt EKSCluster.Endpoint
+    Export:
+      Name: !Sub '${AWS::StackName}-Endpoint'
+  
+  ClusterCertificateAuthority:
+    Description: 'Certificate authority for EKS cluster'
+    Value: !GetAtt EKSCluster.CertificateAuthorityData
+    Export:
+      Name: !Sub '${AWS::StackName}-CertificateAuthority'
+  
+  NodeInstanceRole:
+    Description: 'IAM role for EKS nodes'
+    Value: !GetAtt EKSNodeRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-NodeInstanceRole'

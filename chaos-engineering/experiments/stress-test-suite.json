@@ -1,0 +1,54 @@
+{
+  "name": "Stress Test Experiment Suite",
+  "description": "A comprehensive chaos experiment suite to stress test system resilience",
+  "experiments": [
+    {
+      "name": "Memory Exhaustion Stress Test",
+      "type": "resource_exhaustion",
+      "params": {
+        "resource_type": "memory",
+        "intensity": "high"
+      },
+      "duration": 120,
+      "interval": 30
+    },
+    {
+      "name": "Network Partition Stress Test",
+      "type": "network_partition",
+      "params": {
+        "partition_type": "all"
+      },
+      "duration": 90,
+      "interval": 30
+    },
+    {
+      "name": "Node Failure Stress Test",
+      "type": "node_failure",
+      "params": {
+        "failure_type": "pod-delete"
+      },
+      "duration": 120,
+      "interval": 30
+    },
+    {
+      "name": "CPU Exhaustion Stress Test",
+      "type": "resource_exhaustion",
+      "params": {
+        "resource_type": "cpu",
+        "intensity": "high"
+      },
+      "duration": 120,
+      "interval": 30
+    },
+    {
+      "name": "Disk Exhaustion Stress Test",
+      "type": "resource_exhaustion",
+      "params": {
+        "resource_type": "disk",
+        "intensity": "medium"
+      },
+      "duration": 90,
+      "interval": 30
+    }
+  ]
+}

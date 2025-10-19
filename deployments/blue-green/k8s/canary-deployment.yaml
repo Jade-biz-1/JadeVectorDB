@@ -1,0 +1,101 @@
+# Canary Deployment Configuration for Blue-Green Setup
+# This configuration allows for gradual traffic shifting during blue-green deployments
+
+---
+# Istio VirtualService for Canary Deployment during Blue-Green
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: jadevectordb-canary-routing
+  namespace: jadevectordb-system
+spec:
+  hosts:
+  - jadevectordb.example.com
+  http:
+  # Initially route 100% to blue (current stable)
+  - match:
+    - headers:
+        canary:
+          exact: "disabled"
+    route:
+    - destination:
+        host: jadevectordb-blue-service
+        subset: blue
+      weight: 100
+  # Route 90% to blue, 10% to green during canary phase
+  - match:
+    - headers:
+        canary:
+          exact: "partial"
+    route:
+    - destination:
+        host: jadevectordb-blue-service
+        subset: blue
+      weight: 90
+    - destination:
+        host: jadevectordb-green-service
+        subset: green
+      weight: 10
+  # Route 50% to each during testing
+  - match:
+    - headers:
+        canary:
+          exact: "half"
+    route:
+    - destination:
+        host: jadevectordb-blue-service
+        subset: blue
+      weight: 50
+    - destination:
+        host: jadevectordb-green-service
+        subset: green
+      weight: 50
+  # Route 10% to blue, 90% to green (almost full switch)
+  - match:
+    - headers:
+        canary:
+          exact: "mostly-green"
+    route:
+    - destination:
+        host: jadevectordb-blue-service
+        subset: blue
+      weight: 10
+    - destination:
+        host: jadevectordb-green-service
+        subset: green
+      weight: 90
+  # Route 100% to green (full switch)
+  - match:
+    - headers:
+        canary:
+          exact: "enabled"
+    route:
+    - destination:
+        host: jadevectordb-green-service
+        subset: green
+      weight: 100
+---
+# Destination rules for canary routing
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: jadevectordb-canary-destination
+  namespace: jadevectordb-system
+spec:
+  host: jadevectordb-blue-service
+  subsets:
+  - name: blue
+    labels:
+      version: blue
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: jadevectordb-canary-destination-green
+  namespace: jadevectordb-system
+spec:
+  host: jadevectordb-green-service
+  subsets:
+  - name: green
+    labels:
+      version: green

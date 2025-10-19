@@ -1,0 +1,228 @@
+# Blue-Green Deployment Configuration for JadeVectorDB
+# This file contains configurations for both blue and green environments
+---
+# Blue Environment Configuration
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jadevectordb-blue
+  namespace: jadevectordb-system
+  labels:
+    app: jadevectordb
+    version: blue
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: jadevectordb
+      version: blue
+  template:
+    metadata:
+      labels:
+        app: jadevectordb
+        version: blue
+    spec:
+      containers:
+      - name: jadevectordb
+        image: jadevectordb/jadevectordb:1.0.0  # Current stable version
+        ports:
+        - containerPort: 8080
+        - containerPort: 8081
+        env:
+        - name: JADE_DB_PORT
+          value: "8080"
+        - name: JADE_DB_RPC_PORT
+          value: "8081"
+        - name: JADE_DB_LOG_LEVEL
+          value: "INFO"
+        - name: JADE_DB_CLUSTER_SIZE
+          value: "3"
+        - name: JADE_DB_DATA_DIR
+          value: "/data"
+        - name: JADE_DB_CONFIG_DIR
+          value: "/config"
+        volumeMounts:
+        - name: data-volume
+          mountPath: /data
+        - name: config-volume
+          mountPath: /config
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: jadevectordb-blue-data-pvc
+      - name: config-volume
+        persistentVolumeClaim:
+          claimName: jadevectordb-config-pvc
+---
+# Green Environment Configuration
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jadevectordb-green
+  namespace: jadevectordb-system
+  labels:
+    app: jadevectordb
+    version: green
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: jadevectordb
+      version: green
+  template:
+    metadata:
+      labels:
+        app: jadevectordb
+        version: green
+    spec:
+      containers:
+      - name: jadevectordb
+        image: jadevectordb/jadevectordb:1.1.0  # New version to be deployed
+        ports:
+        - containerPort: 8080
+        - containerPort: 8081
+        env:
+        - name: JADE_DB_PORT
+          value: "8080"
+        - name: JADE_DB_RPC_PORT
+          value: "8081"
+        - name: JADE_DB_LOG_LEVEL
+          value: "INFO"
+        - name: JADE_DB_CLUSTER_SIZE
+          value: "3"
+        - name: JADE_DB_DATA_DIR
+          value: "/data"
+        - name: JADE_DB_CONFIG_DIR
+          value: "/config"
+        volumeMounts:
+        - name: data-volume
+          mountPath: /data
+        - name: config-volume
+          mountPath: /config
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: jadevectordb-green-data-pvc
+      - name: config-volume
+        persistentVolumeClaim:
+          claimName: jadevectordb-config-pvc
+---
+# Service for Blue Environment
+apiVersion: v1
+kind: Service
+metadata:
+  name: jadevectordb-blue-service
+  namespace: jadevectordb-system
+spec:
+  selector:
+    app: jadevectordb
+    version: blue
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+    - protocol: TCP
+      port: 8081
+      targetPort: 8081
+  type: ClusterIP
+---
+# Service for Green Environment
+apiVersion: v1
+kind: Service
+metadata:
+  name: jadevectordb-green-service
+  namespace: jadevectordb-system
+spec:
+  selector:
+    app: jadevectordb
+    version: green
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+    - protocol: TCP
+      port: 8081
+      targetPort: 8081
+  type: ClusterIP
+---
+# Main Service that routes to active environment (initially blue)
+apiVersion: v1
+kind: Service
+metadata:
+  name: jadevectordb-service
+  namespace: jadevectordb-system
+spec:
+  selector:
+    app: jadevectordb
+    version: blue  # Initially routes to blue environment
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+    - protocol: TCP
+      port: 8081
+      targetPort: 8081
+  type: LoadBalancer
+---
+# PersistentVolumeClaim for Blue Environment Data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jadevectordb-blue-data-pvc
+  namespace: jadevectordb-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+# PersistentVolumeClaim for Green Environment Data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jadevectordb-green-data-pvc
+  namespace: jadevectordb-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+# PersistentVolumeClaim for Shared Config
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jadevectordb-config-pvc
+  namespace: jadevectordb-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
