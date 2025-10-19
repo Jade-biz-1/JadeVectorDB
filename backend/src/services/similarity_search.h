@@ -17,6 +17,7 @@
 #include "search_utils.h"
 #include "metadata_filter.h"
 #include "lib/metrics.h"
+#include "lib/vector_operations.h"
 
 namespace jadevectordb {
 
@@ -48,6 +49,9 @@ class SimilaritySearchService {
 private:
     std::unique_ptr<VectorStorageService> vector_storage_;
     std::shared_ptr<logging::Logger> logger_;
+    
+    // Vector operations for similarity computations (with CPU/GPU switching)
+    std::shared_ptr<vector_ops::IVectorOperations> vector_ops_;
     
     // Metrics for performance monitoring
     std::shared_ptr<Counter> search_requests_counter_;

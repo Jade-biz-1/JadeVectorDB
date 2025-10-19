@@ -2,20 +2,20 @@ cmake_minimum_required(VERSION 3.20)
 
 project(JadeVectorDB VERSION 1.0.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Compiler-specific options
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -O3")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -O3 -std=c++20")
     # Coverage options - only when BUILD_COVERAGE is enabled
     option(BUILD_COVERAGE "Build with gcov coverage" OFF)
     if(BUILD_COVERAGE)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage -g")
     endif()
 elseif(MSVC)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /std:c++20")
 endif()
 
 # Find required packages
@@ -112,6 +112,10 @@ add_executable(jadevectordb
     src/services/similarity_search.cpp
     src/services/database_service.cpp
     src/services/index_service.cpp
+    src/services/index/pq_index.cpp
+    src/services/index/opq_index.cpp
+    src/services/index/sq_index.cpp
+    src/services/index/composite_index.cpp
     src/api/rest/rest_api.cpp
     src/lib/mmap_utils.cpp
     src/lib/simd_ops.cpp
@@ -181,6 +185,10 @@ add_executable(jadevectordb_tests
     tests/test_integration_comprehensive.cpp
     tests/test_core_services_comprehensive.cpp
     tests/test_service_interactions.cpp
+    tests/test_advanced_filtering.cpp
+    tests/test_advanced_filtering_integration.cpp
+    tests/test_advanced_embedding_unit.cpp
+    tests/test_advanced_embedding_integration.cpp
 )
 
 target_link_libraries(jadevectordb_tests 
@@ -200,10 +208,17 @@ endif()
 
 add_executable(search_benchmarks
     tests/benchmarks/search_benchmarks.cpp
+    tests/benchmarks/advanced_filtering_benchmarks.cpp
+    tests/benchmarks/advanced_indexing_benchmarks.cpp
     src/services/vector_storage.cpp
     src/services/similarity_search.cpp
     src/services/database_service.cpp
     src/services/database_layer.cpp
+    src/services/index_service.cpp
+    src/services/index/pq_index.cpp
+    src/services/index/opq_index.cpp
+    src/services/index/sq_index.cpp
+    src/services/index/composite_index.cpp
     src/models/vector.cpp
     src/models/database.cpp
     src/models/index.cpp
@@ -235,6 +250,11 @@ add_executable(filtered_search_benchmarks
     src/services/database_service.cpp
     src/services/database_layer.cpp
     src/services/metadata_filter.cpp
+    src/services/index_service.cpp
+    src/services/index/pq_index.cpp
+    src/services/index/opq_index.cpp
+    src/services/index/sq_index.cpp
+    src/services/index/composite_index.cpp
     src/models/vector.cpp
     src/models/database.cpp
     src/models/index.cpp

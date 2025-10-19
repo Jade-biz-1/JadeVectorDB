@@ -15,6 +15,9 @@
 #include "services/sharding_service.h"
 #include "services/query_router.h"
 #include "services/replication_service.h"
+#include "lib/compression.h"
+#include "lib/encryption.h"
+#include "lib/field_encryption_service.h"
 
 namespace jadevectordb {
 
@@ -25,6 +28,11 @@ private:
     std::shared_ptr<ShardingService> sharding_service_;
     std::shared_ptr<QueryRouter> query_router_;
     std::shared_ptr<ReplicationService> replication_service_;
+    std::unique_ptr<compression::CompressionManager> compression_manager_;
+    bool compression_enabled_;
+    std::unique_ptr<encryption::EncryptionManager> encryption_manager_;
+    std::shared_ptr<encryption::FieldEncryptionServiceImpl> field_encryption_service_;
+    bool encryption_enabled_;
 
 public:
     explicit VectorStorageService(
@@ -88,6 +96,21 @@ public:
     Result<void> migrate_vector(const std::string& vector_id, 
                               const std::string& source_shard,
                               const std::string& target_shard);
+    
+    // Compression-related methods
+    Result<void> enable_compression(const compression::CompressionConfig& config);
+    Result<void> disable_compression();
+    bool is_compression_enabled() const;
+    Result<compression::CompressionConfig> get_compression_config() const;
+
+    // Encryption-related methods
+    Result<void> enable_encryption();
+    Result<void> disable_encryption();
+    bool is_encryption_enabled() const;
+    Result<void> configure_field_encryption(const std::string& field_path, 
+                                          const encryption::EncryptionConfig& config);
+    jadevectordb::Vector encrypt_vector_data(const Vector& vector);
+    jadevectordb::Vector decrypt_vector_data(const Vector& vector);
 
 private:
     // Helper to get the appropriate shard for a vector

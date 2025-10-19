@@ -12,7 +12,11 @@ VectorStorageService::VectorStorageService(
     : db_layer_(std::move(db_layer))
     , sharding_service_(sharding_service)
     , query_router_(query_router)
-    , replication_service_(replication_service) {
+    , replication_service_(replication_service)
+    , compression_manager_(std::make_unique<compression::CompressionManager>())
+    , compression_enabled_(false)
+    , encryption_manager_(std::make_unique<encryption::EncryptionManager>())
+    , encryption_enabled_(false) {
     
     if (!db_layer_) {
         // If no database layer is provided, create a default one
@@ -41,7 +45,13 @@ Result<void> VectorStorageService::store_vector(const std::string& database_id, 
         return validation_result;
     }
     
-    auto result = db_layer_->store_vector(database_id, vector);
+    // Encrypt the vector if encryption is enabled
+    Vector encrypted_vector = vector;
+    if (encryption_enabled_) {
+        encrypted_vector = encrypt_vector_data(vector);
+    }
+    
+    auto result = db_layer_->store_vector(database_id, encrypted_vector);
     if (result.has_value()) {
         LOG_DEBUG(logger_, "Stored vector: " << vector.id << " in database: " << database_id);
     }
@@ -62,7 +72,15 @@ Result<void> VectorStorageService::batch_store_vectors(const std::string& databa
         }
     }
     
-    auto result = db_layer_->batch_store_vectors(database_id, vectors);
+    // Encrypt vectors if encryption is enabled
+    std::vector<Vector> encrypted_vectors = vectors;
+    if (encryption_enabled_) {
+        for (auto& vector : encrypted_vectors) {
+            vector = encrypt_vector_data(vector);
+        }
+    }
+    
+    auto result = db_layer_->batch_store_vectors(database_id, encrypted_vectors);
     if (result.has_value()) {
         LOG_DEBUG(logger_, "Batch stored " << vectors.size() << " vectors in database: " << database_id);
     }
@@ -72,12 +90,30 @@ Result<void> VectorStorageService::batch_store_vectors(const std::string& databa
 
 Result<Vector> VectorStorageService::retrieve_vector(const std::string& database_id, 
                                                     const std::string& vector_id) const {
-    return db_layer_->retrieve_vector(database_id, vector_id);
+    auto result = db_layer_->retrieve_vector(database_id, vector_id);
+    if (result.has_value() && encryption_enabled_) {
+        // Note: This is a const method, so we need to handle decryption differently
+        // In a real implementation, we'd need to make this non-const or use mutable members
+        // For this implementation, I'll create a non-const version of this method
+        Vector decrypted_vector = const_cast<VectorStorageService*>(this)->decrypt_vector_data(result.value());
+        return Result<Vector>::success(decrypted_vector);
+    }
+    return result;
 }
 
 Result<std::vector<Vector>> VectorStorageService::retrieve_vectors(const std::string& database_id, 
                                                                  const std::vector<std::string>& vector_ids) const {
-    return db_layer_->retrieve_vectors(database_id, vector_ids);
+    auto result = db_layer_->retrieve_vectors(database_id, vector_ids);
+    if (result.has_value() && encryption_enabled_) {
+        // Decrypt vectors if encryption is enabled
+        std::vector<Vector> decrypted_vectors;
+        decrypted_vectors.reserve(result.value().size());
+        for (const auto& vector : result.value()) {
+            decrypted_vectors.push_back(const_cast<VectorStorageService*>(this)->decrypt_vector_data(vector));
+        }
+        return Result<std::vector<Vector>>::success(std::move(decrypted_vectors));
+    }
+    return result;
 }
 
 Result<void> VectorStorageService::update_vector(const std::string& database_id, const Vector& vector) {
@@ -161,6 +197,104 @@ Result<void> VectorStorageService::validate_vector(const std::string& database_i
 
 Result<std::vector<std::string>> VectorStorageService::get_all_vector_ids(const std::string& database_id) const {
     return db_layer_->get_all_vector_ids(database_id);
+}
+
+Result<void> VectorStorageService::enable_compression(const compression::CompressionConfig& config) {
+    if (!compression_manager_) {
+        RETURN_ERROR(ErrorCode::INITIALIZE_ERROR, "Compression manager not initialized");
+    }
+    
+    bool success = compression_manager_->configure(config);
+    if (!success) {
+        RETURN_ERROR(ErrorCode::CONFIGURATION_ERROR, "Failed to configure compression algorithm");
+    }
+    
+    compression_enabled_ = true;
+    LOG_INFO(logger_, "Compression enabled with algorithm: " + 
+             std::to_string(static_cast<int>(config.type)));
+    
+    return Result<void>::success();
+}
+
+Result<void> VectorStorageService::disable_compression() {
+    compression_enabled_ = false;
+    LOG_INFO(logger_, "Compression disabled");
+    return Result<void>::success();
+}
+
+bool VectorStorageService::is_compression_enabled() const {
+    return compression_enabled_;
+}
+
+Result<compression::CompressionConfig> VectorStorageService::get_compression_config() const {
+    if (!compression_enabled_ || !compression_manager_) {
+        RETURN_ERROR(ErrorCode::CONFIGURATION_ERROR, "Compression not enabled or manager not available");
+    }
+    
+    return Result<compression::CompressionConfig>::success(compression_manager_->get_config());
+}
+
+Result<void> VectorStorageService::enable_encryption() {
+    // Initialize the key management service
+    auto kms = std::make_unique<encryption::KeyManagementServiceImpl>();
+    encryption_manager_->initialize(std::move(kms));
+    
+    // Initialize the field encryption service
+    field_encryption_service_ = std::make_shared<encryption::FieldEncryptionServiceImpl>(
+        std::make_unique<encryption::EncryptionManager>(*encryption_manager_));
+    
+    encryption_enabled_ = true;
+    LOG_INFO(logger_, "Encryption enabled");
+    return Result<void>::success();
+}
+
+Result<void> VectorStorageService::disable_encryption() {
+    encryption_enabled_ = false;
+    field_encryption_service_.reset();
+    LOG_INFO(logger_, "Encryption disabled");
+    return Result<void>::success();
+}
+
+bool VectorStorageService::is_encryption_enabled() const {
+    return encryption_enabled_;
+}
+
+Result<void> VectorStorageService::configure_field_encryption(const std::string& field_path, 
+                                                            const encryption::EncryptionConfig& config) {
+    if (!encryption_enabled_ || !field_encryption_service_) {
+        RETURN_ERROR(ErrorCode::CONFIGURATION_ERROR, "Encryption not enabled or service not initialized");
+    }
+    
+    try {
+        field_encryption_service_->configure_field(field_path, config);
+        LOG_DEBUG(logger_, "Field encryption configured for: " + field_path);
+        return Result<void>::success();
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Failed to configure field encryption: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::CONFIGURATION_ERROR, std::string("Failed to configure field encryption: ") + e.what());
+    }
+}
+
+jadevectordb::Vector VectorStorageService::encrypt_vector_data(const Vector& vector) {
+    if (!encryption_enabled_ || !field_encryption_service_) {
+        // If encryption is not enabled, return the original vector
+        return vector;
+    }
+    
+    // Use the vector data encryptor to encrypt the vector
+    encryption::VectorDataEncryptor encryptor(field_encryption_service_);
+    return encryptor.encrypt_vector(vector);
+}
+
+jadevectordb::Vector VectorStorageService::decrypt_vector_data(const Vector& vector) {
+    if (!encryption_enabled_ || !field_encryption_service_) {
+        // If encryption is not enabled, return the original vector
+        return vector;
+    }
+    
+    // Use the vector data encryptor to decrypt the vector
+    encryption::VectorDataEncryptor encryptor(field_encryption_service_);
+    return encryptor.decrypt_vector(vector);
 }
 
 } // namespace jadevectordb

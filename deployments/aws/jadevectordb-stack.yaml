@@ -1,0 +1,221 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for deploying JadeVectorDB on AWS'
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: 't3.medium'
+    AllowedValues: 
+      - 't3.small'
+      - 't3.medium'
+      - 't3.large'
+      - 't3.xlarge'
+      - 't3.2xlarge'
+      - 'm5.large'
+      - 'm5.xlarge'
+      - 'm5.2xlarge'
+    Description: 'EC2 instance type for JadeVectorDB instances'
+  
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: 'Name of an existing EC2 KeyPair for SSH access'
+  
+  DatabaseInstanceCount:
+    Type: Number
+    Default: 3
+    MinValue: 1
+    MaxValue: 10
+    Description: 'Number of JadeVectorDB instances in the cluster'
+  
+  VPCId:
+    Type: AWS::EC2::VPC::Id
+    Description: 'VPC ID to deploy the cluster into'
+  
+  PublicSubnetIds:
+    Type: CommaDelimitedList
+    Description: 'Public subnet IDs for load balancer'
+  
+  PrivateSubnetIds:
+    Type: CommaDelimitedList
+    Description: 'Private subnet IDs for JadeVectorDB instances'
+  
+  DockerImage:
+    Type: String
+    Default: 'jadevectordb/jadevectordb:latest'
+    Description: 'Docker image for JadeVectorDB'
+
+Resources:
+  # IAM Role for EC2 instances
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+  
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2InstanceRole
+
+  # Security groups
+  JadeVectorDBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Security group for JadeVectorDB instances'
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 8081
+          ToPort: 8081
+          SourceSecurityGroupId: !Ref JadeVectorDBSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: '0.0.0.0/0'  # Should be restricted in production
+  
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Security group for Load Balancer'
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: '0.0.0.0/0'
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: '0.0.0.0/0'
+
+  # EFS for shared storage
+  JadeVectorDBEFS:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      CreationToken: !Sub '${AWS::StackName}-data'
+      Encrypted: true
+      PerformanceMode: 'generalPurpose'
+      ThroughputMode: 'provisioned'
+      ProvisionedThroughputInMibps: 100
+
+  JadeVectorDBEFSMountTarget:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref JadeVectorDBEFS
+      SecurityGroups:
+        - !Ref JadeVectorDBSecurityGroup
+      SubnetId: !Select [0, !Ref PrivateSubnetIds]
+
+  # Auto Scaling Group
+  JadeVectorDBAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier: !Ref PrivateSubnetIds
+      LaunchConfigurationName: !Ref JadeVectorDBLaunchConfiguration
+      MinSize: !Ref DatabaseInstanceCount
+      MaxSize: !Ref DatabaseInstanceCount
+      DesiredCapacity: !Ref DatabaseInstanceCount
+      TargetGroupARNs:
+        - !Ref JadeVectorDBTargetGroup
+      Tags:
+        - Key: Name
+          Value: JadeVectorDB-Node
+          PropagateAtLaunch: true
+
+  JadeVectorDBLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: ami-0c02fb55956c7d316  # Amazon Linux 2
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SecurityGroups:
+        - !Ref JadeVectorDBSecurityGroup
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y docker
+          systemctl start docker
+          usermod -a -G docker ec2-user
+          
+          # Install NFS client for EFS
+          yum install -y amazon-efs-utils
+          mkdir -p /data /config
+          mount -t efs ${JadeVectorDBEFS}:/ /data
+          
+          # Pull and run JadeVectorDB container
+          docker pull ${DockerImage}
+          docker run -d \
+            --name jadevectordb \
+            -p 8080:8080 \
+            -p 8081:8081 \
+            -v /data:/data \
+            -v /config:/config \
+            -e JADE_DB_PORT=8080 \
+            -e JADE_DB_RPC_PORT=8081 \
+            -e JADE_DB_LOG_LEVEL=INFO \
+            -e JADE_DB_CLUSTER_SIZE=${DatabaseInstanceCount} \
+            -e JADE_DB_DATA_DIR=/data \
+            -e JADE_DB_CONFIG_DIR=/config \
+            ${DockerImage}
+
+  # Load Balancer
+  JadeVectorDBLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Subnets: !Ref PublicSubnetIds
+      Type: application
+
+  JadeVectorDBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: 8080
+      Protocol: HTTP
+      VpcId: !Ref VPCId
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+      Matcher:
+        HttpCode: '200'
+      TargetType: instance
+
+  JadeVectorDBLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref JadeVectorDBTargetGroup
+      LoadBalancerArn: !Ref JadeVectorDBLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+Outputs:
+  LoadBalancerDNS:
+    Description: 'DNS name of the application load balancer'
+    Value: !GetAtt JadeVectorDBLoadBalancer.DNSName
+    Export:
+      Name: !Sub '${AWS::StackName}-LoadBalancerDNS'
+  
+  JadeVectorDBEFSId:
+    Description: 'EFS file system ID for JadeVectorDB data'
+    Value: !Ref JadeVectorDBEFS
+    Export:
+      Name: !Sub '${AWS::StackName}-EFSId'

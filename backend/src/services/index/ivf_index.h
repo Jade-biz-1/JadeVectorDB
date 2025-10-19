@@ -19,15 +19,17 @@ namespace jadevectordb {
 class IvfIndex {
 public:
     struct IvfParams {
-        int num_clusters = 1000;          // Number of clusters/partitions
-        int max_iterations = 100;         // Max iterations for k-means clustering
-        int num_probes = 10;              // Number of clusters to probe during search
-        float tolerance = 1e-4;           // Tolerance for k-means convergence
-        bool use_product_quantization = false;  // Whether to use PQ for compression
-        int pq_subvector_dimension = 16;  // Dimension of each subvector in PQ
+        int num_clusters;          // Number of clusters/partitions
+        int max_iterations;        // Max iterations for k-means clustering
+        int num_probes;            // Number of clusters to probe during search
+        float tolerance;           // Tolerance for k-means convergence
+        bool use_product_quantization;  // Whether to use PQ for compression
+        int pq_subvector_dimension;  // Dimension of each subvector in PQ
         
         // Constructor
-        IvfParams() = default;
+        IvfParams() : num_clusters(1000), max_iterations(100), num_probes(10), 
+                      tolerance(1e-4f), use_product_quantization(false),
+                      pq_subvector_dimension(16) {}
     };
 
 private:

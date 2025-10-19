@@ -1,0 +1,60 @@
+# Cloud-Agnostic Configuration for JadeVectorDB
+# This configuration can be used across AWS, Azure, and GCP
+
+version: '1.0'
+
+# General service configuration
+jadevectordb:
+  image: jadevectordb/jadevectordb:latest
+  replicas: 3
+  ports:
+    - "8080:8080"  # API port
+    - "8081:8081"  # RPC port for cluster communication
+  environment:
+    JADE_DB_PORT: "8080"
+    JADE_DB_RPC_PORT: "8081"
+    JADE_DB_LOG_LEVEL: "INFO"
+    JADE_DB_CLUSTER_SIZE: "{{REPLICA_COUNT}}"
+    JADE_DB_DATA_DIR: "/data"
+    JADE_DB_CONFIG_DIR: "/config"
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+  storage:
+    data:
+      size: "100Gi"
+      class: "default"
+    config:
+      size: "1Gi"
+      class: "default"
+  health_check:
+    path: "/health"
+    port: 8080
+    initial_delay: 60
+    period: 30
+
+# Monitoring configuration
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+    port: 9090
+  grafana:
+    enabled: true
+    port: 3000
+
+# Security configuration
+security:
+  tls_enabled: true
+  authentication: "api_key"
+  encryption_at_rest: true
+
+# Network configuration
+network:
+  service_type: "LoadBalancer"  # Can be LoadBalancer, NodePort, or ClusterIP
+  cluster_internal_port: 8081
+  external_api_port: 8080

@@ -89,7 +89,7 @@ class Histogram : public Metric {
 private:
     mutable std::mutex mutex_;
     std::vector<double> buckets_;
-    std::vector<std::atomic<uint64_t>> bucket_counts_;
+    std::vector<uint64_t> bucket_counts_;
     std::atomic<double> sum_;
     std::atomic<uint64_t> count_;
 

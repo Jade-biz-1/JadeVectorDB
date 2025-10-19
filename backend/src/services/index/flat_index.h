@@ -21,10 +21,10 @@ public:
     struct FlatParams {
         // For flat index, parameters are minimal
         // It's mainly used as a baseline for comparison
-        bool normalize_vectors = false;  // Whether to normalize vectors before storage
+        bool normalize_vectors;  // Whether to normalize vectors before storage
         
         // Constructor
-        FlatParams() = default;
+        FlatParams() : normalize_vectors(false) {}
     };
 
 private:
