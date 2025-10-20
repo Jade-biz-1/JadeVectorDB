@@ -1,5 +1,6 @@
 import Head from 'next/head';
 import { useState, useEffect } from 'react';
+import { monitoringApi, databaseApi } from '../lib/api';
 
 export default function MonitoringDashboard() {
   const [systemStatus, setSystemStatus] = useState(null);

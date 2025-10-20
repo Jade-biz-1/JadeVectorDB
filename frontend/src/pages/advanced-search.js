@@ -2,7 +2,7 @@ import Head from 'next/head';
 import { useState, useEffect } from 'react';
 import { searchApi, databaseApi } from '../lib/api';
 
-export default function SearchInterface() {
+export default function AdvancedSearch() {
   const [queryVector, setQueryVector] = useState('');
   const [selectedDatabase, setSelectedDatabase] = useState('');
   const [topK, setTopK] = useState(10);
@@ -13,6 +13,11 @@ export default function SearchInterface() {
   const [databases, setDatabases] = useState([]);
   const [loading, setLoading] = useState(false);
   const [fetchingDatabases, setFetchingDatabases] = useState(false);
+  
+  // Advanced search filters
+  const [filters, setFilters] = useState([
+    { field: '', operator: 'equals', value: '' }
+  ]);
   
   // Extract database ID from query parameters if available
   useEffect(() => {
@@ -43,7 +48,25 @@ export default function SearchInterface() {
     }
   };
 
-  const handleSearch = async (e) => {
+  const handleAddFilter = () => {
+    setFilters([...filters, { field: '', operator: 'equals', value: '' }]);
+  };
+
+  const handleRemoveFilter = (index) => {
+    if (filters.length > 1) {
+      const newFilters = [...filters];
+      newFilters.splice(index, 1);
+      setFilters(newFilters);
+    }
+  };
+
+  const handleFilterChange = (index, field, value) => {
+    const newFilters = [...filters];
+    newFilters[index][field] = value;
+    setFilters(newFilters);
+  };
+
+  const handleAdvancedSearch = async (e) => {
     e.preventDefault();
     setLoading(true);
     
@@ -61,19 +84,40 @@ export default function SearchInterface() {
           .filter(v => !isNaN(v));
       }
       
+      // Build filters object from the filters array
+      const filterObj = {};
+      filters.forEach(filter => {
+        if (filter.field && filter.value) {
+          // Convert operator to the appropriate format based on API spec
+          const operatorMap = {
+            'equals': filter.field,
+            'contains': `${filter.field}[$contains]`,
+            'gt': `${filter.field}[$gt]`,
+            'gte': `${filter.field}[$gte]`,
+            'lt': `${filter.field}[$lt]`,
+            'lte': `${filter.field}[$lte]`,
+            'in': `${filter.field}[$in]`,
+          };
+          
+          const fieldKey = operatorMap[filter.operator] || filter.field;
+          filterObj[fieldKey] = filter.value;
+        }
+      });
+      
       const searchRequest = {
         queryVector: parsedVector,
         topK: parseInt(topK),
         threshold: parseFloat(threshold),
         includeMetadata: includeMetadata,
-        includeValues: includeValues
+        includeValues: includeValues,
+        filters: Object.keys(filterObj).length > 0 ? filterObj : undefined
       };
       
-      const response = await searchApi.similaritySearch(selectedDatabase, searchRequest);
+      const response = await searchApi.advancedSearch(selectedDatabase, searchRequest);
       setResults(response.results);
     } catch (error) {
-      console.error('Error performing search:', error);
-      alert(`Error performing search: ${error.message}`);
+      console.error('Error performing advanced search:', error);
+      alert(`Error performing advanced search: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -82,13 +126,13 @@ export default function SearchInterface() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Head>
-        <title>Vector Search - JadeVectorDB</title>
-        <meta name="description" content="Perform similarity searches in JadeVectorDB" />
+        <title>Advanced Vector Search - JadeVectorDB</title>
+        <meta name="description" content="Perform advanced similarity searches in JadeVectorDB" />
       </Head>
 
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold text-gray-900">Vector Search</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Advanced Vector Search</h1>
         </div>
       </header>
 
@@ -98,14 +142,15 @@ export default function SearchInterface() {
           <div className="bg-white shadow px-4 py-5 sm:rounded-lg sm:p-6 mb-8">
             <div className="md:grid md:grid-cols-3 md:gap-6">
               <div className="md:col-span-1">
-                <h3 className="text-lg font-medium leading-6 text-gray-900">Similarity Search</h3>
+                <h3 className="text-lg font-medium leading-6 text-gray-900">Advanced Similarity Search</h3>
                 <p className="mt-1 text-sm text-gray-500">
-                  Find vectors similar to your query vector.
+                  Find vectors similar to your query vector with metadata filters.
                 </p>
               </div>
               <div className="mt-5 md:mt-0 md:col-span-2">
-                <form onSubmit={handleSearch}>
+                <form onSubmit={handleAdvancedSearch}>
                   <div className="grid grid-cols-6 gap-6">
+                    {/* Database Selection */}
                     <div className="col-span-6">
                       <label htmlFor="database" className="block text-sm font-medium text-gray-700">
                         Database
@@ -125,6 +170,7 @@ export default function SearchInterface() {
                       </select>
                     </div>
 
+                    {/* Query Vector */}
                     <div className="col-span-6">
                       <label htmlFor="queryVector" className="block text-sm font-medium text-gray-700">
                         Query Vector
@@ -144,6 +190,7 @@ export default function SearchInterface() {
                       </p>
                     </div>
 
+                    {/* Search Parameters */}
                     <div className="col-span-6 sm:col-span-3">
                       <label htmlFor="topK" className="block text-sm font-medium text-gray-700">
                         Top K Results
@@ -180,6 +227,7 @@ export default function SearchInterface() {
                       </p>
                     </div>
 
+                    {/* Include Options */}
                     <div className="col-span-6">
                       <div className="flex items-start">
                         <div className="flex items-center h-5">
@@ -219,6 +267,72 @@ export default function SearchInterface() {
                         </div>
                       </div>
                     </div>
+
+                    {/* Advanced Filters */}
+                    <div className="col-span-6">
+                      <h4 className="text-md font-medium text-gray-900 mb-2">Metadata Filters</h4>
+                      <p className="text-sm text-gray-500 mb-4">
+                        Apply filters to metadata fields to narrow down search results
+                      </p>
+                      
+                      {filters.map((filter, index) => (
+                        <div key={index} className="grid grid-cols-12 gap-3 mb-3">
+                          <div className="col-span-5">
+                            <input
+                              type="text"
+                              value={filter.field}
+                              onChange={(e) => handleFilterChange(index, 'field', e.target.value)}
+                              placeholder="Field name"
+                              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                            />
+                          </div>
+                          <div className="col-span-3">
+                            <select
+                              value={filter.operator}
+                              onChange={(e) => handleFilterChange(index, 'operator', e.target.value)}
+                              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                            >
+                              <option value="equals">Equals</option>
+                              <option value="contains">Contains</option>
+                              <option value="gt">Greater than</option>
+                              <option value="gte">Greater than or equal</option>
+                              <option value="lt">Less than</option>
+                              <option value="lte">Less than or equal</option>
+                              <option value="in">In list</option>
+                            </select>
+                          </div>
+                          <div className="col-span-3">
+                            <input
+                              type="text"
+                              value={filter.value}
+                              onChange={(e) => handleFilterChange(index, 'value', e.target.value)}
+                              placeholder="Value"
+                              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                            />
+                          </div>
+                          <div className="col-span-1">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFilter(index)}
+                              disabled={filters.length <= 1}
+                              className="inline-flex items-center p-2 border border-transparent rounded-full shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                            >
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      
+                      <button
+                        type="button"
+                        onClick={handleAddFilter}
+                        className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                      >
+                        Add Filter
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-6">
@@ -227,7 +341,7 @@ export default function SearchInterface() {
                       disabled={loading || !selectedDatabase || !queryVector}
                       className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
                     >
-                      {loading ? 'Searching...' : 'Search Similar Vectors'}
+                      {loading ? 'Searching...' : 'Perform Advanced Search'}
                     </button>
                   </div>
                 </form>
@@ -241,7 +355,7 @@ export default function SearchInterface() {
               <div className="px-4 py-5 border-b border-gray-200 sm:px-6">
                 <h3 className="text-lg leading-6 font-medium text-gray-900">Search Results</h3>
                 <p className="mt-1 text-sm text-gray-500">
-                  Top {results.length} most similar vectors
+                  Top {results.length} most similar vectors with applied filters
                 </p>
               </div>
               <ul className="divide-y divide-gray-200">

@@ -1,42 +1,60 @@
 import Head from 'next/head';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { databaseApi } from '../lib/api';
 
 export default function DatabaseManagement() {
-  const [databases, setDatabases] = useState([
-    { id: 'db1', name: 'Documents', description: 'Vector database for document embeddings', vectors: 12500, indexes: 3, status: 'online' },
-    { id: 'db2', name: 'Images', description: 'Vector database for image embeddings', vectors: 8900, indexes: 2, status: 'online' },
-    { id: 'db3', name: 'Products', description: 'Vector database for product recommendations', vectors: 42500, indexes: 5, status: 'offline' }
-  ]);
-  
-  const [newDatabase, setNewDatabase] = useState({ name: '', description: '', dimension: 128 });
+  const [databases, setDatabases] = useState([]);
+  const [newDatabase, setNewDatabase] = useState({ name: '', description: '', vectorDimension: 128, indexType: 'FLAT' });
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(false);
+
+  const fetchDatabases = async () => {
+    setFetching(true);
+    try {
+      const response = await databaseApi.listDatabases();
+      setDatabases(response.databases.map(db => ({
+        id: db.databaseId,
+        name: db.name,
+        description: db.description,
+        vectors: db.stats?.vectorCount || 0,
+        indexes: db.stats?.indexCount || 0,
+        status: db.status || 'active',
+        vectorDimension: db.vectorDimension
+      })));
+    } catch (error) {
+      console.error('Error fetching databases:', error);
+      alert(`Error fetching databases: ${error.message}`);
+    } finally {
+      setFetching(false);
+    }
+  };
 
   const handleCreateDatabase = async (e) => {
     e.preventDefault();
     setLoading(true);
     
     try {
-      // In real implementation, this would call the API to create a database
-      console.log('Creating database:', newDatabase);
-      
-      // Mock creation
-      const newDb = {
-        id: `db${databases.length + 1}`,
+      const databaseData = {
         name: newDatabase.name,
         description: newDatabase.description,
-        vectors: 0,
-        indexes: 0,
-        status: 'online'
+        vectorDimension: parseInt(newDatabase.vectorDimension),
+        indexType: newDatabase.indexType
       };
       
-      setDatabases([...databases, newDb]);
-      setNewDatabase({ name: '', description: '', dimension: 128 });
+      await databaseApi.createDatabase(databaseData);
+      setNewDatabase({ name: '', description: '', vectorDimension: 128, indexType: 'FLAT' });
+      fetchDatabases(); // Refresh the list
     } catch (error) {
       console.error('Error creating database:', error);
+      alert(`Error creating database: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchDatabases();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -95,14 +113,14 @@ export default function DatabaseManagement() {
                     </div>
 
                     <div className="col-span-6 sm:col-span-3">
-                      <label htmlFor="dimension" className="block text-sm font-medium text-gray-700">
+                      <label htmlFor="vectorDimension" className="block text-sm font-medium text-gray-700">
                         Vector Dimension
                       </label>
                       <select
-                        id="dimension"
-                        name="dimension"
-                        value={newDatabase.dimension}
-                        onChange={(e) => setNewDatabase({...newDatabase, dimension: parseInt(e.target.value)})}
+                        id="vectorDimension"
+                        name="vectorDimension"
+                        value={newDatabase.vectorDimension}
+                        onChange={(e) => setNewDatabase({...newDatabase, vectorDimension: parseInt(e.target.value)})}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                       >
                         <option value={128}>128</option>
@@ -112,6 +130,24 @@ export default function DatabaseManagement() {
                         <option value={1024}>1024</option>
                         <option value={1536}>1536 (OpenAI)</option>
                         <option value={2048}>2048</option>
+                      </select>
+                    </div>
+
+                    <div className="col-span-6 sm:col-span-3">
+                      <label htmlFor="indexType" className="block text-sm font-medium text-gray-700">
+                        Index Type
+                      </label>
+                      <select
+                        id="indexType"
+                        name="indexType"
+                        value={newDatabase.indexType}
+                        onChange={(e) => setNewDatabase({...newDatabase, indexType: e.target.value})}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                      >
+                        <option value="FLAT">FLAT (Linear)</option>
+                        <option value="HNSW">HNSW (Hierarchical Navigable Small World)</option>
+                        <option value="IVF">IVF (Inverted File)</option>
+                        <option value="LSH">LSH (Locality Sensitive Hashing)</option>
                       </select>
                     </div>
                   </div>
@@ -137,10 +173,12 @@ export default function DatabaseManagement() {
                 <li key={database.id}>
                   <div className="px-4 py-4 sm:px-6">
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium text-indigo-600 truncate">{database.name}</div>
+                      <div className="text-sm font-medium text-indigo-600 truncate">
+                        <a href={`/databases/${database.id}`}>{database.name}</a>
+                      </div>
                       <div className="ml-2 flex-shrink-0 flex">
                         <span className={`inline-flex px-2 text-xs leading-5 font-semibold rounded-full ${
-                          database.status === 'online' 
+                          database.status === 'active' || database.status === 'online'
                             ? 'bg-green-100 text-green-800' 
                             : 'bg-red-100 text-red-800'
                         }`}>
@@ -170,18 +208,18 @@ export default function DatabaseManagement() {
                   </div>
                   <div className="bg-gray-50 px-4 py-4 sm:px-6">
                     <div className="flex justify-end space-x-3">
-                      <button
-                        type="button"
+                      <a
+                        href={`/databases/${database.id}`}
                         className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                       >
                         View Details
-                      </button>
-                      <button
-                        type="button"
+                      </a>
+                      <a
+                        href={`/search?databaseId=${database.id}`}
                         className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                       >
                         Search
-                      </button>
+                      </a>
                     </div>
                   </div>
                 </li>
