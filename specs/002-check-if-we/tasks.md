@@ -1236,6 +1236,75 @@ Create CLI tools in both Python and shell script formats for common operations
 **File**: `frontend/src/`  
 **Dependencies**: All API endpoints  
 Develop Next.js-based web UI with shadcn components for database management
+**Status**: [ ] PENDING
+- Phase 1: Basic UI components implemented (dashboard, database management, search, monitoring) - [X] COMPLETE
+- Phase 2: Integration with backend API endpoints - [ ] PENDING
+- Phase 3: Implementation of all core functionality including index management, embedding generation UI, batch operations, advanced search with filtering - [ ] PENDING
+- Target: Complete web UI that covers all backend API functionality with intuitive user experience
+- Current Status: Basic UI implemented with mock data; API integration needed
+
+### T182: Implement complete frontend API integration
+**Cross-Cutting Task**  
+**File**: `frontend/src/lib/api.js`, `frontend/src/services/api.js`  
+**Dependencies**: T181, All backend API endpoints  
+Implement complete frontend API integration to connect UI components to all backend API endpoints including vector operations, search, index management, embedding generation, and lifecycle management
+**Status**: [ ] PENDING
+
+### T183: Implement index management UI
+**Cross-Cutting Task**  
+**File**: `frontend/src/pages/indexes.js`, `frontend/src/components/index-management/`  
+**Dependencies**: T182  
+Implement UI components for managing vector indexes (create, list, update, delete) with configuration parameters
+**Status**: [ ] PENDING
+
+### T184: Implement embedding generation UI  
+**Cross-Cutting Task**  
+**File**: `frontend/src/pages/embeddings.js`, `frontend/src/components/embedding-generator/`  
+**Dependencies**: T182  
+Implement UI for generating embeddings from text and images with model selection and configuration options
+**Status**: [ ] PENDING
+
+### T185: Implement vector batch operations UI
+**Cross-Cutting Task**  
+**File**: `frontend/src/pages/batch-operations.js`, `frontend/src/components/batch-upload/`  
+**Dependencies**: T182  
+Implement UI for batch vector operations (upload, download) with progress tracking and error handling
+**Status**: [ ] PENDING
+
+### T186: Implement advanced search UI with filtering
+**Cross-Cutting Task**  
+**File**: `frontend/src/components/advanced-search/`  
+**Dependencies**: T182  
+Implement UI for advanced search functionality with metadata filtering, complex query builder, and result visualization
+**Status**: [ ] PENDING
+
+### T187: Implement lifecycle management UI
+**Cross-Cutting Task**  
+**File**: `frontend/src/pages/lifecycle.js`, `frontend/src/components/lifecycle-controls/`  
+**Dependencies**: T182  
+Implement UI for configuring retention policies, archival settings, and lifecycle management controls
+**Status**: [ ] PENDING
+
+### T188: Implement user authentication and API key management UI
+**Cross-Cutting Task**  
+**File**: `frontend/src/pages/auth.js`, `frontend/src/components/api-key-management/`  
+**Dependencies**: T182  
+Implement UI for user authentication, API key generation and management, and permission controls
+**Status**: [ ] PENDING
+
+### T189: Implement comprehensive frontend testing
+**Cross-Cutting Task**  
+**File**: `frontend/src/tests/`, `frontend/src/__tests__/`  
+**Dependencies**: T181-T188  
+Implement comprehensive frontend testing including unit, integration, and end-to-end tests for all UI components
+**Status**: [ ] PENDING
+
+### T190: Implement responsive UI components and accessibility features
+**Cross-Cutting Task**  
+**File**: `frontend/src/components/ui/`  
+**Dependencies**: T181-T188  
+Implement responsive design and accessibility features across all UI components to ensure usability across devices and for all users
+**Status**: [ ] PENDING
 
 ### T182: Implement security hardening
 **Cross-Cutting Task**  
@@ -1249,7 +1318,7 @@ Implement security best practices across all components
 - Target: Comprehensive security implementation with penetration testing validation
 - Result: Successfully implemented comprehensive security hardening with advanced features
 
-### T183: Performance optimization and profiling
+### T192: Performance optimization and profiling
 **Cross-Cutting Task**  
 **File**: All service files  
 **Dependencies**: All services  
@@ -1260,7 +1329,7 @@ Profile and optimize performance bottlenecks across the system
 - Target: Optimize critical performance paths across the system
 - Result: Successfully profiled and optimized performance bottlenecks
 
-### T184: Implement backup and recovery mechanisms
+### T193: Implement backup and recovery mechanisms
 **Cross-Cutting Task**  
 **File**: `backend/src/services/backup_service.h`, `backend/src/services/backup_service.cpp`  
 **Dependencies**: T025  
@@ -1444,9 +1513,11 @@ Create comprehensive API documentation and architecture documentation to address
 | US7 - Index Management | T133-T147 | 15 | 0 |
 | US9 - Data Lifecycle | T148-T162 | 15 | 0 |
 | US8 - Monitoring | T163-T177 | 15 | 0 |
-| Polish & Cross-Cutting | T178-T201 | 24 | 0 |
+| Original Cross-Cutting | T178-T181 | 1 | 0 | <!-- NOTE: T182-T190 added as new frontend implementation tasks -->
+| Frontend Implementation | T182-T190 | 0 | 9 |
+| Remaining Original Cross-Cutting | T191+ | 11 | 0 | <!-- Original T182-T191 shifted to T191-T200 -->
 
-**Total Tasks**: 219
+**Total Tasks**: 228
 **Estimated Duration**: 5-6 development months for core features (US1-US8), with additional 1 month for lifecycle management, monitoring, polish and cross-cutting concerns
 
 ## Parallel Execution Opportunities
