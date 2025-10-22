@@ -1,8 +1,14 @@
+<p align="center">
+  <img src="docs/logo.png" alt="JadeVectorDB Logo">
+</p>
+
 # JadeVectorDB
 
 A high-performance distributed vector database designed for storing, retrieving, and searching large collections of vector embeddings efficiently.
 
 ## Current Implementation Status
+
+This project is in early stage of development and still a work in progress. It is published in order to invite volunteers. 
 
 The core functionality of JadeVectorDB has been successfully implemented and tested:
 
@@ -12,6 +18,30 @@ The core functionality of JadeVectorDB has been successfully implemented and tes
 ✅ **Database Service** - Full database management capabilities  
 ✅ **REST API** - Complete HTTP API using Crow framework  
 ✅ **Comprehensive Testing** - Unit and integration tests for all components  
+
+
+### 🤝 **Join Our Development Team!**
+
+We're looking for passionate developers, testers, designers, and documentation writers to help make JadeVectorDB even better. 
+Whether you're a seasoned developer or just starting out, there are ways to contribute:
+
+- **Developers**: Help implement new features, fix bugs, or improve performance
+- **Testers**: Help us identify issues and improve reliability across platforms  
+- **UI/UX Designers**: Enhance the user experience and interface design
+- **Technical Writers**: Improve documentation and user guides
+- **Translators**: Help make DupFinder available in more languages
+
+**Ready to contribute?** Get in touch with the project maintainer or check out our [Contributing Guidelines](#contributing).
+
+### 📧 **Contact the Author**
+
+Interested in contributing or have questions about the project? 
+
+- **GitHub Issues**: [Report bugs or request features](https://github.com/Jade-biz-1/JadeVectorDB/issues)
+- **GitHub Discussions**: [Join community discussions](https://github.com/Jade-biz-1/JadeVectorDB/discussions)
+- **Direct Contact**: Open an issue with the "question" label to get in touch with the maintainer
+
+We believe in building great software together! 🚀
 
 ## Key Features Implemented
 
