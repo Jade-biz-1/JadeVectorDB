@@ -7,9 +7,22 @@ import sys
 import json
 from typing import Dict, List
 from .client import JadeVectorDB, Vector, JadeVectorDBError
+from .curl_generator import CurlCommandGenerator
 
 def create_database(args: argparse.Namespace):
     """Create a new database"""
+    if args.curl_only:
+        # Generate cURL command instead of executing
+        generator = CurlCommandGenerator(args.url, args.api_key)
+        curl_cmd = generator.create_database(
+            name=args.name,
+            description=args.description,
+            vector_dimension=args.dimension,
+            index_type=args.index_type
+        )
+        print(curl_cmd)
+        return
+        
     client = JadeVectorDB(args.url, args.api_key)
     try:
         db_id = client.create_database(
@@ -25,6 +38,13 @@ def create_database(args: argparse.Namespace):
 
 def list_databases(args: argparse.Namespace):
     """List all databases"""
+    if args.curl_only:
+        # Generate cURL command instead of executing
+        generator = CurlCommandGenerator(args.url, args.api_key)
+        curl_cmd = generator.list_databases()
+        print(curl_cmd)
+        return
+        
     client = JadeVectorDB(args.url, args.api_key)
     try:
         databases = client.list_databases()
@@ -35,6 +55,29 @@ def list_databases(args: argparse.Namespace):
 
 def store_vector(args: argparse.Namespace):
     """Store a vector in the database"""
+    if args.curl_only:
+        # Generate cURL command instead of executing
+        # Parse JSON values if provided as string
+        if args.values.startswith('[') and args.values.endswith(']'):
+            values = json.loads(args.values)
+        else:
+            values = [float(x) for x in args.values.split(',')]
+            
+        # Parse metadata if provided
+        metadata = None
+        if args.metadata:
+            metadata = json.loads(args.metadata)
+        
+        generator = CurlCommandGenerator(args.url, args.api_key)
+        curl_cmd = generator.store_vector(
+            database_id=args.database_id,
+            vector_id=args.vector_id,
+            values=values,
+            metadata=metadata
+        )
+        print(curl_cmd)
+        return
+        
     client = JadeVectorDB(args.url, args.api_key)
     try:
         # Parse JSON values if provided as string
@@ -68,6 +111,16 @@ def store_vector(args: argparse.Namespace):
 
 def retrieve_vector(args: argparse.Namespace):
     """Retrieve a vector from the database"""
+    if args.curl_only:
+        # Generate cURL command instead of executing
+        generator = CurlCommandGenerator(args.url, args.api_key)
+        curl_cmd = generator.retrieve_vector(
+            database_id=args.database_id,
+            vector_id=args.vector_id
+        )
+        print(curl_cmd)
+        return
+        
     client = JadeVectorDB(args.url, args.api_key)
     try:
         vector = client.retrieve_vector(
@@ -89,6 +142,24 @@ def retrieve_vector(args: argparse.Namespace):
 
 def search(args: argparse.Namespace):
     """Perform similarity search"""
+    if args.curl_only:
+        # Generate cURL command instead of executing
+        # Parse JSON values if provided as string
+        if args.query_vector.startswith('[') and args.query_vector.endswith(']'):
+            query_vector = json.loads(args.query_vector)
+        else:
+            query_vector = [float(x) for x in args.query_vector.split(',')]
+        
+        generator = CurlCommandGenerator(args.url, args.api_key)
+        curl_cmd = generator.similarity_search(
+            database_id=args.database_id,
+            query_vector=query_vector,
+            top_k=args.top_k,
+            threshold=args.threshold
+        )
+        print(curl_cmd)
+        return
+        
     client = JadeVectorDB(args.url, args.api_key)
     try:
         # Parse JSON values if provided as string
@@ -114,6 +185,13 @@ def search(args: argparse.Namespace):
 
 def get_status(args: argparse.Namespace):
     """Get system status"""
+    if args.curl_only:
+        # Generate cURL command instead of executing
+        generator = CurlCommandGenerator(args.url, args.api_key)
+        curl_cmd = generator.get_status()
+        print(curl_cmd)
+        return
+        
     client = JadeVectorDB(args.url, args.api_key)
     try:
         status = client.get_status()
@@ -124,6 +202,13 @@ def get_status(args: argparse.Namespace):
 
 def get_health(args: argparse.Namespace):
     """Get system health"""
+    if args.curl_only:
+        # Generate cURL command instead of executing
+        generator = CurlCommandGenerator(args.url, args.api_key)
+        curl_cmd = generator.get_health()
+        print(curl_cmd)
+        return
+        
     client = JadeVectorDB(args.url, args.api_key)
     try:
         health = client.get_health()
@@ -137,6 +222,7 @@ def setup_parser():
     parser = argparse.ArgumentParser(description="JadeVectorDB CLI")
     parser.add_argument("--url", required=True, help="JadeVectorDB API URL (e.g., http://localhost:8080)")
     parser.add_argument("--api-key", help="API key for authentication")
+    parser.add_argument("--curl-only", action="store_true", help="Generate cURL commands instead of executing")
     
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
     
