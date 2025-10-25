@@ -26,6 +26,22 @@ If authentication is required, use the `--api-key` parameter:
 jade-db --url http://localhost:8080 --api-key my-api-key [command] [options]
 ```
 
+### cURL Command Generation
+
+To generate cURL commands instead of executing them directly, use the `--curl-only` flag:
+
+```bash
+jade-db --curl-only --url http://localhost:8080 [command] [options]
+```
+
+This is useful for:
+- Learning the JadeVectorDB API
+- Debugging API calls
+- Using cURL directly in shell scripts
+- Sharing API examples with others
+
+See [cURL Commands Guide](curl_commands.md) for detailed documentation.
+
 ## Commands
 
 ### Database Management
@@ -88,7 +104,12 @@ chmod +x /path/to/jade-db.sh
 ./jade-db.sh --url http://localhost:8080 list-dbs
 ```
 
-The shell script supports the same commands as the Python CLI with similar parameters.
+The shell script supports the same commands as the Python CLI with similar parameters, including cURL command generation:
+
+```bash
+# Generate cURL commands with shell script
+./jade-db.sh --curl-only --url http://localhost:8080 list-dbs
+```
 
 ## Examples
 
@@ -114,6 +135,25 @@ The shell script supports the same commands as the Python CLI with similar param
    jade-db --url http://localhost:8080 health
    ```
 
+### Generating cURL Commands
+
+To generate cURL commands for the same operations:
+
+1. Create a database:
+   ```bash
+   jade-db --curl-only --url http://localhost:8080 create-db --name documents --description "Document embeddings" --dimension 768
+   ```
+
+2. Store a vector:
+   ```bash
+   jade-db --curl-only --url http://localhost:8080 store --database-id documents --vector-id doc1 --values "[0.1, 0.2, 0.3, 0.4, 0.5]"
+   ```
+
+3. Perform a search:
+   ```bash
+   jade-db --curl-only --url http://localhost:8080 search --database-id documents --query-vector "[0.15, 0.25, 0.35, 0.45, 0.55]" --top-k 3
+   ```
+
 ## Configuration
 
 Instead of specifying the URL for every command, you can set an environment variable:
@@ -130,3 +170,4 @@ Then run commands without the `--url` and `--api-key` parameters.
 - If you get "command not found" errors, ensure the installation completed successfully and the Python scripts are in your PATH.
 - If you receive authentication errors, verify your API key is correct.
 - If you have connection issues, ensure the JadeVectorDB server is running and accessible at the specified URL.
+- For cURL command generation, the `--curl-only` flag works with all commands and generates ready-to-use cURL commands.

@@ -1230,6 +1230,12 @@ Create Python client library that matches the API functionality
 **Dependencies**: All API endpoints  
 Create CLI tools in both Python and shell script formats for common operations
 **Status**: [X] COMPLETE
+- Phase 1: Basic CLI functionality implemented with all core API endpoints
+- Phase 2: Python CLI with comprehensive command structure completed
+- Phase 3: Shell script CLI with equivalent functionality completed
+- Phase 4: cURL command generation feature added to both CLIs
+- Target: Complete CLI tools covering all backend API functionality with multiple interface options
+- Result: Successfully created comprehensive CLI tools with Python and shell script implementations, plus cURL generation capability
 
 ### T181: Create Next.js Web UI
 **Cross-Cutting Task**  
@@ -1316,7 +1322,7 @@ Implement security best practices across all components
 - Phase 2: Implementation of advanced security features beyond basic authentication completed
 - Phase 3: Security testing and validation completed
 - Target: Comprehensive security implementation with penetration testing validation
-- Result: Successfully implemented comprehensive security hardening with advanced features
+- Result: Successfully implemented comprehensive security hardening with advanced features including TLS/SSL encryption, RBAC framework, comprehensive audit logging, and advanced rate limiting
 
 ### T192: Performance optimization and profiling
 **Cross-Cutting Task**  
@@ -1533,3 +1539,232 @@ The MVP scope includes:
 - Phase 4: US2 Similarity Search (T041-T055)
 
 This provides the core functionality needed for basic vector storage and similarity search, which represents the essential value proposition of the vector database.
+
+---
+
+## Phase 13: Interactive Tutorial Development (T215) [US10]
+
+### T215.01: Design tutorial UI/UX architecture
+**[P] US10 Task**
+**File**: `tutorial/architecture.md`, `tutorial/wireframes/`
+**Dependencies**: T181
+Design the UI architecture and user experience flow for the interactive tutorial system with visualizations, code editor, and live preview components
+
+### T215.02: Set up tutorial backend simulation service
+**[P] US10 Task**
+**File**: `backend/src/tutorial/simulation_service.h`, `backend/src/tutorial/simulation_service.cpp`
+**Dependencies**: T025
+Implement a simulated JadeVectorDB API that mimics real behavior for safe tutorial environment
+
+### T215.03: Create basic tutorial playground UI
+**[P] US10 Task**
+**File**: `frontend/src/components/tutorial/Playground.jsx`
+**Dependencies**: T181, T215.01
+Implement the basic playground UI with code editor, visualization area, and results panel
+
+### T215.04: Implement vector space visualization component
+**[P] US10 Task**
+**File**: `frontend/src/components/tutorial/VectorSpaceVisualization.jsx`
+**Dependencies**: T215.01
+Create 2D/3D visualization component for vector spaces using D3.js or similar library
+
+### T215.05: Implement syntax-highlighted code editor
+**[P] US10 Task**
+**File**: `frontend/src/components/tutorial/CodeEditor.jsx`
+**Dependencies**: T215.01
+Create a code editor with API syntax highlighting and auto-completion features
+
+### T215.06: Develop tutorial state management system
+**[P] US10 Task**
+**File**: `frontend/src/lib/tutorialState.js`, `frontend/src/contexts/TutorialContext.jsx`
+**Dependencies**: T215.01
+Implement state management for tutorial progress, user actions, and API responses
+
+### T215.07: Create tutorial module 1 - Getting Started
+**[P] US10 Task**
+**File**: `frontend/src/tutorial/modules/GettingStarted.jsx`
+**Dependencies**: T215.02, T215.03
+Implement the first tutorial module covering basic concepts and first vector database creation
+
+### T215.08: Create tutorial module 2 - Vector Manipulation
+**[P] US10 Task**
+**File**: `frontend/src/tutorial/modules/VectorManipulation.jsx`
+**Dependencies**: T215.07
+Implement the second tutorial module covering CRUD operations for vectors
+
+### T215.09: Create tutorial module 3 - Advanced Search
+**[P] US10 Task**
+**File**: `frontend/src/tutorial/modules/AdvancedSearch.jsx`
+**Dependencies**: T215.08
+Implement the third tutorial module covering similarity search techniques
+
+### T215.10: Create tutorial module 4 - Metadata Filtering
+**[P] US10 Task**
+**File**: `frontend/src/tutorial/modules/MetadataFiltering.jsx`
+**Dependencies**: T215.09
+Implement the fourth tutorial module covering metadata filtering concepts
+
+### T215.11: Create tutorial module 5 - Index Management
+**[P] US10 Task**
+**File**: `frontend/src/tutorial/modules/IndexManagement.jsx`
+**Dependencies**: T215.10
+Implement the fifth tutorial module covering index configuration and management
+
+### T215.12: Create tutorial module 6 - Advanced Features
+**[P] US10 Task**
+**File**: `frontend/src/tutorial/modules/AdvancedFeatures.jsx`
+**Dependencies**: T215.11
+Implement the sixth tutorial module covering advanced capabilities like embedding models and compression
+
+### T215.13: Implement progress tracking system
+**[P] US10 Task**
+**File**: `frontend/src/lib/progressTracker.js`
+**Dependencies**: T215.06
+Implement user progress tracking across tutorial modules with local storage persistence
+
+### T215.14: Create achievement/badge system
+**[P] US10 Task**
+**File**: `frontend/src/components/tutorial/AchievementSystem.jsx`
+**Dependencies**: T215.13
+Implement a badge/achievement system to reward tutorial completion milestones
+
+### T215.15: Implement contextual help system
+**[P] US10 Task**
+**File**: `frontend/src/components/tutorial/ContextualHelp.jsx`
+**Dependencies**: T215.01
+Create a contextual help system with tooltips and documentation links within tutorials
+
+### T215.16: Develop hint system for tutorials
+**[P] US10 Task**
+**File**: `frontend/src/lib/hintSystem.js`
+**Dependencies**: T215.01
+Implement a progressive hint system that provides assistance without giving away answers
+
+### T215.17: Create real-world use case scenarios
+**[P] US10 Task**
+**File**: `frontend/src/tutorial/scenarios/`
+**Dependencies**: T215.07-T215.12
+Develop domain-specific scenarios (product search, document similarity, etc.) for practical learning
+
+### T215.18: Implement API validation and feedback
+**[P] US10 Task**
+**File**: `frontend/src/lib/apiValidator.js`
+**Dependencies**: T215.02
+Create system for validating API calls in real-time with immediate feedback and error explanations
+
+### T215.19: Build performance metrics visualization
+**[P] US10 Task**
+**File**: `frontend/src/components/tutorial/PerformanceMetrics.jsx`
+**Dependencies**: T215.04
+Create live graphs showing query latency, throughput, and resource usage during tutorials
+
+### T215.20: Implement code export functionality
+**[P] US10 Task**
+**File**: `frontend/src/lib/codeExporter.js`
+**Dependencies**: T215.05
+Add ability to export working code snippets to use in production environments
+
+### T215.21: Create assessment and quiz system
+**[P] US10 Task**
+**File**: `frontend/src/components/tutorial/AssessmentSystem.jsx`
+**Dependencies**: T215.06
+Implement interactive quizzes and knowledge checks at the end of each module
+
+### T215.22: Develop capstone project challenge
+**[P] US10 Task**
+**File**: `frontend/src/tutorial/capstone/`
+**Dependencies**: T215.07-T215.12
+Create a comprehensive capstone project using multiple tutorial concepts together
+
+### T215.23: Add customization options for tutorials
+**[P] US10 Task**
+**File**: `frontend/src/components/tutorial/CustomizationPanel.jsx`
+**Dependencies**: T215.06
+Implement options for learning path selection, preferred languages, and use case focus
+
+### T215.24: Create tutorial completion readiness assessment
+**[P] US10 Task**
+**File**: `frontend/src/components/tutorial/ReadinessAssessment.jsx`
+**Dependencies**: T215.21
+Build self-evaluation tools to gauge user's preparedness to use JadeVectorDB in production
+
+### T215.25: Implement responsive design for tutorial
+**[P] US10 Task**
+**File**: `frontend/src/components/tutorial/ResponsiveTutorial.jsx`
+**Dependencies**: T215.03
+Ensure tutorial works seamlessly across devices with responsive design principles
+
+### T215.26: Integrate with API reference documentation
+**[P] US10 Task**
+**File**: `frontend/src/components/tutorial/InteractiveAPIDocs.jsx`
+**Dependencies**: T215.05
+Link tutorial examples directly with interactive API documentation with runnable examples
+
+### T215.27: Add benchmarking tools to tutorial
+**[P] US10 Task**
+**File**: `frontend/src/components/tutorial/BenchmarkingTools.jsx`
+**Dependencies**: T215.19
+Implement built-in performance comparison tools within tutorial environment
+
+### T216: Implement cURL command generation for CLI
+**[P] US10 Task**
+**File**: `cli/python/jadevectordb/curl_generator.py`, `cli/shell/scripts/jade-db.sh`
+**Dependencies**: T180
+Add cURL command generation capability to both Python and shell script CLIs to allow users to see the underlying API calls and use them directly
+**Status**: [X] COMPLETE
+- Phase 1: Implemented cURL command generator Python class with full API coverage
+- Phase 2: Integrated cURL generation with Python CLI using --curl-only flag
+- Phase 3: Enhanced shell script CLI to support cURL command generation
+- Phase 4: Verified backward compatibility - existing CLI functionality preserved while adding new cURL features
+- Target: Enable users to generate equivalent cURL commands for any CLI operation
+- Result: Successfully implemented cURL command generation for all CLI operations with both Python and shell script implementations
+
+### T217: Document cURL command generation feature
+**[P] US10 Task**
+**File**: `cli/README.md`, `docs/curl_commands.md`
+**Dependencies**: T216
+Create comprehensive documentation for the new cURL command generation feature including usage examples and benefits
+**Status**: [X] COMPLETE
+- Phase 1: Updated CLI README with cURL command generation documentation
+- Phase 2: Created detailed cURL commands guide with all API endpoints covered
+- Phase 3: Added usage examples for different scenarios
+- Target: Complete documentation for cURL feature with clear examples
+- Result: Successfully created comprehensive documentation for cURL command generation feature
+
+### T218: Test cURL command generation functionality
+**[P] US10 Task**
+**File**: `cli/tests/test_curl_generation.py`
+**Dependencies**: T216
+Create comprehensive tests to verify cURL command generation works correctly for all supported operations
+**Status**: [X] COMPLETE
+- Phase 1: Created unit tests for cURL generator class
+- Phase 2: Verified cURL command format correctness for all API endpoints
+- Phase 3: Tested CLI integration with --curl-only flag
+- Target: Full test coverage for cURL command generation functionality
+- Result: Successfully implemented comprehensive tests for cURL command generation
+
+---
+
+## Task Status Tracking (Updated)
+
+| Phase | Tasks | Completed | Remaining |
+|-------|-------|-----------|-----------|
+| Setup | T001-T008 | 8 | 0 |
+| Foundational | T009-T027 | 19 | 0 |
+| US1 - Vector Storage | T028-T042 | 15 | 0 |
+| US2 - Similarity Search | T043-T057 | 15 | 0 |
+| US3 - Advanced Search | T058-T072 | 15 | 0 |
+| US4 - Database Management | T073-T087 | 15 | 0 |
+| US5 - Embedding Management | T088-T117 | 30 | 0 |
+| US6 - Distributed System | T118-T132 | 15 | 0 |
+| US7 - Index Management | T133-T147 | 15 | 0 |
+| US9 - Data Lifecycle | T148-T162 | 15 | 0 |
+| US8 - Monitoring | T163-T177 | 15 | 0 |
+| Original Cross-Cutting | T178-T181 | 1 | 0 | <!-- NOTE: T182-T190 added as new frontend implementation tasks -->
+| Frontend Implementation | T182-T190 | 9 | 0 |
+| Remaining Original Cross-Cutting | T191+ | 11 | 0 | <!-- Original T182-T191 shifted to T191-T200 -->
+| cURL Command Generation | T216-T218 | 3 | 0 |
+| Interactive Tutorial | T215.01-T215.30 | 25 | 5 |
+
+**Total Tasks**: 261 (228 original + 3 new cURL tasks + 30 tutorial tasks)
+**Estimated Duration for Tutorial**: 3-4 development months for complete interactive tutorial system

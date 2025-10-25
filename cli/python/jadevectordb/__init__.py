@@ -5,7 +5,8 @@ A Python client for interacting with the JadeVectorDB vector database system.
 """
 
 from .client import JadeVectorDB, Vector, JadeVectorDBError
+from .curl_generator import CurlCommandGenerator
 
 __version__ = "1.0.0"
 __author__ = "JadeVectorDB Team"
-__all__ = ["JadeVectorDB", "Vector", "JadeVectorDBError"]
+__all__ = ["JadeVectorDB", "Vector", "JadeVectorDBError", "CurlCommandGenerator"]
