@@ -1,7 +1,7 @@
 // frontend/tests/unit/components/select.test.js
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Select } from '@@/components/ui/select';
+import { Select } from '@/components/ui/select';
 
 describe('Select Component', () => {
   test('renders select with options', () => {

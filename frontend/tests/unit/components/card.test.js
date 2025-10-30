@@ -8,7 +8,7 @@ import {
   CardTitle,
   CardDescription,
   CardContent 
-} from '@@/components/ui/card';
+} from '@/components/ui/card';
 
 describe('Card Components', () => {
   test('renders Card with correct structure', () => {

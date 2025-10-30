@@ -2,13 +2,20 @@
 #define JADEVECTORDB_IVF_INDEX_H
 
 #include "models/index.h"
+#include "lib/error_handling.h"
 #include <vector>
 #include <memory>
 #include <unordered_map>
 #include <mutex>
+#include <shared_mutex>
 #include <list>
 
 namespace jadevectordb {
+
+namespace logging {
+    class Logger;
+}
+
 
 /**
  * @brief Implementation of Inverted File (IVF) index algorithm

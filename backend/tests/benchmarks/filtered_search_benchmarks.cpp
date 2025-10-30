@@ -31,11 +31,11 @@ public:
         search_service_->initialize();
         
         // Create a test database
-        Database test_db;
+        DatabaseCreationParams test_db;
         test_db.name = "filtered_benchmark_test_db";
         test_db.vectorDimension = 128; // Standard dimension for benchmarks
         test_db.description = "Test database for filtered search performance benchmarking";
-        
+
         auto create_result = db_service_->create_database(test_db);
         if (!create_result.has_value()) {
             throw std::runtime_error("Failed to create benchmark database");
@@ -71,18 +71,18 @@ public:
             
             // Add diverse metadata for filtering
             std::vector<std::string> categories = {"finance", "technology", "healthcare"};
-            v.metadata["category"] = categories[cat_dis(gen)];
-            v.metadata["score"] = score_dis(gen);
-            v.metadata["id"] = i;
-            v.metadata["timestamp"] = std::to_string(std::time(nullptr));
-            
+            v.metadata.category = categories[cat_dis(gen)];
+            v.metadata.score = score_dis(gen);
+            v.metadata.custom["id"] = i;
+            v.metadata.custom["timestamp"] = std::to_string(std::time(nullptr));
+
             // Add tags based on category
-            if (v.metadata["category"] == "finance") {
-                v.metadata["tags"] = nlohmann::json::array({"investment", "trading", "banking"});
-            } else if (v.metadata["category"] == "technology") {
-                v.metadata["tags"] = nlohmann::json::array({"ai", "ml", "blockchain"});
+            if (v.metadata.category == "finance") {
+                v.metadata.tags = {"investment", "trading", "banking"};
+            } else if (v.metadata.category == "technology") {
+                v.metadata.tags = {"ai", "ml", "blockchain"};
             } else {
-                v.metadata["tags"] = nlohmann::json::array({"research", "clinical", "biotech"});
+                v.metadata.tags = {"research", "clinical", "biotech"};
             }
             
             auto result = vector_service_->store_vector(db_id_, v);

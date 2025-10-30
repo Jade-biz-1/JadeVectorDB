@@ -1,0 +1,53 @@
+# Use Ubuntu 20.04 as base image for compatibility with requirements
+FROM ubuntu:20.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install dependencies including software-properties-common for apt-add-repository
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    curl \
+    wget \
+    software-properties-common \
+    libeigen3-dev \
+    libgrpc++-dev \
+    libprotobuf-dev \
+    protobuf-compiler-grpc \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install latest CMake using the official method since Ubuntu 20.04 ships with an older version
+RUN wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null
+RUN apt-add-repository 'deb https://apt.kitware.com/ubuntu/ focal main'
+RUN apt-get update && apt-get install -y cmake
+
+# Install Apache Arrow
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    lsb-release \
+    && curl https://apache.jfrog.io/artifactory/arrow/$(lsb_release --id --short | tr 'A-Z' 'a-z')/apache-arrow-archive-keyring-latest-$(lsb_release --codename --short).deb -o arrow-keyring.deb \
+    && apt install -y ./arrow-keyring.deb \
+    && apt-get update \
+    && apt-get install -y libarrow-dev
+
+# Set up working directory
+WORKDIR /app
+
+# Copy backend source code
+COPY backend/ ./backend/
+
+# Build the application
+WORKDIR /app/backend
+RUN mkdir -p build && cd build && \
+    cmake .. && \
+    make -j$(nproc)
+
+# Expose the service port
+EXPOSE 8080
+
+# Default command
+CMD ["./build/jadevectordb"]

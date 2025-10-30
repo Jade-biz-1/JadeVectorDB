@@ -38,6 +38,7 @@ enum class ErrorCode {
     INVALID_STATE = 19,
     
     // Vector database specific errors
+    INITIALIZE_ERROR = 99,
     VECTOR_DIMENSION_MISMATCH = 100,
     INVALID_VECTOR_ID = 101,
     DATABASE_NOT_FOUND = 102,

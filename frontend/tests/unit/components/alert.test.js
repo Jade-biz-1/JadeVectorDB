@@ -1,7 +1,7 @@
 // frontend/tests/unit/components/alert.test.js
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { Alert, AlertTitle, AlertDescription } from '@@/components/ui/alert';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 describe('Alert Components', () => {
   test('renders Alert with correct structure', () => {

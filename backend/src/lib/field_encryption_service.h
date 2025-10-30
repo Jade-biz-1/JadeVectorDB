@@ -2,6 +2,7 @@
 #define JADEVECTORDB_FIELD_ENCRYPTION_SERVICE_H
 
 #include "encryption.h"
+#include "models/vector.h"
 #include <string>
 #include <vector>
 #include <map>

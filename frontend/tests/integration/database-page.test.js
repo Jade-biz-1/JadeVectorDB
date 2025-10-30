@@ -2,10 +2,10 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MockedProvider } from '@apollo/client/testing';
-import DatabaseManagement from '@@/pages/databases';
+import DatabaseManagement from '@/pages/databases';
 
 // Mock the API functions
-jest.mock('@@/lib/api', () => ({
+jest.mock('@/lib/api', () => ({
   databaseApi: {
     listDatabases: jest.fn(),
     createDatabase: jest.fn(),
@@ -14,7 +14,7 @@ jest.mock('@@/lib/api', () => ({
   }
 }));
 
-import { databaseApi } from '@@/lib/api';
+import { databaseApi } from '@/lib/api';
 
 // Mock localStorage
 Object.defineProperty(window, 'localStorage', {

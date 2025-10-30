@@ -29,11 +29,11 @@ public:
         search_service_->initialize();
         
         // Create a test database
-        Database test_db;
+        DatabaseCreationParams test_db;
         test_db.name = "benchmark_test_db";
         test_db.vectorDimension = 128; // Standard dimension for benchmarks
         test_db.description = "Test database for performance benchmarking";
-        
+
         auto create_result = db_service_->create_database(test_db);
         if (!create_result.has_value()) {
             throw std::runtime_error("Failed to create benchmark database");
@@ -66,9 +66,9 @@ public:
             }
             
             // Add some metadata for more realistic testing
-            v.metadata["id"] = i;
-            v.metadata["category"] = "benchmark";
-            v.metadata["timestamp"] = std::to_string(std::time(nullptr));
+            v.metadata.custom["id"] = i;
+            v.metadata.category = "benchmark";
+            v.metadata.custom["timestamp"] = std::to_string(std::time(nullptr));
             
             auto result = vector_service_->store_vector(db_id_, v);
             if (!result.has_value()) {
@@ -223,8 +223,8 @@ BENCHMARK_DEFINE_F(SearchBenchmark, BatchStoreVectors)(benchmark::State& state) 
             v.values.push_back(dis(gen));
         }
         
-        v.metadata["id"] = i;
-        v.metadata["category"] = "batch";
+        v.metadata.custom["id"] = i;
+        v.metadata.category = "batch";
         
         batch_vectors.push_back(v);
     }

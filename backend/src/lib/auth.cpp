@@ -509,7 +509,7 @@ Result<std::string> AuthManager::create_secure_session(const std::string& user_i
         active_sessions_[session_id] = session_info;
     }
     
-    return Result<std::string>::success(session_id);
+    return session_id;
 }
 
 Result<bool> AuthManager::validate_session(const std::string& session_id) const {
@@ -517,13 +517,13 @@ Result<bool> AuthManager::validate_session(const std::string& session_id) const 
     
     auto it = active_sessions_.find(session_id);
     if (it == active_sessions_.end()) {
-        return Result<bool>::success(false);
+        return false;
     }
     
     auto now = std::chrono::system_clock::now();
     bool is_valid = now < it->second.expires_at;
     
-    return Result<bool>::success(is_valid);
+    return is_valid;
 }
 
 Result<void> AuthManager::update_session_activity(const std::string& session_id) {
@@ -536,7 +536,7 @@ Result<void> AuthManager::update_session_activity(const std::string& session_id)
     
     it->second.last_activity = std::chrono::system_clock::now();
     
-    return Result<void>::success();
+    return {};
 }
 
 Result<zero_trust::TrustLevel> AuthManager::evaluate_session_trust(const std::string& session_id) {
@@ -557,7 +557,7 @@ Result<zero_trust::TrustLevel> AuthManager::evaluate_session_trust(const std::st
     auto& session = const_cast<zero_trust::SessionInfo&>(it->second);
     session.trust_level = trust_level;
     
-    return Result<zero_trust::TrustLevel>::success(trust_level);
+    return trust_level;
 }
 
 Result<zero_trust::AccessDecision> AuthManager::authorize_access(const std::string& session_id,
@@ -596,7 +596,7 @@ Result<zero_trust::AccessDecision> AuthManager::authorize_access(const std::stri
     zero_trust::AccessDecision decision = zero_trust_orchestrator_->evaluate_access_request(
         request, session_info, device_identity);
     
-    return Result<zero_trust::AccessDecision>::success(decision);
+    return decision;
 }
 
 Result<void> AuthManager::terminate_session(const std::string& session_id) {
@@ -609,7 +609,7 @@ Result<void> AuthManager::terminate_session(const std::string& session_id) {
     
     active_sessions_.erase(it);
     
-    return Result<void>::success();
+    return {};
 }
 
 Result<std::string> AuthManager::register_device(const zero_trust::DeviceIdentity& device_identity,
@@ -620,7 +620,15 @@ Result<std::string> AuthManager::register_device(const zero_trust::DeviceIdentit
     
     std::string device_id = zero_trust_orchestrator_->register_device(device_identity, initial_trust_level);
     
-    return Result<std::string>::success(device_id);
+    return device_id;
+}
+
+
+Result<void> AuthManager::initialize_zero_trust() {
+    // Stub: Zero trust orchestrator initialization not implemented
+    // zero_trust_orchestrator_ = std::make_unique<zero_trust::ZeroTrustOrchestrator>(...);
+    zero_trust_orchestrator_ = nullptr; // Not implemented yet
+    return {}; // Success
 }
 
 } // namespace jadevectordb

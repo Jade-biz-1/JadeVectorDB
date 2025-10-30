@@ -26,7 +26,48 @@ struct Index {
     
     // Constructors
     Index() : type("HNSW"), status("building") {}
-    
+
+    // Copy constructor
+    Index(const Index& other)
+        : indexId(other.indexId)
+        , databaseId(other.databaseId)
+        , type(other.type)
+        , parameters(other.parameters)
+        , status(other.status)
+        , created_at(other.created_at)
+        , updated_at(other.updated_at)
+    {
+        if (other.stats) {
+            stats = std::make_unique<Stats>(*other.stats);
+        }
+    }
+
+    // Copy assignment operator
+    Index& operator=(const Index& other) {
+        if (this != &other) {
+            indexId = other.indexId;
+            databaseId = other.databaseId;
+            type = other.type;
+            parameters = other.parameters;
+            status = other.status;
+            created_at = other.created_at;
+            updated_at = other.updated_at;
+
+            if (other.stats) {
+                stats = std::make_unique<Stats>(*other.stats);
+            } else {
+                stats.reset();
+            }
+        }
+        return *this;
+    }
+
+    // Move constructor
+    Index(Index&&) = default;
+
+    // Move assignment operator
+    Index& operator=(Index&&) = default;
+
     // Methods for validation
     bool validate() const {
         return !indexId.empty() && 

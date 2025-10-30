@@ -10,6 +10,7 @@
 #include <map>
 #include <string>
 #include <boost/thread/shared_mutex.hpp>
+#include <shared_mutex>
 #include <random>
 
 namespace jadevectordb {

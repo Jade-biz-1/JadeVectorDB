@@ -2,7 +2,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MockedProvider } from '@apollo/client/testing';
-import AuthManagement from '@@/pages/auth';
+import AuthManagement from '@/pages/auth';
 
 // Mock localStorage for authentication tests
 const mockLocalStorage = (() => {

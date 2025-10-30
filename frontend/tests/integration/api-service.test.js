@@ -1,5 +1,5 @@
 // frontend/tests/integration/api-service.test.js
-import { databaseApi, searchApi } from '@@/services/api';
+import { databaseApi, searchApi } from '@/services/api';
 
 // Mock the fetch API for testing
 global.fetch = jest.fn();
