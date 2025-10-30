@@ -44,7 +44,7 @@ Result<std::vector<ScalingRecommendation>> ScalingRecommendationGenerator::gener
         recommendations.push_back(network_recommendation.value());
     }
     
-    return Result<std::vector<ScalingRecommendation>>::success(recommendations);
+    return recommendations;
 }
 
 Result<ScalingRecommendation> ScalingRecommendationGenerator::generate_recommendation(
@@ -131,12 +131,12 @@ Result<ScalingRecommendation> ScalingRecommendationGenerator::generate_recommend
     // Generate justification
     recommendation.justification = generate_justification(recommendation, current_utilization, utilization_threshold);
     
-    return Result<ScalingRecommendation>::success(recommendation);
+    return recommendation;
 }
 
 Result<void> ScalingRecommendationGenerator::configure(const PredictiveMaintenanceConfig& config) {
     config_ = config;
-    return Result<void>::success();
+    return {};
 }
 
 const PredictiveMaintenanceConfig& ScalingRecommendationGenerator::get_config() const {
@@ -225,7 +225,7 @@ Result<std::vector<CapacityProjection>> CapacityPlanner::generate_capacity_proje
         projections.push_back(network_projection.value());
     }
     
-    return Result<std::vector<CapacityProjection>>::success(projections);
+    return projections;
 }
 
 Result<CapacityProjection> CapacityPlanner::project_capacity(const std::string& resource_type) {
@@ -286,12 +286,12 @@ Result<CapacityProjection> CapacityPlanner::project_capacity(const std::string& 
     // Generate recommendation
     projection.recommendation = generate_recommendation(projection);
     
-    return Result<CapacityProjection>::success(projection);
+    return projection;
 }
 
 Result<void> CapacityPlanner::configure(const PredictiveMaintenanceConfig& config) {
     config_ = config;
-    return Result<void>::success();
+    return {};
 }
 
 const PredictiveMaintenanceConfig& CapacityPlanner::get_config() const {
@@ -418,7 +418,7 @@ Result<void> PredictiveMaintenanceManager::initialize(const PredictiveMaintenanc
     }
     
     LOG_INFO(logger_, "Predictive Maintenance Manager initialized successfully");
-    return Result<void>::success();
+    return {};
 }
 
 Result<std::vector<ResourcePrediction>> PredictiveMaintenanceManager::predict_resource_exhaustion() const {
@@ -490,7 +490,7 @@ Result<std::vector<MaintenanceAlert>> PredictiveMaintenanceManager::generate_mai
         }
     }
     
-    return Result<std::vector<MaintenanceAlert>>::success(alerts);
+    return alerts;
 }
 
 Result<void> PredictiveMaintenanceManager::configure(const PredictiveMaintenanceConfig& config) {
@@ -508,7 +508,7 @@ Result<void> PredictiveMaintenanceManager::configure(const PredictiveMaintenance
     }
     
     LOG_INFO(logger_, "Predictive Maintenance Manager configured successfully");
-    return Result<void>::success();
+    return {};
 }
 
 const PredictiveMaintenanceConfig& PredictiveMaintenanceManager::get_config() const {

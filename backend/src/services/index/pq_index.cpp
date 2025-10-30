@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <random>
+#include <shared_mutex>
 #include <boost/thread/shared_mutex.hpp>
 #include <sstream>
 
@@ -39,7 +40,7 @@ void PqIndex::initialize_random_generator() {
 
 Result<bool> PqIndex::add_vector(int vector_id, const std::vector<float>& vector) {
     if (vector.empty()) {
-        return Result<bool>::failure("Vector cannot be empty");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "Vector cannot be empty"));
     }
     
     if (dimension_ == 0) {
@@ -54,23 +55,23 @@ Result<bool> PqIndex::add_vector(int vector_id, const std::vector<float>& vector
             }
         }
     } else if (static_cast<int>(vector.size()) != dimension_) {
-        return Result<bool>::failure("Vector dimension mismatch");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "Vector dimension mismatch"));
     }
     
-    std::unique_lock<boost::shared_mutex> lock(index_mutex_);
+    std::unique_lock<std::shared_mutex> lock(index_mutex_);
     
     // Store the original vector for now
     original_vectors_[vector_id] = vector;
     
-    return Result<bool>::success(true);
+    return true;
 }
 
 Result<bool> PqIndex::build() {
     if (original_vectors_.empty()) {
-        return Result<bool>::success(true); // Nothing to build
+        return true; // Nothing to build
     }
     
-    std::unique_lock<boost::shared_mutex> lock(index_mutex_);
+    std::unique_lock<std::shared_mutex> lock(index_mutex_);
     
     // Extract vectors for training
     std::vector<std::vector<float>> training_vectors;
@@ -81,7 +82,7 @@ Result<bool> PqIndex::build() {
     // Train the subvector centroids
     auto result = train_subvector_centroids(training_vectors);
     if (!result.has_value()) {
-        return Result<bool>::failure("Failed to train subvector centroids: " + result.error().message);
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to train subvector centroids: " + result.error().message));
     }
     
     is_trained_ = true;
@@ -97,11 +98,11 @@ Result<bool> PqIndex::build() {
     is_built_ = true;
     
     LOG_INFO(logger_, "PQ index built with " << original_vectors_.size() << " vectors");
-    return Result<bool>::success(true);
+    return true;
 }
 
 Result<bool> PqIndex::build_from_vectors(const std::vector<std::pair<int, std::vector<float>>>& vectors) {
-    std::unique_lock<boost::shared_mutex> lock(index_mutex_);
+    std::unique_lock<std::shared_mutex> lock(index_mutex_);
     
     clear();
     
@@ -119,14 +120,14 @@ Result<bool> PqIndex::build_from_vectors(const std::vector<std::pair<int, std::v
 
 Result<std::vector<std::pair<int, float>>> PqIndex::search(const std::vector<float>& query, int k, float threshold) const {
     if (!is_built_) {
-        return Result<std::vector<std::pair<int, float>>>::failure("Index is not built");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_STATE, "Index is not built"));
     }
     
     if (static_cast<int>(query.size()) != dimension_) {
-        return Result<std::vector<std::pair<int, float>>>::failure("Query dimension mismatch");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "Query dimension mismatch"));
     }
     
-    std::shared_lock<boost::shared_mutex> lock(index_mutex_);
+    std::shared_lock<std::shared_mutex> lock(index_mutex_);
     
     // Encode the query vector to PQ code if needed
     std::vector<uint8_t> query_code;
@@ -169,39 +170,39 @@ Result<std::vector<std::pair<int, float>>> PqIndex::search(const std::vector<flo
         results.resize(k);
     }
     
-    return Result<std::vector<std::pair<int, float>>>::success(std::move(results));
+    return std::move(results);
 }
 
 bool PqIndex::contains(int vector_id) const {
-    std::shared_lock<boost::shared_mutex> lock(index_mutex_);
+    std::shared_lock<std::shared_mutex> lock(index_mutex_);
     return pq_codes_.find(vector_id) != pq_codes_.end();
 }
 
 Result<bool> PqIndex::remove_vector(int vector_id) {
-    std::unique_lock<boost::shared_mutex> lock(index_mutex_);
+    std::unique_lock<std::shared_mutex> lock(index_mutex_);
     
     auto it = pq_codes_.find(vector_id);
     if (it == pq_codes_.end()) {
-        return Result<bool>::success(false); // Vector not found
+        return false; // Vector not found
     }
     
     pq_codes_.erase(it);
     original_vectors_.erase(vector_id);
     
-    return Result<bool>::success(true);
+    return true;
 }
 
 Result<bool> PqIndex::update_vector(int vector_id, const std::vector<float>& new_vector) {
     if (static_cast<int>(new_vector.size()) != dimension_) {
-        return Result<bool>::failure("Vector dimension mismatch");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "Vector dimension mismatch"));
     }
     
-    std::unique_lock<boost::shared_mutex> lock(index_mutex_);
+    std::unique_lock<std::shared_mutex> lock(index_mutex_);
     
     // Update the original vector
     auto it = original_vectors_.find(vector_id);
     if (it == original_vectors_.end()) {
-        return Result<bool>::failure("Vector not found in index");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::NOT_FOUND, "Vector not found in index"));
     }
     
     it->second = new_vector;
@@ -212,11 +213,11 @@ Result<bool> PqIndex::update_vector(int vector_id, const std::vector<float>& new
         pq_codes_[vector_id] = std::move(new_code);
     }
     
-    return Result<bool>::success(true);
+    return true;
 }
 
 size_t PqIndex::size() const {
-    std::shared_lock<boost::shared_mutex> lock(index_mutex_);
+    std::shared_lock<std::shared_mutex> lock(index_mutex_);
     return pq_codes_.size();
 }
 
@@ -231,11 +232,11 @@ Result<std::unordered_map<std::string, std::string>> PqIndex::get_stats() const 
     stats["is_built"] = is_built_ ? "true" : "false";
     stats["dimension"] = std::to_string(dimension_);
     
-    return Result<std::unordered_map<std::string, std::string>>::success(std::move(stats));
+    return std::move(stats);
 }
 
 void PqIndex::clear() {
-    std::unique_lock<boost::shared_mutex> lock(index_mutex_);
+    std::unique_lock<std::shared_mutex> lock(index_mutex_);
     subvector_centroids_.clear();
     pq_codes_.clear();
     original_vectors_.clear();
@@ -316,7 +317,7 @@ std::vector<float> PqIndex::decode_code(const std::vector<uint8_t>& code) const 
 
 Result<bool> PqIndex::train_subvector_centroids(const std::vector<std::vector<float>>& vectors) {
     if (vectors.empty() || dimension_ == 0) {
-        return Result<bool>::failure("Cannot train with empty vectors or unknown dimension");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_STATE, "Cannot train with empty vectors or unknown dimension"));
     }
     
     if (params_.num_subvectors == 0) {
@@ -352,7 +353,7 @@ Result<bool> PqIndex::train_subvector_centroids(const std::vector<std::vector<fl
     }
     
     LOG_INFO(logger_, "Trained PQ centroids for " << params_.num_subvectors << " subvectors");
-    return Result<bool>::success(true);
+    return true;
 }
 
 std::vector<std::vector<float>> PqIndex::split_into_subvectors(const std::vector<float>& vector) const {

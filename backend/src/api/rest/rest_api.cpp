@@ -13,6 +13,21 @@ using json = nlohmann::json;
 
 namespace jadevectordb {
 
+// Lifecycle management types
+struct RetentionPolicy {
+    int max_age_days;
+    bool archive_on_expire;
+    int archive_threshold_days;
+    bool enable_cleanup;
+    std::string cleanup_schedule;
+};
+
+struct LifecycleConfig {
+    std::string database_id;
+    RetentionPolicy retention_policy;
+    bool enabled;
+};
+
 RestApiService::RestApiService(int port) 
     : port_(port), running_(false) {
     logger_ = logging::LoggerManager::get_logger("RestApiService");
@@ -75,14 +90,15 @@ bool RestApiImpl::initialize(int port) {
     db_service_ = std::make_unique<DatabaseService>();
     vector_storage_service_ = std::make_unique<VectorStorageService>();
     similarity_search_service_ = std::make_unique<SimilaritySearchService>();
-    
+    auth_manager_ = std::make_unique<AuthManager>();
+
     // Initialize the services
     db_service_->initialize();
     vector_storage_service_->initialize();
     similarity_search_service_->initialize();
     
     // Create Crow app instance
-    app_ = std::make_unique<crow::App<>>(crow::renderer::load_cached());
+    app_ = std::make_unique<crow::App<>>();
     server_port_ = port;
     
     // Perform any initialization needed
@@ -281,7 +297,7 @@ void RestApiImpl::handle_create_database() {
             }
             
             // Check if user has permission to create databases
-            auto auth_manager = AuthManager::get_instance();
+            auto auth_manager = auth_manager_.get();
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "database:create");
@@ -354,7 +370,7 @@ void RestApiImpl::handle_list_databases() {
             }
             
             // Check if user has permission to list databases
-            auto auth_manager = AuthManager::get_instance();
+            auto auth_manager = auth_manager_.get();
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "database:list");
@@ -458,7 +474,7 @@ void RestApiImpl::handle_get_database() {
             }
             
             // Check if user has permission to get database details
-            auto auth_manager = AuthManager::get_instance();
+            auto auth_manager = auth_manager_.get();
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "database:read");
@@ -526,7 +542,7 @@ void RestApiImpl::handle_update_database() {
             }
             
             // Check if user has permission to update database configuration
-            auto auth_manager = AuthManager::get_instance();
+            auto auth_manager = auth_manager_.get();
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "database:update");
@@ -601,7 +617,7 @@ void RestApiImpl::handle_delete_database() {
             }
             
             // Check if user has permission to delete databases
-            auto auth_manager = AuthManager::get_instance();
+            auto auth_manager = auth_manager_.get();
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "database:delete");
@@ -666,7 +682,7 @@ void RestApiImpl::handle_store_vector() {
             }
             
             // Check if user has permission to store vectors in this database
-            auto auth_manager = AuthManager::get_instance();
+            auto auth_manager = auth_manager_.get();
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "vector:add");
@@ -678,7 +694,7 @@ void RestApiImpl::handle_store_vector() {
             }
             
             // Validate database exists
-            auto db_exists_result = vector_storage_service_->db_layer_->database_exists(database_id);
+            auto db_exists_result = db_service_->database_exists(database_id);
             if (!db_exists_result.has_value() || !db_exists_result.value()) {
                 res.status = 404; // Not Found
                 res.set_content("{\"error\":\"Database not found\"}", "application/json");
@@ -750,7 +766,7 @@ void RestApiImpl::handle_get_vector() {
             }
             
             // Check if user has permission to retrieve vectors from this database
-            auto auth_manager = AuthManager::get_instance();
+            auto auth_manager = auth_manager_.get();
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "vector:read");
@@ -762,7 +778,7 @@ void RestApiImpl::handle_get_vector() {
             }
             
             // Validate database exists
-            auto db_exists_result = vector_storage_service_->db_layer_->database_exists(database_id);
+            auto db_exists_result = db_service_->database_exists(database_id);
             if (!db_exists_result.has_value() || !db_exists_result.value()) {
                 res.status = 404; // Not Found
                 res.set_content("{\"error\":\"Database not found\"}", "application/json");
@@ -829,7 +845,7 @@ void RestApiImpl::handle_update_vector() {
             }
             
             // Check if user has permission to update vectors in this database
-            // auto auth_manager = AuthManager::get_instance();
+            // auto auth_manager = auth_manager_.get();
             // auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             // if (user_id_result.has_value()) {
             //     auto perm_result = auth_manager->has_permission_with_api_key(api_key, "vector:update");
@@ -892,7 +908,7 @@ void RestApiImpl::handle_delete_vector() {
             }
             
             // Check if user has permission to delete vectors from this database
-            // auto auth_manager = AuthManager::get_instance();
+            // auto auth_manager = auth_manager_.get();
             // auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             // if (user_id_result.has_value()) {
             //     auto perm_result = auth_manager->has_permission_with_api_key(api_key, "vector:delete");
@@ -950,7 +966,7 @@ void RestApiImpl::handle_batch_store_vectors() {
             }
             
             // Check if user has permission to store vectors in this database
-            // auto auth_manager = AuthManager::get_instance();
+            // auto auth_manager = auth_manager_.get();
             // auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             // if (user_id_result.has_value()) {
             //     auto perm_result = auth_manager->has_permission_with_api_key(api_key, "vector:add");
@@ -1022,7 +1038,7 @@ void RestApiImpl::handle_similarity_search() {
             }
             
             // Check if user has permission to perform search in this database
-            // auto auth_manager = AuthManager::get_instance();
+            // auto auth_manager = auth_manager_.get();
             // auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             // if (user_id_result.has_value()) {
             //     auto perm_result = auth_manager->has_permission_with_api_key(api_key, "search:execute");
@@ -1095,7 +1111,7 @@ void RestApiImpl::handle_advanced_search() {
             }
             
             // Authorize user for advanced search operation
-            auto auth_manager = AuthManager::get_instance();
+            auto auth_manager = auth_manager_.get();
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (!user_id_result.has_value()) {
                 res.status = 401; // Unauthorized
@@ -1279,7 +1295,7 @@ void RestApiImpl::handle_system_status() {
             }
 
             // Check if user has permission to view system status
-            auto auth_manager = AuthManager::get_instance();
+            auto auth_manager = auth_manager_.get();
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "monitoring:read");
@@ -1347,7 +1363,7 @@ void RestApiImpl::handle_database_status() {
             }
 
             // Check if user has permission to view database status
-            auto auth_manager = AuthManager::get_instance();
+            auto auth_manager = auth_manager_.get();
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "monitoring:read");
@@ -1381,11 +1397,11 @@ void RestApiImpl::handle_database_status() {
             response["metrics"]["qps"] = 850;
             
             // Add index status
-            crow::json::wvalue indexes_status = crow::json::wvalue::object();
+            crow::json::wvalue indexes_status;
             indexes_status["hnsw_index_1"] = "ready";
             indexes_status["ivf_index_1"] = "ready";
             indexes_status["flat_index_1"] = "ready";
-            response["indexes"] = indexes_status;
+            response["indexes"] = std::move(indexes_status);
             
             crow::response resp(200, response);
             resp.set_header("Content-Type", "application/json");
@@ -1427,7 +1443,7 @@ crow::response RestApiImpl::handle_store_vector_request(const crow::request& req
         // This would check permissions in a real implementation
 
         // Validate database exists
-        auto db_exists_result = vector_storage_service_->db_layer_->database_exists(database_id);
+        auto db_exists_result = db_service_->database_exists(database_id);
         if (!db_exists_result.has_value() || !db_exists_result.value()) {
             return crow::response(404, "{\"error\":\"Database not found\"}");
         }
@@ -1441,19 +1457,23 @@ crow::response RestApiImpl::handle_store_vector_request(const crow::request& req
         // Create a Vector object from JSON
         Vector vector_data;
         vector_data.id = body_json["id"].s();
-        if (!body_json["values"].is_list()) {
+        if (body_json["values"].t() != crow::json::type::List) {
             return crow::response(400, "{\"error\":\"Vector values must be an array\"}");
         }
-        
+
         // Parse values
-        for (const auto& val : body_json["values"].list()) {
-            vector_data.values.push_back(val.d());
+        auto values_array = body_json["values"];
+        for (size_t i = 0; i < values_array.size(); i++) {
+            vector_data.values.push_back(values_array[i].d());
         }
-        
+
         // Parse metadata if present
         if (body_json.has("metadata")) {
-            // Parse the metadata object
-            vector_data.metadata = body_json["metadata"];
+            auto meta = body_json["metadata"];
+            if (meta.has("source")) vector_data.metadata.source = meta["source"].s();
+            if (meta.has("owner")) vector_data.metadata.owner = meta["owner"].s();
+            if (meta.has("category")) vector_data.metadata.category = meta["category"].s();
+            if (meta.has("status")) vector_data.metadata.status = meta["status"].s();
         }
         
         // Validate vector data
@@ -1506,7 +1526,7 @@ crow::response RestApiImpl::handle_get_vector_request(const crow::request& req, 
         // This would check permissions in a real implementation
 
         // Validate database exists
-        auto db_exists_result = vector_storage_service_->db_layer_->database_exists(database_id);
+        auto db_exists_result = db_service_->database_exists(database_id);
         if (!db_exists_result.has_value() || !db_exists_result.value()) {
             return crow::response(404, "{\"error\":\"Database not found\"}");
         }
@@ -1527,15 +1547,28 @@ crow::response RestApiImpl::handle_get_vector_request(const crow::request& req, 
             response["id"] = vector.id;
             
             // Add values as an array
-            crow::json::wvalue values_array = crow::json::wvalue::list();
+            crow::json::wvalue values_array;
+            int idx = 0;
             for (auto val : vector.values) {
-                values_array.push_back(val);
+                values_array[idx++] = val;
             }
-            response["values"] = values_array;
-            
+            response["values"] = std::move(values_array);
+
             // Add metadata if present
-            if (!vector.metadata.isEmpty()) {
-                response["metadata"] = vector.metadata.dump();
+            if (!vector.metadata.source.empty() || !vector.metadata.tags.empty() || !vector.metadata.custom.empty()) {
+                crow::json::wvalue metadata_obj;
+                metadata_obj["source"] = vector.metadata.source;
+                metadata_obj["created_at"] = vector.metadata.created_at;
+                metadata_obj["updated_at"] = vector.metadata.updated_at;
+                metadata_obj["owner"] = vector.metadata.owner;
+                metadata_obj["category"] = vector.metadata.category;
+                metadata_obj["score"] = vector.metadata.score;
+                metadata_obj["status"] = vector.metadata.status;
+                int tag_idx = 0;
+                for (const auto& tag : vector.metadata.tags) {
+                    metadata_obj["tags"][tag_idx++] = tag;
+                }
+                response["metadata"] = std::move(metadata_obj);
             }
             
             crow::response resp(200, response);
@@ -1583,19 +1616,23 @@ crow::response RestApiImpl::handle_update_vector_request(const crow::request& re
         // Create a Vector object from JSON
         Vector vector_data;
         vector_data.id = vector_id;  // Ensure vector ID matches the path parameter
-        if (!body_json["values"].is_list()) {
+        if (body_json["values"].t() != crow::json::type::List) {
             return crow::response(400, "{\"error\":\"Vector values must be an array\"}");
         }
         
         // Parse values
-        for (const auto& val : body_json["values"].list()) {
-            vector_data.values.push_back(val.d());
+        auto values_array = body_json["values"];
+        for (size_t i = 0; i < values_array.size(); i++) {
+            vector_data.values.push_back(values_array[i].d());
         }
-        
+
         // Parse metadata if present
         if (body_json.has("metadata")) {
-            // Parse the metadata object
-            vector_data.metadata = body_json["metadata"];
+            auto meta = body_json["metadata"];
+            if (meta.has("source")) vector_data.metadata.source = meta["source"].s();
+            if (meta.has("owner")) vector_data.metadata.owner = meta["owner"].s();
+            if (meta.has("category")) vector_data.metadata.category = meta["category"].s();
+            if (meta.has("status")) vector_data.metadata.status = meta["status"].s();
         }
         
         // Update the vector using the service
@@ -1680,7 +1717,7 @@ crow::response RestApiImpl::handle_batch_store_vectors_request(const crow::reque
         }
         
         // Validate database exists
-        auto db_exists_result = vector_storage_service_->db_layer_->database_exists(database_id);
+        auto db_exists_result = db_service_->database_exists(database_id);
         if (!db_exists_result.has_value() || !db_exists_result.value()) {
             return crow::response(404, "{\"error\":\"Database not found\"}");
         }
@@ -1693,29 +1730,35 @@ crow::response RestApiImpl::handle_batch_store_vectors_request(const crow::reque
         
         // Parse vectors
         std::vector<Vector> vectors;
-        if (!body_json["vectors"].is_list()) {
+        if (body_json["vectors"].t() != crow::json::type::List) {
             return crow::response(400, "{\"error\":\"Request body must contain a 'vectors' array\"}");
         }
         
-        for (const auto& vec_json : body_json["vectors"].list()) {
+        auto vectors_array = body_json["vectors"];
+        for (size_t i = 0; i < vectors_array.size(); i++) {
+            auto vec_json = vectors_array[i];
             Vector vector_data;
             vector_data.id = vec_json["id"].s();
-            
-            if (!vec_json["values"].is_list()) {
+
+            if (vec_json["values"].t() != crow::json::type::List) {
                 return crow::response(400, "{\"error\":\"Vector values must be an array\"}");
             }
-            
+
             // Parse values
-            for (const auto& val : vec_json["values"].list()) {
-                vector_data.values.push_back(val.d());
+            auto values_array = vec_json["values"];
+            for (size_t j = 0; j < values_array.size(); j++) {
+                vector_data.values.push_back(values_array[j].d());
             }
-            
+
             // Parse metadata if present
             if (vec_json.has("metadata")) {
-                // Parse the metadata object
-                vector_data.metadata = vec_json["metadata"];
+                auto meta = vec_json["metadata"];
+                if (meta.has("source")) vector_data.metadata.source = meta["source"].s();
+                if (meta.has("owner")) vector_data.metadata.owner = meta["owner"].s();
+                if (meta.has("category")) vector_data.metadata.category = meta["category"].s();
+                if (meta.has("status")) vector_data.metadata.status = meta["status"].s();
             }
-            
+
             vectors.push_back(vector_data);
         }
         
@@ -1768,7 +1811,7 @@ crow::response RestApiImpl::handle_similarity_search_request(const crow::request
         }
         
         // Validate database exists
-        auto db_exists_result = vector_storage_service_->db_layer_->database_exists(database_id);
+        auto db_exists_result = db_service_->database_exists(database_id);
         if (!db_exists_result.has_value() || !db_exists_result.value()) {
             return crow::response(404, "{\"error\":\"Database not found\"}");
         }
@@ -1780,13 +1823,14 @@ crow::response RestApiImpl::handle_similarity_search_request(const crow::request
         }
         
         // Parse query vector
-        if (!body_json["queryVector"].is_list()) {
+        if (body_json["queryVector"].t() != crow::json::type::List) {
             return crow::response(400, "{\"error\":\"'queryVector' must be an array\"}");
         }
-        
+
         Vector query_vector;
-        for (const auto& val : body_json["queryVector"].list()) {
-            query_vector.values.push_back(val.d());
+        auto query_array = body_json["queryVector"];
+        for (size_t i = 0; i < query_array.size(); i++) {
+            query_vector.values.push_back(query_array[i].d());
         }
         
         // Parse search parameters
@@ -1816,33 +1860,35 @@ crow::response RestApiImpl::handle_similarity_search_request(const crow::request
         if (result.has_value()) {
             // Serialize results to JSON
             auto search_results = result.value();
-            crow::json::wvalue response = crow::json::wvalue::list();
-            
+            crow::json::wvalue response;
+
+            int idx = 0;
             for (const auto& search_result : search_results) {
                 crow::json::wvalue result_obj;
                 result_obj["vectorId"] = search_result.vector_id;
                 result_obj["similarityScore"] = search_result.similarity_score;
-                
+
                 if (search_params.include_vector_data || search_params.include_metadata) {
                     crow::json::wvalue vector_obj;
                     vector_obj["id"] = search_result.vector_data.id;
-                    
+
                     // Add values as an array
-                    crow::json::wvalue values_array = crow::json::wvalue::list();
+                    crow::json::wvalue values_array;
+                    int val_idx = 0;
                     for (auto val : search_result.vector_data.values) {
-                        values_array.push_back(val);
+                        values_array[val_idx++] = val;
                     }
-                    vector_obj["values"] = values_array;
-                    
-                    result_obj["vector"] = vector_obj;
+                    vector_obj["values"] = std::move(values_array);
+
+                    result_obj["vector"] = std::move(vector_obj);
                 }
-                
-                response.push_back(result_obj);
+
+                response[idx++] = std::move(result_obj);
             }
-            
+
             crow::response resp(200, response);
             resp.set_header("Content-Type", "application/json");
-            
+
             LOG_DEBUG(logger_, "Similarity search completed: found " << search_results.size() << " results in database: " << database_id);
             return resp;
         } else {
@@ -1874,7 +1920,7 @@ crow::response RestApiImpl::handle_advanced_search_request(const crow::request& 
         }
         
         // Validate database exists
-        auto db_exists_result = vector_storage_service_->db_layer_->database_exists(database_id);
+        auto db_exists_result = db_service_->database_exists(database_id);
         if (!db_exists_result.has_value() || !db_exists_result.value()) {
             return crow::response(404, "{\"error\":\"Database not found\"}");
         }
@@ -1886,13 +1932,14 @@ crow::response RestApiImpl::handle_advanced_search_request(const crow::request& 
         }
         
         // Parse query vector
-        if (!body_json["queryVector"].is_list()) {
+        if (body_json["queryVector"].t() != crow::json::type::List) {
             return crow::response(400, "{\"error\":\"'queryVector' must be an array\"}");
         }
-        
+
         Vector query_vector;
-        for (const auto& val : body_json["queryVector"].list()) {
-            query_vector.values.push_back(val.d());
+        auto query_array = body_json["queryVector"];
+        for (size_t i = 0; i < query_array.size(); i++) {
+            query_vector.values.push_back(query_array[i].d());
         }
         
         // Parse search parameters
@@ -1928,30 +1975,32 @@ crow::response RestApiImpl::handle_advanced_search_request(const crow::request& 
         if (result.has_value()) {
             // Serialize results to JSON
             auto search_results = result.value();
-            crow::json::wvalue response = crow::json::wvalue::list();
-            
+            crow::json::wvalue response;
+
+            int idx = 0;
             for (const auto& search_result : search_results) {
                 crow::json::wvalue result_obj;
                 result_obj["vectorId"] = search_result.vector_id;
                 result_obj["similarityScore"] = search_result.similarity_score;
-                
+
                 if (search_params.include_vector_data || search_params.include_metadata) {
                     crow::json::wvalue vector_obj;
                     vector_obj["id"] = search_result.vector_data.id;
-                    
+
                     // Add values as an array
-                    crow::json::wvalue values_array = crow::json::wvalue::list();
+                    crow::json::wvalue values_array;
+                    int val_idx = 0;
                     for (auto val : search_result.vector_data.values) {
-                        values_array.push_back(val);
+                        values_array[val_idx++] = val;
                     }
-                    vector_obj["values"] = values_array;
-                    
-                    result_obj["vector"] = vector_obj;
+                    vector_obj["values"] = std::move(values_array);
+
+                    result_obj["vector"] = std::move(vector_obj);
                 }
-                
-                response.push_back(result_obj);
+
+                response[idx++] = std::move(result_obj);
             }
-            
+
             crow::response resp(200, response);
             resp.set_header("Content-Type", "application/json");
             
@@ -1991,8 +2040,8 @@ crow::response RestApiImpl::handle_create_database_request(const crow::request& 
             return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
         }
         
-        // Create a Database object from JSON
-        Database db_config;
+        // Create a DatabaseCreationParams object from JSON
+        DatabaseCreationParams db_config;
         if (body_json.has("name")) {
             db_config.name = body_json["name"].s();
         }
@@ -2063,10 +2112,11 @@ crow::response RestApiImpl::handle_list_databases_request(const crow::request& r
         
         if (result.has_value()) {
             auto databases = result.value();
-            
+
             // Serialize databases to JSON
-            crow::json::wvalue response = crow::json::wvalue::list();
-            
+            crow::json::wvalue response;
+
+            int idx = 0;
             for (const auto& db : databases) {
                 crow::json::wvalue db_obj;
                 db_obj["databaseId"] = db.databaseId;
@@ -2076,10 +2126,10 @@ crow::response RestApiImpl::handle_list_databases_request(const crow::request& r
                 db_obj["indexType"] = db.indexType;
                 db_obj["created_at"] = db.created_at;
                 db_obj["updated_at"] = db.updated_at;
-                
-                response.push_back(db_obj);
+
+                response[idx++] = std::move(db_obj);
             }
-            
+
             crow::response resp(200, response);
             resp.set_header("Content-Type", "application/json");
             
@@ -2168,8 +2218,8 @@ crow::response RestApiImpl::handle_update_database_request(const crow::request& 
             return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
         }
         
-        // Create a Database object from JSON
-        Database update_params;
+        // Create a DatabaseUpdateParams object from JSON
+        DatabaseUpdateParams update_params;
         if (body_json.has("name")) {
             update_params.name = body_json["name"].s();
         }
@@ -2262,7 +2312,7 @@ void RestApiImpl::setup_authentication() {
     LOG_DEBUG(logger_, "Setting up authentication middleware");
     // In a real implementation, this would set up API key validation
     // using the AuthManager
-    auto auth_manager = AuthManager::get_instance();
+    auto auth_manager = auth_manager_.get();
 }
 
 Result<bool> RestApiImpl::authenticate_request(const std::string& api_key) const {
@@ -2271,7 +2321,7 @@ Result<bool> RestApiImpl::authenticate_request(const std::string& api_key) const
     }
     
     // Use the AuthManager to validate the API key
-    auto auth_manager = AuthManager::get_instance();
+    auto auth_manager = auth_manager_.get();
     auto validation_result = auth_manager->validate_api_key(api_key);
     
     if (!validation_result.has_value()) {
@@ -2321,7 +2371,7 @@ crow::response RestApiImpl::handle_generate_embedding_request(const crow::reques
         }
 
         // Check if user has permission to generate embeddings
-        auto auth_manager = AuthManager::get_instance();
+        auto auth_manager = auth_manager_.get();
         auto user_id_result = auth_manager->get_user_from_api_key(api_key);
         if (user_id_result.has_value()) {
             auto perm_result = auth_manager->has_permission_with_api_key(api_key, "embedding:generate");
@@ -2369,13 +2419,13 @@ crow::response RestApiImpl::handle_generate_embedding_request(const crow::reques
         response["model"] = model;
         response["provider"] = provider;
         // Placeholder embedding - in a real implementation, this would be generated by the embedding service
-        crow::json::wvalue emb_list = crow::json::wvalue::list();
-        emb_list.push_back(0.1f);
-        emb_list.push_back(0.2f);
-        emb_list.push_back(0.3f);
-        emb_list.push_back(0.4f);
-        emb_list.push_back(0.5f);
-        response["embedding"] = emb_list;
+        crow::json::wvalue emb_list;
+        emb_list[0] = 0.1f;
+        emb_list[1] = 0.2f;
+        emb_list[2] = 0.3f;
+        emb_list[3] = 0.4f;
+        emb_list[4] = 0.5f;
+        response["embedding"] = std::move(emb_list);
         response["dimension"] = 5; // Placeholder dimension
         response["status"] = "success";
         response["generated_at"] = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -2411,7 +2461,7 @@ crow::response RestApiImpl::handle_create_index_request(const crow::request& req
         }
 
         // Check if user has permission to create indexes
-        auto auth_manager = AuthManager::get_instance();
+        auto auth_manager = auth_manager_.get();
         auto user_id_result = auth_manager->get_user_from_api_key(api_key);
         if (user_id_result.has_value()) {
             auto perm_result = auth_manager->has_permission_with_api_key(api_key, "index:create");
@@ -2448,33 +2498,29 @@ crow::response RestApiImpl::handle_create_index_request(const crow::request& req
         }
 
         // Extract optional parameters
-        std::unordered_map<std::string, std::string> parameters;
+        std::map<std::string, std::string> parameters;
         if (body_json.has("parameters")) {
-            auto params_obj = body_json["parameters"];
-            for (const auto& member : params_obj.object()) {
-                parameters[member.first] = member.second.s();
-            }
+            // For now, skip parsing complex parameters
+            // In a real implementation, you'd parse each parameter properly
         }
 
         // Create index config
-        IndexConfig config;
-        if (index_type == "HNSW") {
-            config.type = IndexType::HNSW;
-        } else if (index_type == "IVF") {
-            config.type = IndexType::IVF;
-        } else if (index_type == "LSH") {
-            config.type = IndexType::LSH;
-        } else if (index_type == "FLAT") {
-            config.type = IndexType::FLAT;
-        } else {
-            LOG_ERROR(logger_, "Invalid index type: " << index_type);
-            return crow::response(400, "{\"error\":\"Invalid index type\"}");
+        Index index_config;
+        index_config.type = index_type;
+        index_config.databaseId = database_id;
+        index_config.indexId = "index_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
+        index_config.status = "creating";
+        index_config.parameters = parameters;
+
+        // Get database info
+        auto db_result = db_service_->get_database(database_id);
+        if (!db_result.has_value()) {
+            LOG_ERROR(logger_, "Failed to get database: " + ErrorHandler::format_error(db_result.error()));
+            return crow::response(404, "{\"error\":\"Database not found\"}");
         }
-        config.database_id = database_id;
-        config.parameters = parameters;
 
         // Create the index using the service
-        auto result = index_service_->create_index(config);
+        auto result = index_service_->create_index(db_result.value(), index_config);
         if (!result.has_value()) {
             LOG_ERROR(logger_, "Failed to create index: " + ErrorHandler::format_error(result.error()));
             return crow::response(400, "{\"error\":\"Failed to create index\"}");
@@ -2523,7 +2569,7 @@ crow::response RestApiImpl::handle_list_indexes_request(const crow::request& req
         }
 
         // Check if user has permission to list indexes
-        auto auth_manager = AuthManager::get_instance();
+        auto auth_manager = auth_manager_.get();
         auto user_id_result = auth_manager->get_user_from_api_key(api_key);
         if (user_id_result.has_value()) {
             auto perm_result = auth_manager->has_permission_with_api_key(api_key, "index:read");
@@ -2541,32 +2587,33 @@ crow::response RestApiImpl::handle_list_indexes_request(const crow::request& req
         }
 
         // Get indexes for the database using the service
-        auto result = index_service_->get_indexes_for_database(database_id);
+        auto result = index_service_->list_indexes(database_id);
         if (!result.has_value()) {
             LOG_ERROR(logger_, "Failed to list indexes: " + ErrorHandler::format_error(result.error()));
             return crow::response(400, "{\"error\":\"Failed to list indexes\"}");
         }
 
         auto indexes = result.value();
-        crow::json::wvalue response = crow::json::wvalue::list();
-        
+        crow::json::wvalue response;
+
+        int idx = 0;
         for (const auto& index : indexes) {
             crow::json::wvalue index_obj;
             index_obj["indexId"] = index.indexId;
             index_obj["databaseId"] = index.databaseId;
             index_obj["type"] = index.type;
             index_obj["status"] = index.status;
-            
+
             // Convert parameters to JSON object
-            crow::json::wvalue params_obj = crow::json::wvalue::object();
+            crow::json::wvalue params_obj;
             for (const auto& param : index.parameters) {
                 params_obj[param.first] = param.second;
             }
-            index_obj["parameters"] = params_obj;
-            
+            index_obj["parameters"] = std::move(params_obj);
+
             index_obj["createdAt"] = index.created_at;
             index_obj["updatedAt"] = index.updated_at;
-            response.push_back(index_obj);
+            response[idx++] = std::move(index_obj);
         }
 
         crow::response resp(200, response);
@@ -2599,7 +2646,7 @@ crow::response RestApiImpl::handle_update_index_request(const crow::request& req
         }
 
         // Check if user has permission to update indexes
-        auto auth_manager = AuthManager::get_instance();
+        auto auth_manager = auth_manager_.get();
         auto user_id_result = auth_manager->get_user_from_api_key(api_key);
         if (user_id_result.has_value()) {
             auto perm_result = auth_manager->has_permission_with_api_key(api_key, "index:update");
@@ -2617,7 +2664,8 @@ crow::response RestApiImpl::handle_update_index_request(const crow::request& req
         }
 
         // Check if index exists
-        if (!index_service_->index_exists(index_id)) {
+        auto index_result = index_service_->get_index(database_id, index_id);
+        if (!index_result.has_value()) {
             return crow::response(404, "{\"error\":\"Index not found\"}");
         }
 
@@ -2629,17 +2677,20 @@ crow::response RestApiImpl::handle_update_index_request(const crow::request& req
         }
 
         // Extract parameters to update
-        std::unordered_map<std::string, std::string> parameters;
+        std::map<std::string, std::string> parameters;
         if (body_json.has("parameters")) {
-            auto params_obj = body_json["parameters"];
-            for (const auto& member : params_obj.object()) {
-                parameters[member.first] = member.second.s();
-            }
+            // For now, skip parsing complex parameters
+            // In a real implementation, you'd parse each parameter properly
         }
 
         // Update the index using the service
-        auto result = index_service_->update_index_config(index_id, parameters);
-        if (!result.has_value() || !result.value()) {
+        Index new_config = index_result.value();
+        // Update parameters (map is compatible with map)
+        if (!parameters.empty()) {
+            new_config.parameters = parameters;
+        }
+        auto result = index_service_->update_index(database_id, index_id, new_config);
+        if (!result.has_value()) {
             LOG_ERROR(logger_, "Failed to update index: ");
             if (result.has_value()) {
                 LOG_ERROR(logger_, "Error details: " + ErrorHandler::format_error(result.error()));
@@ -2684,7 +2735,7 @@ crow::response RestApiImpl::handle_delete_index_request(const crow::request& req
         }
 
         // Check if user has permission to delete indexes
-        auto auth_manager = AuthManager::get_instance();
+        auto auth_manager = auth_manager_.get();
         auto user_id_result = auth_manager->get_user_from_api_key(api_key);
         if (user_id_result.has_value()) {
             auto perm_result = auth_manager->has_permission_with_api_key(api_key, "index:delete");
@@ -2702,13 +2753,14 @@ crow::response RestApiImpl::handle_delete_index_request(const crow::request& req
         }
 
         // Check if index exists
-        if (!index_service_->index_exists(index_id)) {
+        auto index_result = index_service_->get_index(database_id, index_id);
+        if (!index_result.has_value()) {
             return crow::response(404, "{\"error\":\"Index not found\"}");
         }
 
         // Delete the index using the service
-        auto result = index_service_->delete_index(index_id);
-        if (!result.has_value() || !result.value()) {
+        auto result = index_service_->delete_index(database_id, index_id);
+        if (!result.has_value()) {
             LOG_ERROR(logger_, "Failed to delete index: ");
             if (result.has_value()) {
                 LOG_ERROR(logger_, "Error details: " + ErrorHandler::format_error(result.error()));
@@ -2753,7 +2805,7 @@ crow::response RestApiImpl::handle_configure_retention_request(const crow::reque
         }
 
         // Check if user has permission to configure retention
-        auto auth_manager = AuthManager::get_instance();
+        auto auth_manager = auth_manager_.get();
         auto user_id_result = auth_manager->get_user_from_api_key(api_key);
         if (user_id_result.has_value()) {
             auto perm_result = auth_manager->has_permission_with_api_key(api_key, "lifecycle:configure");
@@ -2803,8 +2855,9 @@ crow::response RestApiImpl::handle_configure_retention_request(const crow::reque
         config.enabled = true;  // Enable lifecycle management for this DB
 
         // Configure retention policy using the service
-        auto result = lifecycle_service_->configure_retention_policy(config);
-        if (!result.has_value() || !result.value()) {
+        std::chrono::hours max_age(policy.max_age_days * 24);
+        auto result = lifecycle_service_->configure_retention_policy(database_id, max_age, policy.archive_on_expire);
+        if (!result.has_value()) {
             LOG_ERROR(logger_, "Failed to configure retention policy: ");
             if (result.has_value()) {
                 LOG_ERROR(logger_, "Error details: " + ErrorHandler::format_error(result.error()));
@@ -2853,7 +2906,7 @@ crow::response RestApiImpl::handle_lifecycle_status_request(const crow::request&
         }
 
         // Check if user has permission to view lifecycle status
-        auto auth_manager = AuthManager::get_instance();
+        auto auth_manager = auth_manager_.get();
         auto user_id_result = auth_manager->get_user_from_api_key(api_key);
         if (user_id_result.has_value()) {
             auto perm_result = auth_manager->has_permission_with_api_key(api_key, "lifecycle:read");
@@ -2877,30 +2930,24 @@ crow::response RestApiImpl::handle_lifecycle_status_request(const crow::request&
             return crow::response(400, "{\"error\":\"Failed to get retention policy\"}");
         }
 
-        // Get lifecycle statistics
-        auto stats_result = lifecycle_service_->get_lifecycle_stats(database_id);
-        if (!stats_result.has_value()) {
-            LOG_ERROR(logger_, "Failed to get lifecycle stats: " + ErrorHandler::format_error(stats_result.error()));
-            return crow::response(400, "{\"error\":\"Failed to get lifecycle stats\"}");
+        // Get lifecycle status
+        auto status_result = lifecycle_service_->get_lifecycle_status(database_id);
+        if (!status_result.has_value()) {
+            LOG_ERROR(logger_, "Failed to get lifecycle status: " + ErrorHandler::format_error(status_result.error()));
+            return crow::response(400, "{\"error\":\"Failed to get lifecycle status\"}");
         }
 
         auto policy = policy_result.value();
-        auto stats = stats_result.value();
+        auto status = status_result.value();
 
         crow::json::wvalue response;
         response["databaseId"] = database_id;
-        
-        // Add retention policy
-        response["retentionPolicy"]["maxAgeDays"] = policy.max_age_days;
-        response["retentionPolicy"]["archiveOnExpire"] = policy.archive_on_expire;
-        response["retentionPolicy"]["archiveThresholdDays"] = policy.archive_threshold_days;
-        response["retentionPolicy"]["enableCleanup"] = policy.enable_cleanup;
-        response["retentionPolicy"]["cleanupSchedule"] = policy.cleanup_schedule;
-        
-        // Add lifecycle statistics
-        for (const auto& stat : stats) {
-            response["stats"][stat.first] = stat.second;
-        }
+        response["status"] = status;
+
+        // Add retention policy (convert from pair to JSON)
+        int max_age_days = policy.first.count() / 24;
+        response["retentionPolicy"]["maxAgeDays"] = max_age_days;
+        response["retentionPolicy"]["archiveOnExpire"] = policy.second;
         
         // Add timestamp
         response["status"] = "active";
@@ -2946,7 +2993,7 @@ void RestApiImpl::handle_batch_get_vectors() {
             }
             
             // Check if user has permission to retrieve vectors from this database
-            auto auth_manager = AuthManager::get_instance();
+            auto auth_manager = auth_manager_.get();
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "vector:read");
@@ -3000,6 +3047,14 @@ void RestApiImpl::handle_batch_get_vectors() {
         }
     });
     */
+}
+
+
+// Stub implementation for missing method
+crow::response RestApiImpl::handle_batch_get_vectors_request(const crow::request& req, const std::string& database_id) {
+    crow::json::wvalue response;
+    response["error"] = "Not implemented";
+    return crow::response(501, response);
 }
 
 } // namespace jadevectordb

@@ -21,11 +21,11 @@ Result<bool> CompositeIndex::add_component_index(const std::string& component_id
                                                  CompositeIndexType type,
                                                  const std::unordered_map<std::string, std::string>& params,
                                                  float weight) {
-    boost::unique_lock<boost::shared_mutex> lock(index_mutex_);
+    std::unique_lock<std::shared_mutex> lock(index_mutex_);
     
     // Check if component ID already exists
     if (id_to_idx_map_.find(component_id) != id_to_idx_map_.end()) {
-        return Result<bool>::failure("Component ID already exists: " + component_id);
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Component ID already exists: " + component_id));
     }
     
     // Create an index of the appropriate type based on the type parameter
@@ -91,7 +91,7 @@ Result<bool> CompositeIndex::add_component_index(const std::string& component_id
             break;
         }
         default:
-            return Result<bool>::failure("Unsupported index type");
+            return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Unsupported index type"));
     }
     
     // Create the component and add it to our list
@@ -103,18 +103,18 @@ Result<bool> CompositeIndex::add_component_index(const std::string& component_id
     LOG_INFO(logger_, "Added component index " + component_id + " of type " + 
              std::to_string(static_cast<int>(type)));
     
-    return Result<bool>::success(true);
+    return true;
 }
 
 Result<bool> CompositeIndex::add_vector(int vector_id, const std::vector<float>& vector) {
     if (vector.empty()) {
-        return Result<bool>::failure("Vector cannot be empty");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Vector cannot be empty"));
     }
     
     if (dimension_ == 0) {
         dimension_ = vector.size();
     } else if (static_cast<int>(vector.size()) != dimension_) {
-        return Result<bool>::failure("Vector dimension mismatch");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Vector dimension mismatch"));
     }
     
     std::shared_lock<std::shared_mutex> lock(index_mutex_);
@@ -160,16 +160,16 @@ Result<bool> CompositeIndex::add_vector(int vector_id, const std::vector<float>&
                 break;
             }
             default:
-                return Result<bool>::failure("Unsupported index type");
+                return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Unsupported index type"));
         }
         
-        if (!result.is_success()) {
-            logger_->error("Failed to add vector to component {}: {}", component.id, result.error());
+        if (!result.has_value()) {
+            logger_->error("Failed to add vector to component " + component.id + ": " + result.error().message);
             // For now, we continue adding to other components even if one fails
         }
     }
     
-    return Result<bool>::success(true);
+    return true;
 }
 
 Result<bool> CompositeIndex::build() {
@@ -216,37 +216,37 @@ Result<bool> CompositeIndex::build() {
                 break;
             }
             default:
-                return Result<bool>::failure("Unsupported index type");
+                return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Unsupported index type"));
         }
         
-        if (!result.is_success()) {
-            logger_->error("Failed to build component {}: {}", component.id, result.error());
+        if (!result.has_value()) {
+            logger_->error("Failed to build component " + component.id + ": " + result.error().message);
             return result;
         }
     }
     
     is_built_ = true;
-    logger_->info("Composite index built with {} components", components_.size());
+    logger_->info("Composite index built with " + std::to_string(components_.size()) + " components");
     
-    return Result<bool>::success(true);
+    return true;
 }
 
 Result<std::vector<std::pair<int, float>>> CompositeIndex::search(const std::vector<float>& query, 
                                                                  int k, 
                                                                  float threshold) const {
     if (!is_built_) {
-        return Result<std::vector<std::pair<int, float>>>::failure("Composite index is not built");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Composite index is not built"));
     }
     
     if (static_cast<int>(query.size()) != dimension_) {
-        return Result<std::vector<std::pair<int, float>>>::failure("Query dimension mismatch");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Query dimension mismatch"));
     }
     
     if (components_.empty()) {
-        return Result<std::vector<std::pair<int, float>>>::success(std::vector<std::pair<int, float>>());
+        return std::vector<std::pair<int, float>>();
     }
     
-    boost::shared_lock<boost::shared_mutex> lock(index_mutex_);
+    std::shared_lock<std::shared_mutex> lock(index_mutex_);
     
     // Search in all components
     std::vector<std::vector<std::pair<int, float>>> component_results;
@@ -286,13 +286,13 @@ Result<std::vector<std::pair<int, float>>> CompositeIndex::search(const std::vec
         final_results.resize(k);
     }
     
-    return Result<std::vector<std::pair<int, float>>>::success(std::move(final_results));
+    return std::move(final_results);
 }
 
 Result<bool> CompositeIndex::build_from_vectors(const std::vector<std::pair<int, std::vector<float>>>& vectors) {
     if (vectors.empty()) {
         logger_->warn("Building composite index with empty vector set");
-        return Result<bool>::success(true);
+        return true;
     }
     
     std::shared_lock<std::shared_mutex> lock(index_mutex_);
@@ -300,7 +300,7 @@ Result<bool> CompositeIndex::build_from_vectors(const std::vector<std::pair<int,
     // Add all vectors to all components
     for (const auto& vec_pair : vectors) {
         auto result = add_vector(vec_pair.first, vec_pair.second);
-        if (!result.is_success()) {
+        if (!result.has_value()) {
             return result;
         }
     }
@@ -415,17 +415,17 @@ Result<bool> CompositeIndex::remove_vector(int vector_id) {
                 continue; // Skip unsupported types
         }
         
-        if (result.is_success() && result.value()) {
+        if (result.has_value() && result.value()) {
             any_success = true;
-        } else if (!result.is_success()) {
-            last_error = result.error();
+        } else if (!result.has_value()) {
+            last_error = result.error().message;
         }
     }
     
     if (any_success) {
-        return Result<bool>::success(true);
+        return true;
     } else {
-        return Result<bool>::failure("No component index contained the vector or all removals failed: " + last_error);
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "No component index contained the vector or all removals failed: " + last_error));
     }
 }
 
@@ -433,7 +433,7 @@ Result<bool> CompositeIndex::update_vector(int vector_id, const std::vector<floa
     std::shared_lock<std::shared_mutex> lock(index_mutex_);
     
     if (static_cast<int>(new_vector.size()) != dimension_) {
-        return Result<bool>::failure("Vector dimension mismatch");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Vector dimension mismatch"));
     }
     
     bool any_success = false;
@@ -482,17 +482,17 @@ Result<bool> CompositeIndex::update_vector(int vector_id, const std::vector<floa
                 continue; // Skip unsupported types
         }
         
-        if (result.is_success() && result.value()) {
+        if (result.has_value() && result.value()) {
             any_success = true;
-        } else if (!result.is_success()) {
-            last_error = result.error();
+        } else if (!result.has_value()) {
+            last_error = result.error().message;
         }
     }
     
     if (any_success) {
-        return Result<bool>::success(true);
+        return true;
     } else {
-        return Result<bool>::failure("No component index contained the vector or all updates failed: " + last_error);
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "No component index contained the vector or all updates failed: " + last_error));
     }
 }
 
@@ -518,7 +518,7 @@ Result<std::unordered_map<std::string, std::string>> CompositeIndex::get_stats()
     stats["is_built"] = is_built_ ? "true" : "false";
     stats["dimension"] = std::to_string(dimension_);
     
-    return Result<std::unordered_map<std::string, std::string>>::success(std::move(stats));
+    return std::move(stats);
 }
 
 void CompositeIndex::clear() {
@@ -594,7 +594,7 @@ Result<std::vector<std::pair<int, float>>> CompositeIndex::search_component(
     float threshold) const {
     
     if (component_idx >= components_.size()) {
-        return Result<std::vector<std::pair<int, float>>>::failure("Invalid component index");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Invalid component index"));
     }
     
     const auto& component = components_[component_idx];
@@ -629,7 +629,7 @@ Result<std::vector<std::pair<int, float>>> CompositeIndex::search_component(
             return sq_index->search(query, k, threshold);
         }
         default:
-            return Result<std::vector<std::pair<int, float>>>::failure("Unsupported index type");
+            return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Unsupported index type"));
     }
 }
 
@@ -756,7 +756,7 @@ float CompositeIndex::compute_squared_distance(const std::vector<float>& a, cons
 
 bool CompositeIndex::validate() const {
     if (dimension_ <= 0) {
-        logger_->error("Invalid dimension: {}", dimension_);
+        logger_->error("Invalid dimension: {}", std::to_string(dimension_));
         return false;
     }
     

@@ -1,7 +1,7 @@
 // frontend/tests/unit/components/input.test.js
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Input } from '@@/components/ui/input';
+import { Input } from '@/components/ui/input';
 
 describe('Input Component', () => {
   test('renders input with correct type', () => {

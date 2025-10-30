@@ -36,7 +36,7 @@ Result<HeatmapData> ResourceUtilizationDashboard::get_cpu_utilization_heatmap(in
         }
     }
     
-    return Result<HeatmapData>::success(data);
+    return data;
 }
 
 Result<HeatmapData> ResourceUtilizationDashboard::get_memory_usage_heatmap(int hours) const {
@@ -60,7 +60,7 @@ Result<HeatmapData> ResourceUtilizationDashboard::get_memory_usage_heatmap(int h
         }
     }
     
-    return Result<HeatmapData>::success(data);
+    return data;
 }
 
 Result<HeatmapData> ResourceUtilizationDashboard::get_disk_usage_heatmap(int hours) const {
@@ -84,7 +84,7 @@ Result<HeatmapData> ResourceUtilizationDashboard::get_disk_usage_heatmap(int hou
         }
     }
     
-    return Result<HeatmapData>::success(data);
+    return data;
 }
 
 Result<HeatmapData> ResourceUtilizationDashboard::get_network_utilization_heatmap(int hours) const {
@@ -108,7 +108,7 @@ Result<HeatmapData> ResourceUtilizationDashboard::get_network_utilization_heatma
         }
     }
     
-    return Result<HeatmapData>::success(data);
+    return data;
 }
 
 Result<nlohmann::json> ResourceUtilizationDashboard::get_storage_utilization_by_database() const {
@@ -125,7 +125,7 @@ Result<nlohmann::json> ResourceUtilizationDashboard::get_storage_utilization_by_
     data["units"] = units;
     data["capacities"] = capacities;
     
-    return Result<nlohmann::json>::success(data);
+    return data;
 }
 
 Result<nlohmann::json> ResourceUtilizationDashboard::get_resource_allocation_efficiency() const {
@@ -142,7 +142,7 @@ Result<nlohmann::json> ResourceUtilizationDashboard::get_resource_allocation_eff
     data["utilized"] = utilized;
     data["efficiency"] = efficiency;
     
-    return Result<nlohmann::json>::success(data);
+    return data;
 }
 
 Result<nlohmann::json> ResourceUtilizationDashboard::get_peak_resource_usage_times(int hours) const {
@@ -160,7 +160,7 @@ Result<nlohmann::json> ResourceUtilizationDashboard::get_peak_resource_usage_tim
     data["disk_peaks"] = disk_peaks;
     data["time_period_hours"] = hours;
     
-    return Result<nlohmann::json>::success(data);
+    return data;
 }
 
 Result<nlohmann::json> ResourceUtilizationDashboard::get_dashboard_data() const {
@@ -201,7 +201,7 @@ Result<nlohmann::json> ResourceUtilizationDashboard::get_dashboard_data() const 
         data["peak_usage_times"] = peak_result.value();
     }
     
-    return Result<nlohmann::json>::success(data);
+    return data;
 }
 
 Result<void> ResourceUtilizationDashboard::create_dashboard_layout() const {
@@ -318,7 +318,7 @@ Result<std::vector<AlertEvent>> AnomalyDetectionDashboard::detect_performance_an
         anomalies.push_back(anomaly);
     }
     
-    return Result<std::vector<AlertEvent>>::success(anomalies);
+    return anomalies;
 }
 
 Result<std::vector<AlertEvent>> AnomalyDetectionDashboard::detect_resource_anomalies(int hours) const {
@@ -345,7 +345,7 @@ Result<std::vector<AlertEvent>> AnomalyDetectionDashboard::detect_resource_anoma
         anomalies.push_back(anomaly);
     }
     
-    return Result<std::vector<AlertEvent>>::success(anomalies);
+    return anomalies;
 }
 
 Result<std::vector<AlertEvent>> AnomalyDetectionDashboard::detect_query_pattern_anomalies(int hours) const {
@@ -372,7 +372,7 @@ Result<std::vector<AlertEvent>> AnomalyDetectionDashboard::detect_query_pattern_
         anomalies.push_back(anomaly);
     }
     
-    return Result<std::vector<AlertEvent>>::success(anomalies);
+    return anomalies;
 }
 
 Result<std::vector<AlertConfig>> AnomalyDetectionDashboard::get_anomaly_detection_rules() const {
@@ -411,14 +411,14 @@ Result<std::vector<AlertConfig>> AnomalyDetectionDashboard::get_anomaly_detectio
     query_rule.created_at = std::chrono::system_clock::now();
     rules.push_back(query_rule);
     
-    return Result<std::vector<AlertConfig>>::success(rules);
+    return rules;
 }
 
 Result<void> AnomalyDetectionDashboard::configure_anomaly_detection_rule(const AlertConfig& rule) {
     // In a real implementation, we would store this rule in the dashboard service
     // For this implementation, we'll just log that a rule was configured
     LOG_INFO(logger_, "Configured anomaly detection rule: " + rule.id);
-    return Result<void>::success();
+    return {};
 }
 
 Result<std::vector<AlertEvent>> AnomalyDetectionDashboard::get_recent_anomalies(int limit) const {
@@ -453,7 +453,7 @@ Result<std::vector<AlertEvent>> AnomalyDetectionDashboard::get_recent_anomalies(
         recent_anomalies.resize(limit);
     }
     
-    return Result<std::vector<AlertEvent>>::success(recent_anomalies);
+    return recent_anomalies;
 }
 
 Result<nlohmann::json> AnomalyDetectionDashboard::get_anomaly_trends(int hours) const {
@@ -471,7 +471,7 @@ Result<nlohmann::json> AnomalyDetectionDashboard::get_anomaly_trends(int hours) 
     trends["query_anomalies"] = query_anomalies;
     trends["time_period_hours"] = hours;
     
-    return Result<nlohmann::json>::success(trends);
+    return trends;
 }
 
 Result<nlohmann::json> AnomalyDetectionDashboard::get_anomaly_correlation(int hours) const {
@@ -489,7 +489,7 @@ Result<nlohmann::json> AnomalyDetectionDashboard::get_anomaly_correlation(int ho
     correlation["correlation_matrix"] = matrix;
     correlation["time_period_hours"] = hours;
     
-    return Result<nlohmann::json>::success(correlation);
+    return correlation;
 }
 
 Result<nlohmann::json> AnomalyDetectionDashboard::get_dashboard_data() const {
@@ -545,7 +545,7 @@ Result<nlohmann::json> AnomalyDetectionDashboard::get_dashboard_data() const {
         data["anomaly_correlation"] = correlation_result.value();
     }
     
-    return Result<nlohmann::json>::success(data);
+    return data;
 }
 
 Result<void> AnomalyDetectionDashboard::create_dashboard_layout() const {

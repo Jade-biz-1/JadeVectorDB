@@ -33,7 +33,7 @@ Result<TimeSeriesData> PerformanceMetricsDashboard::get_cpu_utilization_metrics(
         data.values.push_back(dis(gen));
     }
     
-    return Result<TimeSeriesData>::success(data);
+    return data;
 }
 
 Result<TimeSeriesData> PerformanceMetricsDashboard::get_memory_usage_metrics(int hours) const {
@@ -54,7 +54,7 @@ Result<TimeSeriesData> PerformanceMetricsDashboard::get_memory_usage_metrics(int
         data.values.push_back(dis(gen));
     }
     
-    return Result<TimeSeriesData>::success(data);
+    return data;
 }
 
 Result<TimeSeriesData> PerformanceMetricsDashboard::get_disk_io_metrics(int hours) const {
@@ -75,7 +75,7 @@ Result<TimeSeriesData> PerformanceMetricsDashboard::get_disk_io_metrics(int hour
         data.values.push_back(dis(gen));
     }
     
-    return Result<TimeSeriesData>::success(data);
+    return data;
 }
 
 Result<TimeSeriesData> PerformanceMetricsDashboard::get_network_throughput_metrics(int hours) const {
@@ -96,7 +96,7 @@ Result<TimeSeriesData> PerformanceMetricsDashboard::get_network_throughput_metri
         data.values.push_back(dis(gen));
     }
     
-    return Result<TimeSeriesData>::success(data);
+    return data;
 }
 
 Result<TimeSeriesData> PerformanceMetricsDashboard::get_query_response_time_metrics(int hours) const {
@@ -117,7 +117,7 @@ Result<TimeSeriesData> PerformanceMetricsDashboard::get_query_response_time_metr
         data.values.push_back(dis(gen));
     }
     
-    return Result<TimeSeriesData>::success(data);
+    return data;
 }
 
 Result<TimeSeriesData> PerformanceMetricsDashboard::get_vector_insert_rate_metrics(int hours) const {
@@ -138,7 +138,7 @@ Result<TimeSeriesData> PerformanceMetricsDashboard::get_vector_insert_rate_metri
         data.values.push_back(dis(gen));
     }
     
-    return Result<TimeSeriesData>::success(data);
+    return data;
 }
 
 Result<TimeSeriesData> PerformanceMetricsDashboard::get_similarity_search_latency_metrics(int hours) const {
@@ -159,7 +159,7 @@ Result<TimeSeriesData> PerformanceMetricsDashboard::get_similarity_search_latenc
         data.values.push_back(dis(gen));
     }
     
-    return Result<TimeSeriesData>::success(data);
+    return data;
 }
 
 Result<nlohmann::json> PerformanceMetricsDashboard::get_dashboard_data() const {
@@ -201,7 +201,7 @@ Result<nlohmann::json> PerformanceMetricsDashboard::get_dashboard_data() const {
         data["similarity_search_latency"] = format_chart_data(search_result.value(), ChartType::LINE_CHART);
     }
     
-    return Result<nlohmann::json>::success(data);
+    return data;
 }
 
 Result<void> PerformanceMetricsDashboard::create_dashboard_layout() const {
@@ -306,7 +306,7 @@ Result<nlohmann::json> QueryPatternAnalysisDashboard::get_query_frequency_analys
     analysis["total_queries"] = 740;
     analysis["time_period_hours"] = hours;
     
-    return Result<nlohmann::json>::success(analysis);
+    return analysis;
 }
 
 Result<nlohmann::json> QueryPatternAnalysisDashboard::get_query_latency_distribution(int hours) const {
@@ -320,7 +320,7 @@ Result<nlohmann::json> QueryPatternAnalysisDashboard::get_query_latency_distribu
     distribution["counts"] = counts;
     distribution["time_period_hours"] = hours;
     
-    return Result<nlohmann::json>::success(distribution);
+    return distribution;
 }
 
 Result<nlohmann::json> QueryPatternAnalysisDashboard::get_query_success_rate_analysis(int hours) const {
@@ -335,7 +335,7 @@ Result<nlohmann::json> QueryPatternAnalysisDashboard::get_query_success_rate_ana
     success_rates["overall_success_rate"] = 99.2;
     success_rates["time_period_hours"] = hours;
     
-    return Result<nlohmann::json>::success(success_rates);
+    return success_rates;
 }
 
 Result<nlohmann::json> QueryPatternAnalysisDashboard::get_most_frequent_queries(int limit) const {
@@ -356,7 +356,7 @@ Result<nlohmann::json> QueryPatternAnalysisDashboard::get_most_frequent_queries(
     frequent_queries["frequencies"] = frequencies;
     frequent_queries["limit"] = limit;
     
-    return Result<nlohmann::json>::success(frequent_queries);
+    return frequent_queries;
 }
 
 Result<nlohmann::json> QueryPatternAnalysisDashboard::get_slowest_queries(int limit) const {
@@ -378,7 +378,7 @@ Result<nlohmann::json> QueryPatternAnalysisDashboard::get_slowest_queries(int li
     slowest_queries["unit"] = "milliseconds";
     slowest_queries["limit"] = limit;
     
-    return Result<nlohmann::json>::success(slowest_queries);
+    return slowest_queries;
 }
 
 Result<nlohmann::json> QueryPatternAnalysisDashboard::get_query_pattern_trends(int hours) const {
@@ -396,7 +396,7 @@ Result<nlohmann::json> QueryPatternAnalysisDashboard::get_query_pattern_trends(i
     trends["batch_insert"] = batch_insert_counts;
     trends["time_period_hours"] = hours;
     
-    return Result<nlohmann::json>::success(trends);
+    return trends;
 }
 
 Result<nlohmann::json> QueryPatternAnalysisDashboard::get_query_type_correlation(int hours) const {
@@ -414,7 +414,7 @@ Result<nlohmann::json> QueryPatternAnalysisDashboard::get_query_type_correlation
     correlation["correlation_matrix"] = matrix;
     correlation["time_period_hours"] = hours;
     
-    return Result<nlohmann::json>::success(correlation);
+    return correlation;
 }
 
 Result<nlohmann::json> QueryPatternAnalysisDashboard::get_dashboard_data() const {
@@ -455,7 +455,7 @@ Result<nlohmann::json> QueryPatternAnalysisDashboard::get_dashboard_data() const
         data["type_correlation"] = correlation_result.value();
     }
     
-    return Result<nlohmann::json>::success(data);
+    return data;
 }
 
 Result<void> QueryPatternAnalysisDashboard::create_dashboard_layout() const {

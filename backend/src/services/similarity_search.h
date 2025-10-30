@@ -26,9 +26,10 @@ struct SearchResult {
     std::string vector_id;
     float similarity_score;
     Vector vector_data;  // Optional: include vector data in results
-    
+
+    SearchResult() : similarity_score(0.0f) {}
     SearchResult(const std::string& id, float score) : vector_id(id), similarity_score(score) {}
-    SearchResult(const std::string& id, float score, const Vector& data) 
+    SearchResult(const std::string& id, float score, const Vector& data)
         : vector_id(id), similarity_score(score), vector_data(data) {}
 };
 

@@ -48,7 +48,7 @@ Result<TimeSeriesData> MetricsDataProvider::get_time_series_data(
         data.values.push_back(dis(gen));
     }
     
-    return Result<TimeSeriesData>::success(data);
+    return data;
 }
 
 Result<double> MetricsDataProvider::get_current_metric_value(const std::string& metric_name) {
@@ -62,7 +62,7 @@ Result<double> MetricsDataProvider::get_current_metric_value(const std::string& 
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> dis(0.0, 100.0);
     
-    return Result<double>::success(dis(gen));
+    return dis(gen);
 }
 
 Result<HeatmapData> MetricsDataProvider::get_heatmap_data(const std::string& data_type) {
@@ -85,7 +85,7 @@ Result<HeatmapData> MetricsDataProvider::get_heatmap_data(const std::string& dat
         }
     }
     
-    return Result<HeatmapData>::success(data);
+    return data;
 }
 
 Result<std::vector<std::string>> MetricsDataProvider::get_available_metrics() {
@@ -103,7 +103,7 @@ Result<std::vector<std::string>> MetricsDataProvider::get_available_metrics() {
         "concurrent_connections"
     };
     
-    return Result<std::vector<std::string>>::success(metrics);
+    return metrics;
 }
 
 // AnalyticsDashboardService implementation
@@ -155,7 +155,7 @@ Result<void> AnalyticsDashboardService::initialize() {
     }
     
     LOG_INFO(logger_, "Analytics dashboard service initialized");
-    return Result<void>::success();
+    return {};
 }
 
 Result<void> AnalyticsDashboardService::create_dashboard_layout(const DashboardLayout& layout) {
@@ -175,7 +175,7 @@ Result<void> AnalyticsDashboardService::create_dashboard_layout(const DashboardL
     }
     
     LOG_INFO(logger_, "Created dashboard layout: " + layout.name);
-    return Result<void>::success();
+    return {};
 }
 
 Result<DashboardLayout> AnalyticsDashboardService::get_dashboard_layout(const std::string& name) const {
@@ -183,7 +183,7 @@ Result<DashboardLayout> AnalyticsDashboardService::get_dashboard_layout(const st
     
     for (const auto& layout : dashboard_layouts_) {
         if (layout.name == name) {
-            return Result<DashboardLayout>::success(layout);
+            return layout;
         }
     }
     
@@ -192,7 +192,7 @@ Result<DashboardLayout> AnalyticsDashboardService::get_dashboard_layout(const st
 
 Result<std::vector<DashboardLayout>> AnalyticsDashboardService::get_all_dashboard_layouts() const {
     std::lock_guard<std::mutex> lock(dashboard_mutex_);
-    return Result<std::vector<DashboardLayout>>::success(dashboard_layouts_);
+    return dashboard_layouts_;
 }
 
 Result<void> AnalyticsDashboardService::update_dashboard_layout(const DashboardLayout& layout) {
@@ -206,7 +206,7 @@ Result<void> AnalyticsDashboardService::update_dashboard_layout(const DashboardL
             if (existing_layout.name == layout.name) {
                 existing_layout = layout;
                 LOG_INFO(logger_, "Updated dashboard layout: " + layout.name);
-                return Result<void>::success();
+                return {};
             }
         }
     }
@@ -221,7 +221,7 @@ Result<void> AnalyticsDashboardService::delete_dashboard_layout(const std::strin
         if (it->name == name) {
             dashboard_layouts_.erase(it);
             LOG_INFO(logger_, "Deleted dashboard layout: " + name);
-            return Result<void>::success();
+            return {};
         }
     }
     
@@ -291,7 +291,7 @@ Result<nlohmann::json> AnalyticsDashboardService::get_widget_data(const WidgetCo
         widget_data["error"] = std::string("Exception: ") + e.what();
     }
     
-    return Result<nlohmann::json>::success(widget_data);
+    return widget_data;
 }
 
 Result<TimeSeriesData> AnalyticsDashboardService::get_metric_time_series(const std::string& metric_name, 
@@ -319,7 +319,7 @@ Result<SystemHealth> AnalyticsDashboardService::get_system_health() const {
     health.metrics["disk_usage"] = 34.1f;
     health.uptime_seconds = 86400; // 24 hours
     
-    return Result<SystemHealth>::success(health);
+    return health;
 }
 
 Result<std::vector<DatabaseStatus>> AnalyticsDashboardService::get_database_statuses() const {
@@ -348,7 +348,7 @@ Result<std::vector<DatabaseStatus>> AnalyticsDashboardService::get_database_stat
     status2.uptime_seconds = 43200;
     statuses.push_back(status2);
     
-    return Result<std::vector<DatabaseStatus>>::success(statuses);
+    return statuses;
 }
 
 Result<void> AnalyticsDashboardService::configure_alert(const AlertConfig& alert_config) {
@@ -364,7 +364,7 @@ Result<void> AnalyticsDashboardService::configure_alert(const AlertConfig& alert
     }
     
     LOG_INFO(logger_, "Configured alert: " + alert_config.id);
-    return Result<void>::success();
+    return {};
 }
 
 Result<std::vector<AlertConfig>> AnalyticsDashboardService::get_alert_configurations() const {
@@ -377,7 +377,7 @@ Result<std::vector<AlertConfig>> AnalyticsDashboardService::get_alert_configurat
         configs.push_back(pair.second);
     }
     
-    return Result<std::vector<AlertConfig>>::success(configs);
+    return configs;
 }
 
 Result<std::vector<AlertEvent>> AnalyticsDashboardService::get_recent_alert_events(int limit) const {
@@ -395,7 +395,7 @@ Result<std::vector<AlertEvent>> AnalyticsDashboardService::get_recent_alert_even
         events.push_back(alert_events_[i]);
     }
     
-    return Result<std::vector<AlertEvent>>::success(events);
+    return events;
 }
 
 Result<void> AnalyticsDashboardService::acknowledge_alert_event(const std::string& alert_event_id, 
@@ -408,7 +408,7 @@ Result<void> AnalyticsDashboardService::acknowledge_alert_event(const std::strin
             event.acknowledged_at = std::chrono::system_clock::now();
             event.acknowledged_by = user;
             LOG_INFO(logger_, "Acknowledged alert event: " + alert_event_id);
-            return Result<void>::success();
+            return {};
         }
     }
     
@@ -447,7 +447,7 @@ Result<std::string> AnalyticsDashboardService::export_dashboard_data(const std::
     }
     
     if (format == "json") {
-        return Result<std::string>::success(export_data.dump(2));
+        return export_data.dump(2);
     } else {
         RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Unsupported export format: " + format);
     }

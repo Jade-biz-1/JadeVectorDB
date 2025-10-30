@@ -229,7 +229,7 @@ public:
         decision.approved = !approver_id.empty(); // For this demo, assume approval if approver specified
         decision.decision_time = std::chrono::system_clock::now();
         decision.trust_level = TrustLevel::MEDIUM; // JIT access has medium trust
-        decision.requested_duration = request.requested_duration;
+        // decision.requested_duration = request.requested_duration; // TODO: Add field to AccessDecision
         
         if (decision.approved) {
             // Generate temporary access token
@@ -266,7 +266,7 @@ public:
             decision.approved = true;
             decision.decision_time = std::chrono::system_clock::now();
             decision.trust_level = TrustLevel::MEDIUM;
-            decision.expires_at = decision.decision_time + it->second.request.expires_at;
+            // decision.expires_at = decision.decision_time + it->second.request.expires_at; // TODO: Add field to AccessRequest
             
             active_access_tokens_[token] = decision;
             

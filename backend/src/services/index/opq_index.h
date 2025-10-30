@@ -10,7 +10,7 @@
 #include <map>
 #include <string>
 #include <boost/thread/shared_mutex.hpp>
-#include <random>
+#include <shared_mutex>
 #include <random>
 
 namespace jadevectordb {
@@ -60,7 +60,7 @@ private:
     bool is_built_ = false;        // Whether the index is built with vectors
     
     // Random generator
-    std::mt19937 rng_;
+    mutable std::mt19937 rng_;
     
     // Thread safety
     mutable std::shared_mutex index_mutex_;
