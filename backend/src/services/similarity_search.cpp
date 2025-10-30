@@ -74,7 +74,7 @@ Result<void> SimilaritySearchService::initialize() {
     }
     
     LOG_INFO(logger_, "SimilaritySearchService initialized");
-    return Result<void>::success();
+    return {};
 }
 
 Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
@@ -85,7 +85,7 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
     // Validate parameters
     auto validation_result = validate_search_params(params);
     if (!validation_result.has_value()) {
-        return Result<std::vector<SearchResult>>(validation_result.error());
+        return tl::make_unexpected(validation_result.error());
     }
     
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -103,7 +103,7 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
             if (active_searches_gauge_) {
                 active_searches_gauge_->decrement();
             }
-            return Result<std::vector<SearchResult>>(all_vectors_result.error());
+            return tl::make_unexpected(all_vectors_result.error());
         }
         
         const auto& all_vector_ids = all_vectors_result.value();
@@ -121,7 +121,7 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
                 if (active_searches_gauge_) {
                     active_searches_gauge_->decrement();
                 }
-                return Result<std::vector<SearchResult>>(batch_result.error());
+                return tl::make_unexpected(batch_result.error());
             }
             
             const auto& batch_vectors = batch_result.value();
@@ -182,14 +182,14 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
             search_latency_histogram_->observe(duration);
         }
         
-        return Result<std::vector<SearchResult>>::success(std::move(final_results));
+        return std::move(final_results);
         
     } catch (const std::exception& e) {
         if (active_searches_gauge_) {
             active_searches_gauge_->decrement();
         }
         LOG_ERROR(logger_, "Exception during similarity search: " + std::string(e.what()));
-        return Result<std::vector<SearchResult>>(MAKE_ERROR(ErrorCode::SIMILARITY_SEARCH_FAILED, 
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::SIMILARITY_SEARCH_FAILED,
                                                             "Exception during similarity search"));
     }
 }
@@ -202,7 +202,7 @@ Result<std::vector<SearchResult>> SimilaritySearchService::euclidean_search(
     // Validate parameters
     auto validation_result = validate_search_params(params);
     if (!validation_result.has_value()) {
-        return Result<std::vector<SearchResult>>(validation_result.error());
+        return tl::make_unexpected(validation_result.error());
     }
     
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -220,7 +220,7 @@ Result<std::vector<SearchResult>> SimilaritySearchService::euclidean_search(
             if (active_searches_gauge_) {
                 active_searches_gauge_->decrement();
             }
-            return Result<std::vector<SearchResult>>(all_vectors_result.error());
+            return tl::make_unexpected(all_vectors_result.error());
         }
         
         const auto& all_vector_ids = all_vectors_result.value();
@@ -238,7 +238,7 @@ Result<std::vector<SearchResult>> SimilaritySearchService::euclidean_search(
                 if (active_searches_gauge_) {
                     active_searches_gauge_->decrement();
                 }
-                return Result<std::vector<SearchResult>>(batch_result.error());
+                return tl::make_unexpected(batch_result.error());
             }
             
             const auto& batch_vectors = batch_result.value();
@@ -302,14 +302,14 @@ Result<std::vector<SearchResult>> SimilaritySearchService::euclidean_search(
             search_latency_histogram_->observe(duration);
         }
         
-        return Result<std::vector<SearchResult>>::success(std::move(final_results));
+        return std::move(final_results);
         
     } catch (const std::exception& e) {
         if (active_searches_gauge_) {
             active_searches_gauge_->decrement();
         }
         LOG_ERROR(logger_, "Exception during Euclidean search: " + std::string(e.what()));
-        return Result<std::vector<SearchResult>>(MAKE_ERROR(ErrorCode::SIMILARITY_SEARCH_FAILED, 
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::SIMILARITY_SEARCH_FAILED,
                                                             "Exception during Euclidean search"));
     }
 }
@@ -322,7 +322,7 @@ Result<std::vector<SearchResult>> SimilaritySearchService::dot_product_search(
     // Validate parameters
     auto validation_result = validate_search_params(params);
     if (!validation_result.has_value()) {
-        return Result<std::vector<SearchResult>>(validation_result.error());
+        return tl::make_unexpected(validation_result.error());
     }
     
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -340,7 +340,7 @@ Result<std::vector<SearchResult>> SimilaritySearchService::dot_product_search(
             if (active_searches_gauge_) {
                 active_searches_gauge_->decrement();
             }
-            return Result<std::vector<SearchResult>>(all_vectors_result.error());
+            return tl::make_unexpected(all_vectors_result.error());
         }
         
         const auto& all_vector_ids = all_vectors_result.value();
@@ -358,7 +358,7 @@ Result<std::vector<SearchResult>> SimilaritySearchService::dot_product_search(
                 if (active_searches_gauge_) {
                     active_searches_gauge_->decrement();
                 }
-                return Result<std::vector<SearchResult>>(batch_result.error());
+                return tl::make_unexpected(batch_result.error());
             }
             
             const auto& batch_vectors = batch_result.value();
@@ -419,14 +419,14 @@ Result<std::vector<SearchResult>> SimilaritySearchService::dot_product_search(
             search_latency_histogram_->observe(duration);
         }
         
-        return Result<std::vector<SearchResult>>::success(std::move(final_results));
+        return std::move(final_results);
         
     } catch (const std::exception& e) {
         if (active_searches_gauge_) {
             active_searches_gauge_->decrement();
         }
         LOG_ERROR(logger_, "Exception during dot product search: " + std::string(e.what()));
-        return Result<std::vector<SearchResult>>(MAKE_ERROR(ErrorCode::SIMILARITY_SEARCH_FAILED, 
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::SIMILARITY_SEARCH_FAILED,
                                                             "Exception during dot product search"));
     }
 }
@@ -437,27 +437,27 @@ std::vector<std::string> SimilaritySearchService::get_available_algorithms() con
 
 Result<void> SimilaritySearchService::validate_search_params(const SearchParams& params) const {
     if (params.top_k <= 0) {
-        return Result<void>(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "top_k must be positive"));
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "top_k must be positive"));
     }
     
     if (params.threshold < 0.0f || params.threshold > 1.0f) {
-        return Result<void>(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "threshold must be between 0 and 1"));
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "threshold must be between 0 and 1"));
     }
     
     if (params.filter_min_score < 0.0f || params.filter_min_score > 1.0f) {
-        return Result<void>(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "filter_min_score must be between 0 and 1"));
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "filter_min_score must be between 0 and 1"));
     }
     
     if (params.filter_max_score < 0.0f || params.filter_max_score > 1.0f) {
-        return Result<void>(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "filter_max_score must be between 0 and 1"));
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "filter_max_score must be between 0 and 1"));
     }
     
     if (params.filter_min_score > params.filter_max_score) {
-        return Result<void>(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, 
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT,
                                       "filter_min_score cannot be greater than filter_max_score"));
     }
     
-    return Result<void>::success();
+    return {};
 }
 
 std::vector<Vector> SimilaritySearchService::apply_metadata_filters(
@@ -474,7 +474,7 @@ std::vector<Vector> SimilaritySearchService::apply_metadata_filters(
         if (!params.filter_tags.empty()) {
             bool has_tag = false;
             for (const auto& tag : params.filter_tags) {
-                if (std::find(vec.tags.begin(), vec.tags.end(), tag) != vec.tags.end()) {
+                if (std::find(vec.metadata.tags.begin(), vec.metadata.tags.end(), tag) != vec.metadata.tags.end()) {
                     has_tag = true;
                     break;
                 }
@@ -483,36 +483,25 @@ std::vector<Vector> SimilaritySearchService::apply_metadata_filters(
                 include = false;
             }
         }
-        
+
         // Owner filter
         if (include && !params.filter_owner.empty()) {
-            if (vec.metadata.find("owner") == vec.metadata.end() || 
-                vec.metadata.at("owner") != params.filter_owner) {
+            if (vec.metadata.owner.empty() || vec.metadata.owner != params.filter_owner) {
                 include = false;
             }
         }
-        
+
         // Category filter
         if (include && !params.filter_category.empty()) {
-            if (vec.metadata.find("category") == vec.metadata.end() || 
-                vec.metadata.at("category") != params.filter_category) {
+            if (vec.metadata.category.empty() || vec.metadata.category != params.filter_category) {
                 include = false;
             }
         }
-        
-        // Score filter (using a metadata field for scores)
+
+        // Score filter (using the score field in metadata)
         if (include) {
-            auto score_it = vec.metadata.find("relevance_score");
-            if (score_it != vec.metadata.end()) {
-                try {
-                    float score = std::stof(score_it->second);
-                    if (score < params.filter_min_score || score > params.filter_max_score) {
-                        include = false;
-                    }
-                } catch (const std::exception&) {
-                    // If score can't be parsed, skip this vector
-                    include = false;
-                }
+            if (vec.metadata.score < params.filter_min_score || vec.metadata.score > params.filter_max_score) {
+                include = false;
             }
         }
         

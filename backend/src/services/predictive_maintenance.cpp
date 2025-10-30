@@ -272,7 +272,7 @@ Result<std::vector<ResourcePrediction>> ResourceExhaustionPredictor::predict_res
         predictions.push_back(network_prediction.value());
     }
     
-    return Result<std::vector<ResourcePrediction>>::success(predictions);
+    return predictions;
 }
 
 Result<ResourcePrediction> ResourceExhaustionPredictor::predict_resource_exhaustion(
@@ -319,7 +319,7 @@ Result<ResourcePrediction> ResourceExhaustionPredictor::predict_resource_exhaust
         prediction.confidence = ConfidenceLevel::LOW;
         prediction.confidence_percentage = 0.0;
         prediction.recommendation = "Insufficient data for prediction";
-        return Result<ResourcePrediction>::success(prediction);
+        return prediction;
     }
     
     // Make prediction using the algorithm
@@ -385,12 +385,12 @@ Result<ResourcePrediction> ResourceExhaustionPredictor::predict_resource_exhaust
     // Generate recommendation
     prediction.recommendation = generate_recommendation(prediction);
     
-    return Result<ResourcePrediction>::success(prediction);
+    return prediction;
 }
 
 Result<void> ResourceExhaustionPredictor::configure(const PredictiveMaintenanceConfig& config) {
     config_ = config;
-    return Result<void>::success();
+    return {};
 }
 
 const PredictiveMaintenanceConfig& ResourceExhaustionPredictor::get_config() const {
@@ -429,7 +429,7 @@ ResourceExhaustionPredictor::get_historical_data(const std::string& metric_name,
         historical_data.emplace_back(timestamp, noisy_value);
     }
     
-    return Result<std::vector<std::pair<std::chrono::system_clock::time_point, double>>>::success(historical_data);
+    return historical_data;
 }
 
 std::chrono::system_clock::time_point ResourceExhaustionPredictor::calculate_exhaustion_time(
@@ -526,7 +526,7 @@ Result<std::vector<PerformanceDegradationPrediction>> PerformanceDegradationFore
         forecasts.push_back(index_forecast.value());
     }
     
-    return Result<std::vector<PerformanceDegradationPrediction>>::success(forecasts);
+    return forecasts;
 }
 
 Result<PerformanceDegradationPrediction> PerformanceDegradationForecaster::forecast_degradation(
@@ -553,7 +553,7 @@ Result<PerformanceDegradationPrediction> PerformanceDegradationForecaster::forec
         forecast.confidence = ConfidenceLevel::LOW;
         forecast.confidence_percentage = 0.0;
         forecast.recommendation = "Insufficient data for forecasting";
-        return Result<PerformanceDegradationPrediction>::success(forecast);
+        return forecast;
     }
     
     // Make prediction using the algorithm
@@ -624,12 +624,12 @@ Result<PerformanceDegradationPrediction> PerformanceDegradationForecaster::forec
     // Generate recommendation
     forecast.recommendation = generate_recommendation(forecast);
     
-    return Result<PerformanceDegradationPrediction>::success(forecast);
+    return forecast;
 }
 
 Result<void> PerformanceDegradationForecaster::configure(const PredictiveMaintenanceConfig& config) {
     config_ = config;
-    return Result<void>::success();
+    return {};
 }
 
 const PredictiveMaintenanceConfig& PerformanceDegradationForecaster::get_config() const {
@@ -668,7 +668,7 @@ PerformanceDegradationForecaster::get_performance_data(const std::string& compon
         historical_data.emplace_back(timestamp, noisy_value);
     }
     
-    return Result<std::vector<std::pair<std::chrono::system_clock::time_point, double>>>::success(historical_data);
+    return historical_data;
 }
 
 std::vector<std::string> PerformanceDegradationForecaster::identify_affected_services(const std::string& component) const {

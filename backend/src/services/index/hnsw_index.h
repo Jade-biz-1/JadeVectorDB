@@ -2,6 +2,7 @@
 #define JADEVECTORDB_HNSW_INDEX_H
 
 #include "models/index.h"
+#include "lib/error_handling.h"
 #include "services/similarity_search.h"
 #include <vector>
 #include <memory>
@@ -10,6 +11,11 @@
 #include <random>
 
 namespace jadevectordb {
+
+namespace logging {
+    class Logger;
+}
+
 
 struct HnswNode {
     int id;
@@ -85,6 +91,9 @@ public:
                                                      int k = 10,
                                                      float threshold = 0.0f) const;
     
+    // Build the index (no-op for HNSW, vectors are indexed on add)
+    Result<bool> build() { return true; }
+
     // Build the index from a set of vectors (batch operation)
     Result<bool> build_from_vectors(const std::vector<std::pair<int, std::vector<float>>>& vectors);
     

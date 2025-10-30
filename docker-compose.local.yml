@@ -1,0 +1,58 @@
+version: '3.8'
+
+# JadeVectorDB Local Deployment
+# Uses pre-built dependencies from build_coverage/_deps
+
+services:
+  jadevectordb-core:
+    build:
+      context: .
+      dockerfile: Dockerfile.core
+    image: jadevectordb/core:latest
+    container_name: jadevectordb-core
+    volumes:
+      # Data and config persistence
+      - jadevectordb_data:/data
+      - jadevectordb_config:/config
+      # Optional: Mount source for live development
+      # - ./backend:/app/backend:ro
+    networks:
+      - jadevectordb_network
+    restart: unless-stopped
+    environment:
+      - JADE_DB_DATA_DIR=/data
+      - JADE_DB_CONFIG_DIR=/config
+      - JADE_DB_LOG_LEVEL=INFO
+
+  # Development shell for interactive work
+  jadevectordb-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.core
+    image: jadevectordb/core:latest
+    container_name: jadevectordb-dev
+    volumes:
+      - ./backend:/app/backend
+      - jadevectordb_build:/app/backend/build_coverage
+      - jadevectordb_data:/data
+      - jadevectordb_config:/config
+    networks:
+      - jadevectordb_network
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+    profiles:
+      - dev
+
+volumes:
+  jadevectordb_data:
+    driver: local
+  jadevectordb_config:
+    driver: local
+  jadevectordb_build:
+    driver: local
+
+networks:
+  jadevectordb_network:
+    driver: bridge
+    name: jadevectordb_local_network

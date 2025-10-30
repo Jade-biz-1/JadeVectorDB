@@ -2,12 +2,19 @@
 #define JADEVECTORDB_FLAT_INDEX_H
 
 #include "models/index.h"
+#include "lib/error_handling.h"
 #include <vector>
 #include <memory>
 #include <unordered_map>
 #include <mutex>
+#include <shared_mutex>
 
 namespace jadevectordb {
+
+namespace logging {
+    class Logger;
+}
+
 
 /**
  * @brief Implementation of Flat (Linear) index algorithm

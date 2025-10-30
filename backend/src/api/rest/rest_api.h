@@ -22,6 +22,7 @@ namespace jadevectordb {
     class SimilaritySearchService;
     class IndexService;
     class LifecycleService;
+    class AuthManager;
 }
 
 // For now, we'll define a basic interface structure
@@ -72,6 +73,7 @@ private:
     std::unique_ptr<SimilaritySearchService> similarity_search_service_;
     std::unique_ptr<IndexService> index_service_;
     std::unique_ptr<LifecycleService> lifecycle_service_;
+    std::unique_ptr<AuthManager> auth_manager_;
     
     // Crow app instance
     std::unique_ptr<crow::App<>> app_;

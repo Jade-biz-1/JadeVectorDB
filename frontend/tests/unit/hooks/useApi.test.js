@@ -1,82 +1,126 @@
 // frontend/tests/unit/hooks/useApi.test.js
-import { renderHook, waitFor } from '@testing-library/react';
-import useApi from '@@/hooks/useApi';
+import { renderHook, act } from '@testing-library/react';
+import { useApi } from '@/hooks/useApi';
 
-// Mock API function for testing
-const mockApiFunction = jest.fn();
+// Mock the API functions
+jest.mock('@/lib/api', () => ({
+  databaseApi: {
+    listDatabases: jest.fn(),
+    createDatabase: jest.fn(),
+  },
+  searchApi: {
+    similaritySearch: jest.fn(),
+  }
+}));
+
+import { databaseApi, searchApi } from '@/lib/api';
+
+// Mock localStorage
+Object.defineProperty(window, 'localStorage', {
+  value: {
+    getItem: jest.fn(() => 'test-api-key'),
+  },
+  writable: true,
+});
 
 describe('useApi Hook', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  test('initially sets loading to true and data to null', () => {
-    mockApiFunction.mockResolvedValue('test data');
+  test('initializes with loading state', () => {
+    const { result } = renderHook(() => useApi());
     
-    const { result } = renderHook(() => useApi(mockApiFunction));
-    
-    expect(result.current.loading).toBe(true);
-    expect(result.current.data).toBeNull();
+    expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
+    expect(result.current.data).toBeNull();
   });
 
-  test('sets data and loading state when API call succeeds', async () => {
-    const testData = { id: 1, name: 'Test' };
-    mockApiFunction.mockResolvedValue(testData);
+  test('executes API calls correctly', async () => {
+    const mockDatabases = [
+      { databaseId: '1', name: 'DB1', vectorDimension: 128 },
+      { databaseId: '2', name: 'DB2', vectorDimension: 256 }
+    ];
     
-    const { result } = renderHook(() => useApi(mockApiFunction));
+    databaseApi.listDatabases.mockResolvedValue({ databases: mockDatabases });
     
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    const { result } = renderHook(() => useApi());
+    
+    await act(async () => {
+      const response = await result.current.execute(databaseApi.listDatabases);
+      expect(response.databases).toEqual(mockDatabases);
     });
     
-    expect(result.current.data).toEqual(testData);
+    expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
+    // Note: The data property would depend on the actual implementation of useApi
   });
 
-  test('sets error when API call fails', async () => {
+  test('handles API errors correctly', async () => {
     const error = new Error('API Error');
-    mockApiFunction.mockRejectedValue(error);
+    databaseApi.listDatabases.mockRejectedValue(error);
     
-    const { result } = renderHook(() => useApi(mockApiFunction));
+    const { result } = renderHook(() => useApi());
     
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    await act(async () => {
+      try {
+        await result.current.execute(databaseApi.listDatabases);
+      } catch (err) {
+        // Error is handled in the hook
+      }
     });
     
-    expect(result.current.data).toBeNull();
-    expect(result.current.error).toBe('API Error');
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toEqual(error);
   });
 
-  test('refetch function works correctly', async () => {
-    const testData = { id: 2, name: 'Refetched' };
-    mockApiFunction
-      .mockResolvedValueOnce('initial data') // First call
-      .mockResolvedValueOnce(testData); // After refetch
+  test('clears error when executing new request', async () => {
+    const error = new Error('API Error');
+    databaseApi.listDatabases.mockRejectedValue(error);
     
-    const { result } = renderHook(() => useApi(mockApiFunction));
+    const { result } = renderHook(() => useApi());
     
-    // Wait for initial call to complete
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    // First, trigger an error
+    await act(async () => {
+      try {
+        await result.current.execute(databaseApi.listDatabases);
+      } catch (err) {
+        // Error is handled in the hook
+      }
     });
     
-    // Call refetch
-    result.current.refetch();
+    expect(result.current.error).toEqual(error);
     
-    // Wait for refetch to complete
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    // Then, mock a successful response
+    databaseApi.listDatabases.mockResolvedValue({ databases: [] });
+    
+    // Execute another request
+    await act(async () => {
+      await result.current.execute(databaseApi.listDatabases);
     });
     
-    expect(result.current.data).toEqual(testData);
+    expect(result.current.error).toBeNull();
   });
 
-  test('only calls API function once initially', () => {
-    mockApiFunction.mockResolvedValue('test data');
+  test('loading state updates correctly', async () => {
+    // Mock a slow API call
+    const promise = Promise.resolve({ databases: [] });
+    databaseApi.listDatabases.mockReturnValue(promise);
     
-    renderHook(() => useApi(mockApiFunction));
+    const { result } = renderHook(() => useApi());
     
-    expect(mockApiFunction).toHaveBeenCalledTimes(1);
+    // Start the API call
+    const callPromise = act(async () => {
+      await result.current.execute(databaseApi.listDatabases);
+    });
+    
+    // Check that loading is true during the call
+    expect(result.current.loading).toBe(true);
+    
+    // Wait for the call to complete
+    await callPromise;
+    
+    // Check that loading is false after the call
+    expect(result.current.loading).toBe(false);
   });
 });

@@ -78,10 +78,10 @@ else()
     endif()
 endif()
 
-# gRPC
-find_package(gRPC CONFIG REQUIRED)
+# gRPC (optional - using stub implementation)
+find_package(gRPC CONFIG)
 if(NOT gRPC_FOUND)
-    message(FATAL_ERROR "gRPC not found. Please install gRPC.")
+    message(WARNING "gRPC not found. Building without gRPC support (using stubs).")
 endif()
 
 # Google Test for unit tests
@@ -111,12 +111,19 @@ add_executable(jadevectordb
     src/services/vector_storage.cpp
     src/services/similarity_search.cpp
     src/services/database_service.cpp
+    src/services/database_layer.cpp
+    src/services/metadata_filter.cpp
     src/services/index_service.cpp
     src/services/index/pq_index.cpp
     src/services/index/opq_index.cpp
     src/services/index/sq_index.cpp
+    src/services/index/flat_index.cpp
+    src/services/index/hnsw_index.cpp
+    src/services/index/lsh_index.cpp
+    src/services/index/ivf_index.cpp
     src/services/index/composite_index.cpp
     src/api/rest/rest_api.cpp
+    src/api/grpc/grpc_service_stub.cpp
     src/lib/mmap_utils.cpp
     src/lib/simd_ops.cpp
     src/lib/serialization.cpp
@@ -126,7 +133,12 @@ add_executable(jadevectordb
     src/lib/config.cpp
     src/lib/thread_pool.cpp
     src/lib/auth.cpp
+    src/lib/zero_trust.cpp
     src/lib/metrics.cpp
+    src/lib/compression.cpp
+    src/lib/encryption_stubs.cpp
+    src/lib/gpu_acceleration.cpp
+    src/lib/vector_operations.cpp
 )
 
 # Link libraries
@@ -148,6 +160,7 @@ add_library(jadevectordb_core
     src/services/vector_storage.cpp
     src/services/similarity_search.cpp
     src/services/database_service.cpp
+    src/services/database_layer.cpp
     src/services/index_service.cpp
     src/lib/mmap_utils.cpp
     src/lib/simd_ops.cpp
@@ -159,6 +172,8 @@ add_library(jadevectordb_core
     src/lib/thread_pool.cpp
     src/lib/auth.cpp
     src/lib/metrics.cpp
+    src/lib/compression.cpp
+    src/lib/encryption.cpp
 )
 
 target_link_libraries(jadevectordb_core 

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <random>
+#include <shared_mutex>
 
 namespace jadevectordb {
 
@@ -36,7 +37,7 @@ bool SqIndex::initialize(const SqParams& params) {
 
 Result<bool> SqIndex::add_vector(int vector_id, const std::vector<float>& vector) {
     if (vector.empty()) {
-        return Result<bool>::failure("Vector cannot be empty");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "Vector cannot be empty"));
     }
     
     if (dimension_ == 0) {
@@ -44,11 +45,11 @@ Result<bool> SqIndex::add_vector(int vector_id, const std::vector<float>& vector
         // Initialize quantization ranges vector
         quantization_ranges_.resize(dimension_);
         for (auto& range : quantization_ranges_) {
-            range.first = std::numeric_limits<float>::max();   // min
-            range.second = std::numeric_limits<float>::lowest(); // max
+            range[0] = std::numeric_limits<float>::max();   // min
+            range[1] = std::numeric_limits<float>::lowest(); // max
         }
     } else if (static_cast<int>(vector.size()) != dimension_) {
-        return Result<bool>::failure("Vector dimension mismatch");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "Vector dimension mismatch"));
     }
     
     std::unique_lock<std::shared_mutex> lock(index_mutex_);
@@ -56,12 +57,12 @@ Result<bool> SqIndex::add_vector(int vector_id, const std::vector<float>& vector
     // Store the original vector for now
     original_vectors_[vector_id] = vector;
     
-    return Result<bool>::success(true);
+    return true;
 }
 
 Result<bool> SqIndex::build() {
     if (original_vectors_.empty()) {
-        return Result<bool>::success(true); // Nothing to build
+        return true; // Nothing to build
     }
     
     std::unique_lock<std::shared_mutex> lock(index_mutex_);
@@ -77,7 +78,7 @@ Result<bool> SqIndex::build() {
     // Determine quantization ranges
     auto result = determine_quantization_ranges(training_vectors);
     if (!result.has_value()) {
-        return Result<bool>::failure("Failed to determine quantization ranges: " + result.error().message);
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to determine quantization ranges: " + result.error().message));
     }
     
     is_trained_ = true;
@@ -93,11 +94,11 @@ Result<bool> SqIndex::build() {
     is_built_ = true;
     
     LOG_INFO(logger_, "SQ index built with " << original_vectors_.size() << " vectors");
-    return Result<bool>::success(true);
+    return true;
 }
 
 Result<bool> SqIndex::build_from_vectors(const std::vector<std::pair<int, std::vector<float>>>& vectors) {
-    std::unique_lock<boost::shared_mutex> lock(index_mutex_);
+    std::unique_lock<std::shared_mutex> lock(index_mutex_);
     
     clear();
     
@@ -115,14 +116,14 @@ Result<bool> SqIndex::build_from_vectors(const std::vector<std::pair<int, std::v
 
 Result<std::vector<std::pair<int, float>>> SqIndex::search(const std::vector<float>& query, int k, float threshold) const {
     if (!is_built_) {
-        return Result<std::vector<std::pair<int, float>>>::failure("Index is not built");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_STATE, "Index is not built"));
     }
     
     if (static_cast<int>(query.size()) != dimension_) {
-        return Result<std::vector<std::pair<int, float>>>::failure("Query dimension mismatch");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "Query dimension mismatch"));
     }
     
-    boost::shared_lock<boost::shared_mutex> lock(index_mutex_);
+    std::shared_lock<std::shared_mutex> lock(index_mutex_);
     
     // Encode the query vector to SQ code if needed
     std::vector<uint8_t> query_code;
@@ -165,7 +166,7 @@ Result<std::vector<std::pair<int, float>>> SqIndex::search(const std::vector<flo
         results.resize(k);
     }
     
-    return Result<std::vector<std::pair<int, float>>>::success(std::move(results));
+    return std::move(results);
 }
 
 bool SqIndex::contains(int vector_id) const {
@@ -174,22 +175,22 @@ bool SqIndex::contains(int vector_id) const {
 }
 
 Result<bool> SqIndex::remove_vector(int vector_id) {
-    boost::unique_lock<boost::shared_mutex> lock(index_mutex_);
+    std::unique_lock<std::shared_mutex> lock(index_mutex_);
     
     auto it = sq_codes_.find(vector_id);
     if (it == sq_codes_.end()) {
-        return Result<bool>::success(false); // Vector not found
+        return false; // Vector not found
     }
     
     sq_codes_.erase(it);
     original_vectors_.erase(vector_id);
     
-    return Result<bool>::success(true);
+    return true;
 }
 
 Result<bool> SqIndex::update_vector(int vector_id, const std::vector<float>& new_vector) {
     if (static_cast<int>(new_vector.size()) != dimension_) {
-        return Result<bool>::failure("Vector dimension mismatch");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "Vector dimension mismatch"));
     }
     
     std::unique_lock<std::shared_mutex> lock(index_mutex_);
@@ -197,7 +198,7 @@ Result<bool> SqIndex::update_vector(int vector_id, const std::vector<float>& new
     // Update the original vector
     auto it = original_vectors_.find(vector_id);
     if (it == original_vectors_.end()) {
-        return Result<bool>::failure("Vector not found in index");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::NOT_FOUND, "Vector not found in index"));
     }
     
     it->second = new_vector;
@@ -208,7 +209,7 @@ Result<bool> SqIndex::update_vector(int vector_id, const std::vector<float>& new
         sq_codes_[vector_id] = std::move(new_code);
     }
     
-    return Result<bool>::success(true);
+    return true;
 }
 
 size_t SqIndex::size() const {
@@ -226,7 +227,7 @@ Result<std::unordered_map<std::string, std::string>> SqIndex::get_stats() const 
     stats["is_built"] = is_built_ ? "true" : "false";
     stats["dimension"] = std::to_string(dimension_);
     
-    return Result<std::unordered_map<std::string, std::string>>::success(std::move(stats));
+    return std::move(stats);
 }
 
 void SqIndex::clear() {
@@ -286,39 +287,39 @@ std::vector<float> SqIndex::decode_code(const std::vector<uint8_t>& code) const 
 
 Result<bool> SqIndex::determine_quantization_ranges(const std::vector<std::vector<float>>& vectors) {
     if (vectors.empty() || dimension_ == 0) {
-        return Result<bool>::failure("Cannot determine ranges with empty vectors or unknown dimension");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_STATE, "Cannot determine ranges with empty vectors or unknown dimension"));
     }
     
     std::unique_lock<std::shared_mutex> lock(index_mutex_);
     
     // Initialize ranges to extreme values
     for (auto& range : quantization_ranges_) {
-        range.first = std::numeric_limits<float>::max();   // min
-        range.second = std::numeric_limits<float>::lowest(); // max
+        range[0] = std::numeric_limits<float>::max();   // min
+        range[1] = std::numeric_limits<float>::lowest(); // max
     }
     
     // Find min and max for each dimension
     for (const auto& vector : vectors) {
         for (int i = 0; i < dimension_ && i < static_cast<int>(vector.size()); ++i) {
-            if (vector[i] < quantization_ranges_[i].first) {
-                quantization_ranges_[i].first = vector[i];
+            if (vector[i] < quantization_ranges_[i][0]) {
+                quantization_ranges_[i][0] = vector[i];
             }
-            if (vector[i] > quantization_ranges_[i].second) {
-                quantization_ranges_[i].second = vector[i];
+            if (vector[i] > quantization_ranges_[i][1]) {
+                quantization_ranges_[i][1] = vector[i];
             }
         }
     }
     
     // Ensure ranges are valid (not equal)
     for (auto& range : quantization_ranges_) {
-        if (range.first == range.second) {
+        if (range[0] == range[1]) {
             // If min equals max, add a small epsilon to avoid division by zero
-            range.second += 1e-6f;
+            range[1] += 1e-6f;
         }
     }
     
     LOG_INFO(logger_, "Determined quantization ranges for " << dimension_ << " dimensions");
-    return Result<bool>::success(true);
+    return true;
 }
 
 uint8_t SqIndex::quantize_value(float value, int dim_idx) const {
@@ -327,8 +328,8 @@ uint8_t SqIndex::quantize_value(float value, int dim_idx) const {
     }
     
     const auto& range = quantization_ranges_[dim_idx];
-    float min_val = range.first;
-    float max_val = range.second;
+    float min_val = range[0];
+    float max_val = range[1];
     
     // Normalize the value to [0, 1]
     float normalized = (value - min_val) / (max_val - min_val);
@@ -346,8 +347,8 @@ float SqIndex::dequantize_value(uint8_t code, int dim_idx) const {
     }
     
     const auto& range = quantization_ranges_[dim_idx];
-    float min_val = range.first;
-    float max_val = range.second;
+    float min_val = range[0];
+    float max_val = range[1];
     
     // Convert the quantized value back to the original range
     float dequantized = min_val + (static_cast<float>(code) / (params_.num_levels - 1)) * (max_val - min_val);

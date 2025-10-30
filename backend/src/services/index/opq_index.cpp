@@ -45,7 +45,7 @@ void OpqIndex::initialize_rotation_matrix() {
 
 Result<bool> OpqIndex::add_vector(int vector_id, const std::vector<float>& vector) {
     if (vector.empty()) {
-        return Result<bool>::failure("Vector cannot be empty");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Vector cannot be empty"));
     }
     
     if (dimension_ == 0) {
@@ -62,23 +62,23 @@ Result<bool> OpqIndex::add_vector(int vector_id, const std::vector<float>& vecto
         // Initialize rotation matrix as identity matrix
         initialize_rotation_matrix();
     } else if (static_cast<int>(vector.size()) != dimension_) {
-        return Result<bool>::failure("Vector dimension mismatch");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Vector dimension mismatch"));
     }
     
-    boost::unique_lock<boost::shared_mutex> lock(index_mutex_);
+    std::unique_lock<std::shared_mutex> lock(index_mutex_);
     
     // Store the original vector for now
     original_vectors_[vector_id] = vector;
     
-    return Result<bool>::success(true);
+    return true;
 }
 
 Result<bool> OpqIndex::build() {
     if (original_vectors_.empty()) {
-        return Result<bool>::success(true); // Nothing to build
+        return true; // Nothing to build
     }
     
-    boost::unique_lock<boost::shared_mutex> lock(index_mutex_);
+    std::unique_lock<std::shared_mutex> lock(index_mutex_);
     
     // Extract vectors for training
     std::vector<std::vector<float>> training_vectors;
@@ -96,7 +96,7 @@ Result<bool> OpqIndex::build() {
     // Train the subvector centroids on rotated vectors
     result = train_subvector_centroids(training_vectors);
     if (!result.has_value()) {
-        return Result<bool>::failure("Failed to train subvector centroids: " + result.error().message);
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to train subvector centroids: " + result.error().message));
     }
     
     is_trained_ = true;
@@ -112,11 +112,11 @@ Result<bool> OpqIndex::build() {
     is_built_ = true;
     
     LOG_INFO(logger_, "OPQ index built with " << original_vectors_.size() << " vectors");
-    return Result<bool>::success(true);
+    return true;
 }
 
 Result<bool> OpqIndex::build_from_vectors(const std::vector<std::pair<int, std::vector<float>>>& vectors) {
-    boost::unique_lock<boost::shared_mutex> lock(index_mutex_);
+    std::unique_lock<std::shared_mutex> lock(index_mutex_);
     
     clear();
     
@@ -134,14 +134,14 @@ Result<bool> OpqIndex::build_from_vectors(const std::vector<std::pair<int, std::
 
 Result<std::vector<std::pair<int, float>>> OpqIndex::search(const std::vector<float>& query, int k, float threshold) const {
     if (!is_built_) {
-        return Result<std::vector<std::pair<int, float>>>::failure("Index is not built");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_STATE, "Index is not built"));
     }
     
     if (static_cast<int>(query.size()) != dimension_) {
-        return Result<std::vector<std::pair<int, float>>>::failure("Query dimension mismatch");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INVALID_ARGUMENT, "Query dimension mismatch"));
     }
     
-    boost::shared_lock<boost::shared_mutex> lock(index_mutex_);
+    std::shared_lock<std::shared_mutex> lock(index_mutex_);
     
     // Apply rotation to query if needed
     std::vector<float> rotated_query = query;
@@ -190,39 +190,39 @@ Result<std::vector<std::pair<int, float>>> OpqIndex::search(const std::vector<fl
         results.resize(k);
     }
     
-    return Result<std::vector<std::pair<int, float>>>::success(std::move(results));
+    return std::move(results);
 }
 
 bool OpqIndex::contains(int vector_id) const {
-    boost::shared_lock<boost::shared_mutex> lock(index_mutex_);
+    std::shared_lock<std::shared_mutex> lock(index_mutex_);
     return pq_codes_.find(vector_id) != pq_codes_.end();
 }
 
 Result<bool> OpqIndex::remove_vector(int vector_id) {
-    boost::unique_lock<boost::shared_mutex> lock(index_mutex_);
+    std::unique_lock<std::shared_mutex> lock(index_mutex_);
     
     auto it = pq_codes_.find(vector_id);
     if (it == pq_codes_.end()) {
-        return Result<bool>::success(false); // Vector not found
+        return false; // Vector not found
     }
     
     pq_codes_.erase(it);
     original_vectors_.erase(vector_id);
     
-    return Result<bool>::success(true);
+    return true;
 }
 
 Result<bool> OpqIndex::update_vector(int vector_id, const std::vector<float>& new_vector) {
     if (static_cast<int>(new_vector.size()) != dimension_) {
-        return Result<bool>::failure("Vector dimension mismatch");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Vector dimension mismatch"));
     }
     
-    boost::unique_lock<boost::shared_mutex> lock(index_mutex_);
+    std::unique_lock<std::shared_mutex> lock(index_mutex_);
     
     // Update the original vector
     auto it = original_vectors_.find(vector_id);
     if (it == original_vectors_.end()) {
-        return Result<bool>::failure("Vector not found in index");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Vector not found in index"));
     }
     
     it->second = new_vector;
@@ -233,11 +233,11 @@ Result<bool> OpqIndex::update_vector(int vector_id, const std::vector<float>& ne
         pq_codes_[vector_id] = std::move(new_code);
     }
     
-    return Result<bool>::success(true);
+    return true;
 }
 
 size_t OpqIndex::size() const {
-    boost::shared_lock<boost::shared_mutex> lock(index_mutex_);
+    std::shared_lock<std::shared_mutex> lock(index_mutex_);
     return pq_codes_.size();
 }
 
@@ -253,11 +253,11 @@ Result<std::unordered_map<std::string, std::string>> OpqIndex::get_stats() const
     stats["dimension"] = std::to_string(dimension_);
     stats["rotation_matrix_initialized"] = (!rotation_matrix_.empty()) ? "true" : "false";
     
-    return Result<std::unordered_map<std::string, std::string>>::success(std::move(stats));
+    return std::move(stats);
 }
 
 void OpqIndex::clear() {
-    boost::unique_lock<boost::shared_mutex> lock(index_mutex_);
+    std::unique_lock<std::shared_mutex> lock(index_mutex_);
     subvector_centroids_.clear();
     rotation_matrix_.clear();
     inverse_rotation_matrix_.clear();
@@ -368,7 +368,7 @@ std::vector<float> OpqIndex::decode_code(const std::vector<uint8_t>& code) const
 
 Result<bool> OpqIndex::learn_rotation_matrix(std::vector<std::vector<float>>& vectors) {
     if (vectors.empty() || dimension_ == 0) {
-        return Result<bool>::failure("Cannot learn rotation with empty vectors or unknown dimension");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Cannot learn rotation with empty vectors or unknown dimension"));
     }
     
     // Initialize rotation matrix as identity matrix if not already done
@@ -398,7 +398,7 @@ Result<bool> OpqIndex::learn_rotation_matrix(std::vector<std::vector<float>>& ve
     }
     
     LOG_INFO(logger_, "Learned rotation matrix for OPQ with " << dimension_ << " dimensions");
-    return Result<bool>::success(true);
+    return true;
 }
 
 void OpqIndex::optimize_rotation_matrix(const std::vector<std::vector<float>>& vectors) {
@@ -425,7 +425,7 @@ void OpqIndex::optimize_rotation_matrix(const std::vector<std::vector<float>>& v
 
 Result<bool> OpqIndex::train_subvector_centroids(const std::vector<std::vector<float>>& vectors) {
     if (vectors.empty() || dimension_ == 0) {
-        return Result<bool>::failure("Cannot train with empty vectors or unknown dimension");
+        return tl::make_unexpected(MAKE_ERROR(ErrorCode::INTERNAL_ERROR, "Cannot train with empty vectors or unknown dimension"));
     }
     
     if (params_.num_subvectors == 0) {
@@ -467,7 +467,7 @@ Result<bool> OpqIndex::train_subvector_centroids(const std::vector<std::vector<f
     }
     
     LOG_INFO(logger_, "Trained OPQ centroids for " << params_.num_subvectors << " subvectors");
-    return Result<bool>::success(true);
+    return true;
 }
 
 std::vector<std::vector<float>> OpqIndex::split_into_subvectors(const std::vector<float>& vector) const {

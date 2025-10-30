@@ -1,0 +1,101 @@
+# JadeVectorDB Core Library Dockerfile
+# Uses pre-downloaded source dependencies from build_coverage/_deps
+
+FROM ubuntu:22.04
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install only the essential build tools and system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    wget \
+    ca-certificates \
+    lsb-release \
+    gnupg \
+    pkg-config \
+    libssl-dev \
+    libboost-all-dev \
+    libgrpc++-dev \
+    libprotobuf-dev \
+    protobuf-compiler-grpc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Apache Arrow (system dependency required)
+RUN wget https://apache.jfrog.io/artifactory/arrow/$(lsb_release --id --short | tr 'A-Z' 'a-z')/apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb && \
+    apt-get update && \
+    apt-get install -y -V ./apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb && \
+    apt-get update && \
+    apt-get install -y -V libarrow-dev && \
+    rm -f ./apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy the entire backend folder (includes pre-downloaded dependencies in build_coverage/_deps)
+COPY backend/ ./backend/
+
+# Verify dependencies exist
+RUN if [ ! -d "/app/backend/build_coverage/_deps" ] && [ -d "/app/backend/build/_deps" ]; then \
+        echo "Using _deps from build directory..." && \
+        mkdir -p /app/backend/build_coverage && \
+        ln -s /app/backend/build/_deps /app/backend/build_coverage/_deps; \
+    elif [ ! -d "/app/backend/build_coverage/_deps" ]; then \
+        echo "Warning: _deps directory not found, will download dependencies during build..."; \
+    fi && \
+    if [ -d "/app/backend/build_coverage/_deps" ]; then \
+        ls -la /app/backend/build_coverage/_deps/ && \
+        echo "Source dependencies found:" && \
+        ls /app/backend/build_coverage/_deps/ | grep -E "crow|eigen|flatbuffers" || true; \
+    else \
+        echo "No pre-existing _deps directory found."; \
+    fi
+
+# Build directory already exists with dependencies, just build the library
+WORKDIR /app/backend
+
+# Build the core library (CMake will use existing _deps sources if available)
+RUN mkdir -p build_coverage && cd build_coverage && \
+    cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_CXX_STANDARD=20 && \
+    make -j$(nproc) jadevectordb_core
+
+# Verify the library was built
+RUN ls -lh build_coverage/libjadevectordb_core.a && \
+    echo "✓ JadeVectorDB Core Library built successfully"
+
+# Create runtime user
+RUN useradd -m -u 1000 jadevector && \
+    chown -R jadevector:jadevector /app
+
+# Create data and config directories
+RUN mkdir -p /data /config && \
+    chown -R jadevector:jadevector /data /config
+
+USER jadevector
+
+# Environment variables
+ENV JADE_DB_DATA_DIR=/data
+ENV JADE_DB_CONFIG_DIR=/config
+ENV JADE_DB_LOG_LEVEL=INFO
+
+WORKDIR /app/backend/build_coverage
+
+# Default command shows build info
+CMD ["sh", "-c", "echo '=== JadeVectorDB Core Library ===' && \
+     echo 'Library: libjadevectordb_core.a' && \
+     ls -lh libjadevectordb_core.a && \
+     echo '' && \
+     echo 'Built with dependencies:' && \
+     if [ -d '/app/backend/build_coverage/_deps' ]; then \
+         ls /app/backend/build_coverage/_deps/ | grep -v build | grep -v subbuild; \
+     else \
+         echo 'Dependencies were downloaded during build'; \
+     fi && \
+     echo '' && \
+     echo 'Container ready for development' && \
+     tail -f /dev/null"]

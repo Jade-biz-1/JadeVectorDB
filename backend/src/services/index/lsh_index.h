@@ -2,13 +2,21 @@
 #define JADEVECTORDB_LSH_INDEX_H
 
 #include "models/index.h"
+#include "lib/error_handling.h"
 #include <vector>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <mutex>
+#include <shared_mutex>
+#include <random>
 
 namespace jadevectordb {
+
+namespace logging {
+    class Logger;
+}
+
 
 // Represents a hash function for LSH
 struct LshHashFunction {

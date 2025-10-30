@@ -1,7 +1,7 @@
 // frontend/tests/unit/components/button.test.js
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Button } from '@@/components/ui/button';
+import { Button } from '@/components/ui/button';
 
 describe('Button Component', () => {
   test('renders button with correct text', () => {
