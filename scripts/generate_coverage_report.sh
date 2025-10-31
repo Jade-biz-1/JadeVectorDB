@@ -58,7 +58,7 @@ fi
 
 # Define paths
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="$PROJECT_ROOT/backend/build_coverage"
+BUILD_DIR="$PROJECT_ROOT/backend/build"
 COVERAGE_INFO="$BUILD_DIR/coverage.info"
 COVERAGE_REPORT_DIR="$BUILD_DIR/coverage_report"
 
