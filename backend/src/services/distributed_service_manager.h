@@ -134,6 +134,15 @@ public:
                                                      const std::function<Result<BenchmarkOperationResult>()>& operation_func);
     Result<bool> audit_security_event(const SecurityEvent& event);
 
+    // Helper methods
+    std::string generate_route_key(const std::string& database_id,
+                                   const std::string& shard_id,
+                                   const std::string& operation_type) const;
+    Result<std::vector<std::string>> select_multiple_nodes(const std::string& database_id,
+                                                           const std::string& shard_id,
+                                                           const std::string& operation_type,
+                                                           int count) const;
+
 private:
     // Initialize individual services
     Result<bool> initialize_sharding_service();

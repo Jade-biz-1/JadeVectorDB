@@ -91,42 +91,45 @@ set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(benchmark)
 
 # Apache Arrow - In-memory columnar data format
-# Note: Arrow is large and complex, we'll try to use FetchContent but with minimal options
-message(STATUS "Fetching Apache Arrow...")
-FetchContent_Declare(
-    arrow
-    GIT_REPOSITORY https://github.com/apache/arrow.git
-    GIT_TAG apache-arrow-14.0.0
-    GIT_SHALLOW TRUE
-    SOURCE_SUBDIR cpp
-)
-# Minimize Arrow build - only build what we need
-set(ARROW_BUILD_STATIC ON CACHE BOOL "" FORCE)
-set(ARROW_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-set(ARROW_DEPENDENCY_SOURCE "BUNDLED" CACHE STRING "" FORCE)
-set(ARROW_VERBOSE_THIRDPARTY_BUILD OFF CACHE BOOL "" FORCE)
-set(ARROW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(ARROW_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
-set(ARROW_IPC OFF CACHE BOOL "" FORCE)
-set(ARROW_FLIGHT OFF CACHE BOOL "" FORCE)
-set(ARROW_COMPUTE OFF CACHE BOOL "" FORCE)
-set(ARROW_DATASET OFF CACHE BOOL "" FORCE)
-set(ARROW_FILESYSTEM OFF CACHE BOOL "" FORCE)
-set(ARROW_HDFS OFF CACHE BOOL "" FORCE)
-set(ARROW_JSON OFF CACHE BOOL "" FORCE)
-set(ARROW_PARQUET OFF CACHE BOOL "" FORCE)
-set(ARROW_WITH_BROTLI OFF CACHE BOOL "" FORCE)
-set(ARROW_WITH_BZ2 OFF CACHE BOOL "" FORCE)
-set(ARROW_WITH_LZ4 OFF CACHE BOOL "" FORCE)
-set(ARROW_WITH_SNAPPY OFF CACHE BOOL "" FORCE)
-set(ARROW_WITH_ZLIB OFF CACHE BOOL "" FORCE)
-set(ARROW_WITH_ZSTD OFF CACHE BOOL "" FORCE)
+# Note: Arrow is large and complex, we'll make it conditional with minimal options
+if(BUILD_WITH_ARROW)
+    message(STATUS "Fetching Apache Arrow...")
+    # Fetch a version that is known to work with modern CMake
+    FetchContent_Declare(
+        arrow
+        GIT_REPOSITORY https://github.com/apache/arrow.git
+        GIT_TAG apache-arrow-12.0.1  # Using an older, more stable version
+        GIT_SHALLOW TRUE
+        SOURCE_SUBDIR cpp
+    )
+    # Minimize Arrow build - only build what we need
+    set(ARROW_BUILD_STATIC ON CACHE BOOL "" FORCE)
+    set(ARROW_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+    set(ARROW_DEPENDENCY_SOURCE "BUNDLED" CACHE STRING "" FORCE)
+    set(ARROW_VERBOSE_THIRDPARTY_BUILD OFF CACHE BOOL "" FORCE)
+    set(ARROW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(ARROW_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+    set(ARROW_IPC OFF CACHE BOOL "" FORCE)
+    set(ARROW_FLIGHT OFF CACHE BOOL "" FORCE)
+    set(ARROW_COMPUTE OFF CACHE BOOL "" FORCE)
+    set(ARROW_DATASET OFF CACHE BOOL "" FORCE)
+    set(ARROW_FILESYSTEM OFF CACHE BOOL "" FORCE)
+    set(ARROW_HDFS OFF CACHE BOOL "" FORCE)
+    set(ARROW_JSON OFF CACHE BOOL "" FORCE)
+    set(ARROW_PARQUET OFF CACHE BOOL "" FORCE)
+    set(ARROW_WITH_BROTLI OFF CACHE BOOL "" FORCE)
+    set(ARROW_WITH_BZ2 OFF CACHE BOOL "" FORCE)
+    set(ARROW_WITH_LZ4 OFF CACHE BOOL "" FORCE)
+    set(ARROW_WITH_SNAPPY OFF CACHE BOOL "" FORCE)
+    set(ARROW_WITH_ZLIB OFF CACHE BOOL "" FORCE)
+    set(ARROW_WITH_ZSTD OFF CACHE BOOL "" FORCE)
 
-# Only fetch Arrow if not already available
-FetchContent_GetProperties(arrow)
-if(NOT arrow_POPULATED)
-    FetchContent_Populate(arrow)
-    add_subdirectory(${arrow_SOURCE_DIR}/cpp ${arrow_BINARY_DIR})
+    # Only fetch Arrow if not already available
+    FetchContent_GetProperties(arrow)
+    if(NOT arrow_POPULATED)
+        FetchContent_Populate(arrow)
+        add_subdirectory(${arrow_SOURCE_DIR}/cpp ${arrow_BINARY_DIR})
+    endif()
 endif()
 
 # gRPC - RPC framework
@@ -185,6 +188,14 @@ set(CORE_SOURCES
     src/services/database_layer.cpp
     src/services/metadata_filter.cpp
     src/services/index_service.cpp
+    src/services/cluster_service.cpp
+    src/services/sharding_service.cpp
+    src/services/replication_service.cpp
+    src/services/lifecycle_service.cpp
+    src/services/query_router.cpp
+    src/services/distributed_service_manager.cpp
+    src/services/performance_benchmark.cpp
+    src/services/security_audit_logger.cpp
     src/services/index/pq_index.cpp
     src/services/index/opq_index.cpp
     src/services/index/sq_index.cpp
@@ -206,6 +217,7 @@ set(CORE_SOURCES
     src/lib/metrics.cpp
     src/lib/compression.cpp
     src/lib/encryption.cpp
+    src/lib/field_encryption_service.cpp
     src/lib/gpu_acceleration.cpp
     src/lib/vector_operations.cpp
 )
@@ -227,7 +239,7 @@ target_link_libraries(jadevectordb_core PUBLIC
     $<$<BOOL:${GRPC_AVAILABLE}>:grpc++>
     $<$<BOOL:${GRPC_AVAILABLE}>:grpc>
     $<$<BOOL:${GRPC_AVAILABLE}>:gpr>
-    $<TARGET_NAME_IF_EXISTS:arrow_static>
+    $<$<BOOL:${BUILD_WITH_ARROW}>:arrow_static>
     ${CMAKE_DL_LIBS}
 )
 
@@ -243,7 +255,7 @@ target_link_libraries(jadevectordb PRIVATE
     $<$<BOOL:${GRPC_AVAILABLE}>:grpc++>
     $<$<BOOL:${GRPC_AVAILABLE}>:grpc>
     $<$<BOOL:${GRPC_AVAILABLE}>:gpr>
-    $<TARGET_NAME_IF_EXISTS:arrow_static>
+    $<$<BOOL:${BUILD_WITH_ARROW}>:arrow_static>
     ${CMAKE_DL_LIBS}
 )
 

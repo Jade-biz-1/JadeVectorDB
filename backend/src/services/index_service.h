@@ -7,6 +7,7 @@
 #include <map>
 
 #include "lib/error_handling.h"
+#include "lib/logging.h"
 #include "models/index.h"
 #include "models/database.h"
 
@@ -15,7 +16,7 @@ namespace jadevectordb {
 // Index management service
 class IndexService {
 private:
-    std::shared_ptr<logging::Logger> logger_;
+    std::shared_ptr<jadevectordb::logging::Logger> logger_;
     
     // Storage for index configurations
     std::map<std::string, std::map<std::string, Index>> database_indexes_; // database_id -> (index_id -> index)

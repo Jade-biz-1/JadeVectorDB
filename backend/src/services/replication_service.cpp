@@ -32,7 +32,7 @@ bool ReplicationService::initialize(const ReplicationConfig& config) {
     }
 }
 
-Result<bool> ReplicationService::replicate_vector(const Vector& vector, const Database& database) {
+Result<void> ReplicationService::replicate_vector(const Vector& vector, const Database& database) {
     try {
         LOG_DEBUG(logger_, "Replicating vector " + vector.id + " for database " + database.databaseId);
         
@@ -40,27 +40,27 @@ Result<bool> ReplicationService::replicate_vector(const Vector& vector, const Da
         int replication_factor = get_replication_factor_for_db(database.databaseId);
         if (replication_factor <= 1) {
             LOG_DEBUG(logger_, "Replication factor is " + std::to_string(replication_factor) + ", skipping replication");
-            return true;
+            return {};
         }
         
         // Select target nodes for replication based on current cluster state
         auto target_nodes_result = select_replica_nodes(vector.id, replication_factor);
         if (!target_nodes_result.has_value()) {
             LOG_ERROR(logger_, "Failed to select replica nodes for vector " + vector.id);
-            return target_nodes_result;
+            return tl::unexpected(target_nodes_result.error());
         }
         
         auto target_nodes = target_nodes_result.value();
         if (target_nodes.empty()) {
             LOG_WARN(logger_, "No target nodes selected for replication of vector " + vector.id);
-            return true;
+            return {};
         }
         
         // Send replication request to target nodes
         auto replication_result = send_replication_request(vector, target_nodes);
         if (!replication_result.has_value()) {
             LOG_ERROR(logger_, "Failed to replicate vector " + vector.id + " to target nodes");
-            return replication_result;
+            return tl::unexpected(replication_result.error());
         }
         
         // Update replication status
@@ -68,40 +68,40 @@ Result<bool> ReplicationService::replicate_vector(const Vector& vector, const Da
         
         LOG_DEBUG(logger_, "Successfully replicated vector " + vector.id + " to " + 
                  std::to_string(target_nodes.size()) + " nodes");
-        return true;
+        return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in replicate_vector: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to replicate vector: " + std::string(e.what()));
     }
 }
 
-Result<bool> ReplicationService::replicate_vector_to_nodes(const Vector& vector, 
+Result<void> ReplicationService::replicate_vector_to_nodes(const Vector& vector, 
                                                          const std::vector<std::string>& target_nodes) {
     try {
         LOG_DEBUG(logger_, "Replicating vector " + vector.id + " to specific nodes");
         
         if (target_nodes.empty()) {
             LOG_WARN(logger_, "No target nodes specified for replication of vector " + vector.id);
-            return true;
+            return {};
         }
         
         // Send replication request to specified target nodes
         auto replication_result = send_replication_request(vector, target_nodes);
         if (!replication_result.has_value()) {
             LOG_ERROR(logger_, "Failed to replicate vector " + vector.id + " to specified nodes");
-            return replication_result;
+            return tl::unexpected(replication_result.error());
         }
         
         LOG_DEBUG(logger_, "Successfully replicated vector " + vector.id + " to " + 
                  std::to_string(target_nodes.size()) + " specified nodes");
-        return true;
+        return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in replicate_vector_to_nodes: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to replicate vector to nodes: " + std::string(e.what()));
     }
 }
 
-Result<bool> ReplicationService::update_and_replicate(const Vector& updated_vector, 
+Result<void> ReplicationService::update_and_replicate(const Vector& updated_vector, 
                                                     const Database& database) {
     try {
         LOG_DEBUG(logger_, "Updating and replicating vector " + updated_vector.id);
@@ -110,50 +110,48 @@ Result<bool> ReplicationService::update_and_replicate(const Vector& updated_vect
         auto update_result = apply_replicated_vector(updated_vector);
         if (!update_result.has_value()) {
             LOG_ERROR(logger_, "Failed to apply update locally for vector " + updated_vector.id);
-            return update_result;
+            return tl::unexpected(update_result.error());
         }
         
         // Then replicate the update to other nodes
         auto replication_result = replicate_vector(updated_vector, database);
         if (!replication_result.has_value()) {
             LOG_ERROR(logger_, "Failed to replicate update for vector " + updated_vector.id);
-            return replication_result;
+            return tl::unexpected(replication_result.error());
         }
         
         LOG_DEBUG(logger_, "Successfully updated and replicated vector " + updated_vector.id);
-        return true;
+        return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in update_and_replicate: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to update and replicate vector: " + std::string(e.what()));
     }
 }
 
-Result<bool> ReplicationService::delete_and_replicate(const std::string& vector_id, 
+Result<void> ReplicationService::delete_and_replicate(const std::string& vector_id, 
                                                     const Database& database) {
     try {
         LOG_DEBUG(logger_, "Deleting and replicating deletion of vector " + vector_id);
-        
+
         // First, delete locally
-        auto delete_result = apply_replicated_vector(Vector{vector_id, {}}); // Empty vector to indicate deletion
-        if (!delete_result.has_value()) {
-            LOG_ERROR(logger_, "Failed to delete vector locally: " + vector_id);
-            return delete_result;
-        }
-        
-        // Then replicate the deletion to other nodes
-        // For deletion, we create a special vector with empty values to indicate deletion
         Vector deletion_vector;
         deletion_vector.id = vector_id;
-        deletion_vector.values = {}; // Empty values indicates deletion
-        
+        deletion_vector.deleted = true;
+        auto delete_result = apply_replicated_vector(deletion_vector);
+        if (!delete_result.has_value()) {
+            LOG_ERROR(logger_, "Failed to delete vector locally: " + vector_id);
+            return tl::unexpected(delete_result.error());
+        }
+
+        // Then replicate the deletion to other nodes
         auto replication_result = replicate_vector(deletion_vector, database);
         if (!replication_result.has_value()) {
             LOG_ERROR(logger_, "Failed to replicate deletion of vector: " + vector_id);
-            return replication_result;
+            return tl::unexpected(replication_result.error());
         }
         
         LOG_DEBUG(logger_, "Successfully deleted and replicated deletion of vector " + vector_id);
-        return true;
+        return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in delete_and_replicate: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to delete and replicate vector: " + std::string(e.what()));
@@ -170,19 +168,19 @@ Result<ReplicationStatus> ReplicationService::get_replication_status(const std::
         }
         
         LOG_WARN(logger_, "Replication status not found for vector: " + vector_id);
-        RETURN_ERROR(ErrorCode::RESOURCE_NOT_FOUND, "Replication status not found for vector: " + vector_id);
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "Replication status not found for vector: " + vector_id);
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in get_replication_status: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to get replication status: " + std::string(e.what()));
     }
 }
 
-Result<bool> ReplicationService::is_fully_replicated(const std::string& vector_id) const {
+Result<void> ReplicationService::is_fully_replicated(const std::string& vector_id) const {
     try {
         auto status_result = get_replication_status(vector_id);
         if (!status_result.has_value()) {
             LOG_WARN(logger_, "Failed to get replication status for vector: " + vector_id);
-            return status_result;
+            return tl::unexpected(status_result.error());
         }
         
         auto status = status_result.value();
@@ -193,7 +191,7 @@ Result<bool> ReplicationService::is_fully_replicated(const std::string& vector_i
                  "Replicas: " + std::to_string(status.replica_nodes.size()) + "/" + 
                  std::to_string(status.replication_factor));
         
-        return is_fully_replicated;
+        if (is_fully_replicated) return {}; else RETURN_ERROR(ErrorCode::INVALID_STATE, "Vector is not fully replicated");
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in is_fully_replicated: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to check replication status: " + std::string(e.what()));
@@ -205,7 +203,7 @@ Result<std::vector<std::string>> ReplicationService::get_replica_nodes(const std
         auto status_result = get_replication_status(vector_id);
         if (!status_result.has_value()) {
             LOG_WARN(logger_, "Failed to get replication status for vector: " + vector_id);
-            return status_result;
+            return tl::unexpected(status_result.error());
         }
         
         auto status = status_result.value();
@@ -216,7 +214,7 @@ Result<std::vector<std::string>> ReplicationService::get_replica_nodes(const std
     }
 }
 
-Result<bool> ReplicationService::process_pending_replications() {
+Result<void> ReplicationService::process_pending_replications() {
     try {
         LOG_INFO(logger_, "Processing pending replications");
         
@@ -242,14 +240,14 @@ Result<bool> ReplicationService::process_pending_replications() {
         }
         
         LOG_INFO(logger_, "Processed " + std::to_string(processed_count) + " pending replications");
-        return true;
+        return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in process_pending_replications: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to process pending replications: " + std::string(e.what()));
     }
 }
 
-Result<bool> ReplicationService::check_replication_health(const std::string& database_id) const {
+Result<void> ReplicationService::check_replication_health(const std::string& database_id) const {
     try {
         LOG_DEBUG(logger_, "Checking replication health for database: " + database_id);
         
@@ -276,11 +274,11 @@ Result<bool> ReplicationService::check_replication_health(const std::string& dat
                      " (" + std::to_string(healthy_replicas) + "/" + 
                      std::to_string(total_replicas) + " replicas)");
             
-            return is_healthy;
+            if (is_healthy) return {}; else RETURN_ERROR(ErrorCode::INVALID_STATE, "Replication health check failed");
         }
         
         LOG_DEBUG(logger_, "No replication data found for database: " + database_id);
-        return true; // No data to replicate, so considered healthy
+        return {}; // No data to replicate, so considered healthy
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in check_replication_health: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to check replication health: " + std::string(e.what()));
@@ -324,7 +322,7 @@ Result<std::unordered_map<std::string, int>> ReplicationService::get_replication
     }
 }
 
-Result<bool> ReplicationService::handle_node_failure(const std::string& failed_node_id) {
+Result<void> ReplicationService::handle_node_failure(const std::string& failed_node_id) {
     try {
         LOG_WARN(logger_, "Handling replication for failed node: " + failed_node_id);
         
@@ -365,14 +363,14 @@ Result<bool> ReplicationService::handle_node_failure(const std::string& failed_n
         
         LOG_INFO(logger_, "Handled node failure for " + failed_node_id + 
                 ", scheduled re-replication for " + std::to_string(re_replicated_count) + " vectors");
-        return true;
+        return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in handle_node_failure: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to handle node failure: " + std::string(e.what()));
     }
 }
 
-Result<bool> ReplicationService::add_node_and_replicate(const std::string& new_node_id) {
+Result<void> ReplicationService::add_node_and_replicate(const std::string& new_node_id) {
     try {
         LOG_INFO(logger_, "Adding new node and replicating data to it: " + new_node_id);
         
@@ -384,9 +382,9 @@ Result<bool> ReplicationService::add_node_and_replicate(const std::string& new_n
         
         // For demonstration, we'll replicate some data to the new node
         // In a real implementation, this would be more sophisticated
-        for (const auto& entry : replication_status_) {
-            const auto& status = entry.second;
-            
+        for (auto& entry : replication_status_) {
+            auto& status = entry.second;
+
             // Simple strategy: replicate a subset of data to the new node
             // In reality, this would be based on load balancing and sharding
             std::hash<std::string> hasher;
@@ -398,14 +396,14 @@ Result<bool> ReplicationService::add_node_and_replicate(const std::string& new_n
         
         LOG_INFO(logger_, "Added new node " + new_node_id + 
                 " and scheduled replication of " + std::to_string(replicated_count) + " vectors");
-        return true;
+        return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in add_node_and_replicate: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to add node and replicate: " + std::string(e.what()));
     }
 }
 
-Result<bool> ReplicationService::update_replication_config(const ReplicationConfig& new_config) {
+Result<void> ReplicationService::update_replication_config(const ReplicationConfig& new_config) {
     try {
         std::lock_guard<std::mutex> lock(config_mutex_);
         
@@ -419,14 +417,14 @@ Result<bool> ReplicationService::update_replication_config(const ReplicationConf
         LOG_INFO(logger_, "Updated replication configuration: default_replication_factor=" + 
                 std::to_string(config_.default_replication_factor) + 
                 ", synchronous_replication=" + (config_.synchronous_replication ? "enabled" : "disabled"));
-        return true;
+        return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in update_replication_config: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to update replication configuration: " + std::string(e.what()));
     }
 }
 
-Result<bool> ReplicationService::force_replication_for_database(const std::string& database_id) {
+Result<void> ReplicationService::force_replication_for_database(const std::string& database_id) {
     try {
         LOG_INFO(logger_, "Forcing replication for all data in database: " + database_id);
         
@@ -459,7 +457,7 @@ Result<bool> ReplicationService::force_replication_for_database(const std::strin
         
         LOG_INFO(logger_, "Forced replication for " + std::to_string(forced_count) + 
                 " vectors in database " + database_id);
-        return true;
+        return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in force_replication_for_database: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to force replication: " + std::string(e.what()));
@@ -513,7 +511,7 @@ Result<std::vector<std::string>> ReplicationService::select_replica_nodes(const 
     return nodes;
 }
 
-Result<bool> ReplicationService::send_replication_request(const Vector& vector, 
+Result<void> ReplicationService::send_replication_request(const Vector& vector, 
                                                        const std::vector<std::string>& target_nodes) {
     try {
         LOG_DEBUG(logger_, "Sending replication request for vector " + vector.id + 
@@ -534,7 +532,7 @@ Result<bool> ReplicationService::send_replication_request(const Vector& vector,
         }
         
         LOG_DEBUG(logger_, "Replication request sent successfully for vector " + vector.id);
-        return true;
+        return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in send_replication_request: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to send replication request: " + std::string(e.what()));
@@ -565,7 +563,7 @@ void ReplicationService::update_replication_status(const std::string& vector_id,
     }
 }
 
-Result<bool> ReplicationService::apply_replicated_vector(const Vector& vector) {
+Result<void> ReplicationService::apply_replicated_vector(const Vector& vector) {
     try {
         // In a real implementation, this would:
         // 1. Validate the replicated vector data
@@ -573,7 +571,7 @@ Result<bool> ReplicationService::apply_replicated_vector(const Vector& vector) {
         // 3. Update indexes and metadata
         
         LOG_DEBUG(logger_, "Applied replicated vector: " + vector.id);
-        return true;
+        return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in apply_replicated_vector: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to apply replicated vector: " + std::string(e.what()));
@@ -604,7 +602,7 @@ std::chrono::milliseconds ReplicationService::calculate_replication_lag(const st
     }
 }
 
-Result<bool> ReplicationService::perform_replication_by_strategy(const Vector& vector,
+Result<void> ReplicationService::perform_replication_by_strategy(const Vector& vector,
                                                               const std::vector<std::string>& target_nodes) {
     try {
         // Different replication strategies could be implemented here:
@@ -642,6 +640,11 @@ bool ReplicationService::validate_config(const ReplicationConfig& config) const 
     }
     
     return true;
+}
+
+ReplicationConfig ReplicationService::get_config() const {
+    std::lock_guard<std::mutex> lock(config_mutex_);
+    return config_;
 }
 
 } // namespace jadevectordb

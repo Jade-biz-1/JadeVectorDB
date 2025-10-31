@@ -7,11 +7,17 @@
 
 namespace jadevectordb {
 
-DatabaseService::DatabaseService() {
+DatabaseService::DatabaseService(
+    std::unique_ptr<DatabaseLayer> db_layer,
+    std::shared_ptr<ClusterService> cluster_service,
+    std::shared_ptr<ShardingService> sharding_service
+) : db_layer_(std::move(db_layer)),
+    cluster_service_(cluster_service),
+    sharding_service_(sharding_service) {
     logger_ = logging::LoggerManager::get_logger("DatabaseService");
 }
 
-bool DatabaseService::initialize() {
+Result<void> DatabaseService::initialize() {
     try {
         LOG_INFO(logger_, "Initializing DatabaseService");
         
@@ -22,15 +28,15 @@ bool DatabaseService::initialize() {
             if (!result.has_value()) {
                 LOG_ERROR(logger_, "Failed to initialize database layer: " + 
                          ErrorHandler::format_error(result.error()));
-                return false;
+                return result;
             }
         }
         
         LOG_INFO(logger_, "DatabaseService initialized successfully");
-        return true;
+        return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in DatabaseService::initialize: " + std::string(e.what()));
-        return false;
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to initialize DatabaseService: " + std::string(e.what()));
     }
 }
 
@@ -43,19 +49,30 @@ Result<std::string> DatabaseService::create_database(const DatabaseCreationParam
         if (!validation_result.has_value()) {
             LOG_ERROR(logger_, "Database creation validation failed: " + 
                      ErrorHandler::format_error(validation_result.error()));
-            return validation_result;
+            return tl::make_unexpected(validation_result.error());
         }
         
         // Create a new database object
         Database database;
-        database.databaseId = generate_database_id(params.name);
+        database.databaseId = generate_database_id();
         database.name = params.name;
         database.description = params.description;
         database.vectorDimension = params.vectorDimension;
         database.indexType = params.indexType;
-        database.created_at = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
+        database.indexParameters = params.indexParameters;
+        database.sharding = params.sharding;
+        database.replication = params.replication;
+        database.embeddingModels = params.embeddingModels;
+        database.metadataSchema = params.metadataSchema;
+        database.accessControl = params.accessControl;
+        database.created_at = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
         database.updated_at = database.created_at;
+        
+        // Handle unique_ptr assignment
+        if (params.retentionPolicy) {
+            database.retentionPolicy = std::make_unique<Database::RetentionPolicy>(*params.retentionPolicy);
+        }
         
         // Store the database using the database layer
         auto result = db_layer_->create_database(database);
@@ -69,11 +86,31 @@ Result<std::string> DatabaseService::create_database(const DatabaseCreationParam
         return database.databaseId;
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in create_database: " + std::string(e.what()));
-        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to create database: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to create database: " + std::string(e.what()));
     }
 }
 
-Result<std::vector<Database>> DatabaseService::list_databases(const DatabaseListParams& params) {
+Result<Database> DatabaseService::get_database(const std::string& database_id) const {
+    try {
+        LOG_DEBUG(logger_, "Getting database with ID: " + database_id);
+        
+        // Retrieve database from database layer
+        auto result = db_layer_->get_database(database_id);
+        if (!result.has_value()) {
+            LOG_ERROR(logger_, "Failed to get database " + database_id + 
+                     " from database layer: " + ErrorHandler::format_error(result.error()));
+            return result;
+        }
+        
+        LOG_DEBUG(logger_, "Retrieved database: " + database_id);
+        return result.value();
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in get_database: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to get database: " + std::string(e.what()));
+    }
+}
+
+Result<std::vector<Database>> DatabaseService::list_databases(const DatabaseListParams& params) const {
     try {
         LOG_DEBUG(logger_, "Listing databases");
         
@@ -131,31 +168,11 @@ Result<std::vector<Database>> DatabaseService::list_databases(const DatabaseList
         return databases;
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in list_databases: " + std::string(e.what()));
-        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to list databases: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to list databases: " + std::string(e.what()));
     }
 }
 
-Result<Database> DatabaseService::get_database(const std::string& database_id) {
-    try {
-        LOG_DEBUG(logger_, "Getting database with ID: " + database_id);
-        
-        // Retrieve database from database layer
-        auto result = db_layer_->get_database(database_id);
-        if (!result.has_value()) {
-            LOG_ERROR(logger_, "Failed to get database " + database_id + 
-                     " from database layer: " + ErrorHandler::format_error(result.error()));
-            return result;
-        }
-        
-        LOG_DEBUG(logger_, "Retrieved database: " + database_id);
-        return result.value();
-    } catch (const std::exception& e) {
-        LOG_ERROR(logger_, "Exception in get_database: " + std::string(e.what()));
-        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to get database: " + std::string(e.what()));
-    }
-}
-
-Result<bool> DatabaseService::update_database(const std::string& database_id, 
+Result<void> DatabaseService::update_database(const std::string& database_id, 
                                            const DatabaseUpdateParams& params) {
     try {
         LOG_INFO(logger_, "Updating database with ID: " + database_id);
@@ -173,7 +190,7 @@ Result<bool> DatabaseService::update_database(const std::string& database_id,
         if (!current_db_result.has_value()) {
             LOG_ERROR(logger_, "Failed to get current database for update: " + 
                      ErrorHandler::format_error(current_db_result.error()));
-            return current_db_result;
+            return tl::make_unexpected(current_db_result.error());
         }
         
         Database updated_db = current_db_result.value();
@@ -181,17 +198,17 @@ Result<bool> DatabaseService::update_database(const std::string& database_id,
             std::chrono::system_clock::now().time_since_epoch()).count();
         
         // Apply updates
-        if (!params.name.empty()) {
-            updated_db.name = params.name;
+        if (params.name.has_value()) {
+            updated_db.name = params.name.value();
         }
-        if (!params.description.empty()) {
-            updated_db.description = params.description;
+        if (params.description.has_value()) {
+            updated_db.description = params.description.value();
         }
-        if (params.vectorDimension > 0) {
-            updated_db.vectorDimension = params.vectorDimension;
+        if (params.vectorDimension.has_value() && params.vectorDimension.value() > 0) {
+            updated_db.vectorDimension = params.vectorDimension.value();
         }
-        if (!params.indexType.empty()) {
-            updated_db.indexType = params.indexType;
+        if (params.indexType.has_value()) {
+            updated_db.indexType = params.indexType.value();
         }
         
         // Update database in database layer
@@ -203,14 +220,14 @@ Result<bool> DatabaseService::update_database(const std::string& database_id,
         }
         
         LOG_INFO(logger_, "Database updated successfully: " + database_id);
-        return true;
+        return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in update_database: " + std::string(e.what()));
-        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to update database: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to update database: " + std::string(e.what()));
     }
 }
 
-Result<bool> DatabaseService::delete_database(const std::string& database_id) {
+Result<void> DatabaseService::delete_database(const std::string& database_id) {
     try {
         LOG_INFO(logger_, "Deleting database with ID: " + database_id);
         
@@ -223,14 +240,14 @@ Result<bool> DatabaseService::delete_database(const std::string& database_id) {
         }
         
         LOG_INFO(logger_, "Database deleted successfully: " + database_id);
-        return true;
+        return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in delete_database: " + std::string(e.what()));
-        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to delete database: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to delete database: " + std::string(e.what()));
     }
 }
 
-Result<bool> DatabaseService::database_exists(const std::string& database_id) {
+Result<bool> DatabaseService::database_exists(const std::string& database_id) const {
     try {
         LOG_DEBUG(logger_, "Checking if database exists: " + database_id);
         
@@ -247,11 +264,11 @@ Result<bool> DatabaseService::database_exists(const std::string& database_id) {
         return result.value();
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in database_exists: " + std::string(e.what()));
-        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to check database existence: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to check database existence: " + std::string(e.what()));
     }
 }
 
-Result<bool> DatabaseService::validate_creation_params(const DatabaseCreationParams& params) {
+Result<void> DatabaseService::validate_creation_params(const DatabaseCreationParams& params) const {
     try {
         // Validate database name
         if (params.name.empty()) {
@@ -277,42 +294,42 @@ Result<bool> DatabaseService::validate_creation_params(const DatabaseCreationPar
         }
         
         LOG_DEBUG(logger_, "Database creation parameters validated successfully");
-        return true;
+        return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in validate_creation_params: " + std::string(e.what()));
-        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to validate database creation parameters: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to validate database creation parameters: " + std::string(e.what()));
     }
 }
 
-Result<bool> DatabaseService::validate_update_params(const DatabaseUpdateParams& params) {
+Result<void> DatabaseService::validate_update_params(const DatabaseUpdateParams& params) const {
     try {
         // Validate vector dimension if provided
-        if (params.vectorDimension > 0 && params.vectorDimension > 10000) {
+        if (params.vectorDimension.has_value() && params.vectorDimension.value() > 0 && params.vectorDimension.value() > 10000) {
             RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Vector dimension is too large (max 10000)");
         }
         
         // Validate index type if provided
-        if (!params.indexType.empty()) {
+        if (params.indexType.has_value() && !params.indexType.value().empty()) {
             std::vector<std::string> valid_index_types = {"hnsw", "ivf", "flat", "lsh"};
-            if (std::find(valid_index_types.begin(), valid_index_types.end(), params.indexType) == 
+            if (std::find(valid_index_types.begin(), valid_index_types.end(), params.indexType.value()) == 
                 valid_index_types.end()) {
-                RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid index type: " + params.indexType);
+                RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid index type: " + params.indexType.value());
             }
         }
         
         LOG_DEBUG(logger_, "Database update parameters validated successfully");
-        return true;
+        return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in validate_update_params: " + std::string(e.what()));
-        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to validate database update parameters: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to validate database update parameters: " + std::string(e.what()));
     }
 }
 
-std::string DatabaseService::generate_database_id(const std::string& database_name) {
-    // Generate a unique database ID based on name and timestamp
+std::string DatabaseService::generate_database_id() const {
+    // Generate a unique database ID based on timestamp
     auto now = std::chrono::high_resolution_clock::now();
     auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
-    return database_name + "_" + std::to_string(nanoseconds);
+    return "db_" + std::to_string(nanoseconds);
 }
 
 DatabaseService::DatabaseRole DatabaseService::get_role_for_database(const std::string& database_id) const {
@@ -334,7 +351,7 @@ Result<std::vector<std::string>> DatabaseService::get_database_names() const {
         if (!databases_result.has_value()) {
             LOG_ERROR(logger_, "Failed to list databases: " + 
                      ErrorHandler::format_error(databases_result.error()));
-            return databases_result;
+            return tl::make_unexpected(databases_result.error());
         }
         
         auto databases = databases_result.value();
@@ -349,98 +366,8 @@ Result<std::vector<std::string>> DatabaseService::get_database_names() const {
         return names;
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in get_database_names: " + std::string(e.what()));
-        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to get database names: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to get database names: " + std::string(e.what()));
     }
 }
-
-Result<size_t> DatabaseService::get_database_count() const {
-    try {
-        LOG_DEBUG(logger_, "Getting database count");
-        
-        // Get all databases and count them
-        auto databases_result = list_databases(DatabaseListParams{});
-        if (!databases_result.has_value()) {
-            LOG_ERROR(logger_, "Failed to list databases: " + 
-                     ErrorHandler::format_error(databases_result.error()));
-            return databases_result;
-        }
-        
-        auto count = databases_result.value().size();
-        LOG_DEBUG(logger_, "Database count: " + std::to_string(count));
-        return count;
-    } catch (const std::exception& e) {
-        LOG_ERROR(logger_, "Exception in get_database_count: " + std::string(e.what()));
-        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to get database count: " + std::string(e.what()));
-    }
 }
 
-Result<bool> DatabaseService::check_database_health(const std::string& database_id) const {
-    try {
-        LOG_DEBUG(logger_, "Checking health of database: " + database_id);
-        
-        // Check if database exists
-        auto exists_result = database_exists(database_id);
-        if (!exists_result.has_value()) {
-            LOG_ERROR(logger_, "Failed to check database existence: " + 
-                     ErrorHandler::format_error(exists_result.error()));
-            return exists_result;
-        }
-        
-        if (!exists_result.value()) {
-            RETURN_ERROR(ErrorCode::DATABASE_NOT_FOUND, "Database not found: " + database_id);
-        }
-        
-        // In a real implementation, we would check various health metrics
-        // For now, we'll assume healthy if database exists
-        LOG_DEBUG(logger_, "Database " + database_id + " is healthy");
-        return true;
-    } catch (const std::exception& e) {
-        LOG_ERROR(logger_, "Exception in check_database_health: " + std::string(e.what()));
-        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to check database health: " + std::string(e.what()));
-    }
-}
-
-Result<std::unordered_map<std::string, std::string>> DatabaseService::get_database_stats(const std::string& database_id) const {
-    try {
-        LOG_DEBUG(logger_, "Getting stats for database: " + database_id);
-        
-        // Check if database exists
-        auto exists_result = database_exists(database_id);
-        if (!exists_result.has_value()) {
-            LOG_ERROR(logger_, "Failed to check database existence: " + 
-                     ErrorHandler::format_error(exists_result.error()));
-            return exists_result;
-        }
-        
-        if (!exists_result.value()) {
-            RETURN_ERROR(ErrorCode::DATABASE_NOT_FOUND, "Database not found: " + database_id);
-        }
-        
-        // Get database info
-        auto db_result = get_database(database_id);
-        if (!db_result.has_value()) {
-            LOG_ERROR(logger_, "Failed to get database info: " + 
-                     ErrorHandler::format_error(db_result.error()));
-            return db_result;
-        }
-        
-        auto db = db_result.value();
-        
-        std::unordered_map<std::string, std::string> stats;
-        stats["databaseId"] = database_id;
-        stats["name"] = db.name;
-        stats["description"] = db.description;
-        stats["vectorDimension"] = std::to_string(db.vectorDimension);
-        stats["indexType"] = db.indexType;
-        stats["created_at"] = std::to_string(db.created_at);
-        stats["updated_at"] = std::to_string(db.updated_at);
-        
-        LOG_DEBUG(logger_, "Retrieved stats for database: " + database_id);
-        return stats;
-    } catch (const std::exception& e) {
-        LOG_ERROR(logger_, "Exception in get_database_stats: " + std::string(e.what()));
-        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to get database stats: " + std::string(e.what()));
-    }
-}
-
-} // namespace jadevectordb

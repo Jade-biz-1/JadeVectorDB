@@ -91,16 +91,16 @@ public:
     Result<ReplicationStatus> get_replication_status(const std::string& vector_id) const;
     
     // Check if a vector is fully replicated according to the policy
-    Result<bool> is_fully_replicated(const std::string& vector_id) const;
+    Result<void> is_fully_replicated(const std::string& vector_id) const;
     
     // Get all nodes that have replicas of a vector
     Result<std::vector<std::string>> get_replica_nodes(const std::string& vector_id) const;
     
     // Trigger replication for all pending operations
-    Result<bool> process_pending_replications();
+    Result<void> process_pending_replications();
     
     // Check replication health for a database
-    Result<bool> check_replication_health(const std::string& database_id) const;
+    Result<void> check_replication_health(const std::string& database_id) const;
     
     // Get replication statistics
     Result<std::unordered_map<std::string, int>> get_replication_stats() const;
@@ -112,10 +112,10 @@ public:
     Result<void> add_node_and_replicate(const std::string& new_node_id);
     
     // Update replication configuration
-    Result<bool> update_replication_config(const ReplicationConfig& new_config);
+    Result<void> update_replication_config(const ReplicationConfig& new_config);
     
     // Force replication of all data in a database
-    Result<bool> force_replication_for_database(const std::string& database_id);
+    Result<void> force_replication_for_database(const std::string& database_id);
     
     // Get all vectors that need replication
     Result<std::vector<std::string>> get_pending_replications() const;
@@ -123,13 +123,16 @@ public:
     // Get the replication factor for a specific database
     int get_replication_factor_for_db(const std::string& database_id) const;
 
+    // Get current replication configuration
+    ReplicationConfig get_config() const;
+
 private:
     // Select target nodes for replication based on current cluster state
     Result<std::vector<std::string>> select_replica_nodes(const std::string& primary_node,
                                                 int replication_factor) const;
     
     // Send vector data to target nodes for replication
-    Result<bool> send_replication_request(const Vector& vector, 
+    Result<void> send_replication_request(const Vector& vector,
                                         const std::vector<std::string>& target_nodes);
     
     // Update replication status after operation completes
@@ -141,7 +144,7 @@ private:
     bool validate_config(const ReplicationConfig& config) const;
     
     // Apply vector to the local storage (used during replication receive)
-    Result<bool> apply_replicated_vector(const Vector& vector);
+    Result<void> apply_replicated_vector(const Vector& vector);
     
     // Get all databases that exist on a specific node
     std::vector<std::string> get_databases_on_node(const std::string& node_id) const;
@@ -150,7 +153,7 @@ private:
     std::chrono::milliseconds calculate_replication_lag(const std::string& vector_id) const;
     
     // Perform replication using the configured strategy
-    Result<bool> perform_replication_by_strategy(const Vector& vector,
+    Result<void> perform_replication_by_strategy(const Vector& vector,
                                                const std::vector<std::string>& target_nodes);
 };
 

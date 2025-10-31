@@ -95,7 +95,7 @@ private:
     std::shared_ptr<logging::Logger> logger_;
     SecurityAuditConfig config_;
     std::ofstream log_file_;
-    std::mutex log_mutex_;
+    mutable std::mutex log_mutex_;
     size_t current_log_size_;
     
 public:

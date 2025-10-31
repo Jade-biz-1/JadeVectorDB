@@ -12,6 +12,7 @@ struct Database {
     std::string databaseId;
     std::string name;
     std::string description;
+    std::string owner;  // Add owner field
     int vectorDimension;
     std::string indexType;  // HNSW, IVF, LSH, etc.
     std::map<std::string, std::string> indexParameters;
@@ -64,6 +65,7 @@ struct Database {
         : databaseId(other.databaseId)
         , name(other.name)
         , description(other.description)
+        , owner(other.owner)
         , vectorDimension(other.vectorDimension)
         , indexType(other.indexType)
         , indexParameters(other.indexParameters)
@@ -86,6 +88,7 @@ struct Database {
             databaseId = other.databaseId;
             name = other.name;
             description = other.description;
+            owner = other.owner;
             vectorDimension = other.vectorDimension;
             indexType = other.indexType;
             indexParameters = other.indexParameters;

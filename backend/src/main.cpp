@@ -37,7 +37,7 @@ private:
     std::unique_ptr<logging::Logger> logger_;
     std::unique_ptr<ConfigManager> config_mgr_;
     std::unique_ptr<ThreadPool> thread_pool_;
-    std::unique_ptr<AuthManager> auth_mgr_;
+    AuthManager* auth_mgr_;  // Singleton - not owned
     std::unique_ptr<MetricsRegistry> metrics_registry_;
     std::unique_ptr<DatabaseLayer> db_layer_;
     std::unique_ptr<DistributedServiceManager> distributed_service_manager_;
@@ -82,7 +82,7 @@ public:
         thread_pool_ = std::make_unique<ThreadPool>(config.thread_pool_size);
         
         // Initialize auth manager
-        auth_mgr_ = std::make_unique<AuthManager>();
+        auth_mgr_ = AuthManager::get_instance();
         
         // Initialize metrics registry
         metrics_registry_ = std::unique_ptr<MetricsRegistry>(MetricsManager::get_registry());

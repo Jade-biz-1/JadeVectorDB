@@ -14,7 +14,7 @@ QueryRouter::QueryRouter() {
 
 bool QueryRouter::initialize(const RoutingConfig& config) {
     try {
-        std::lock_guard<std::mutex> lock(config_mutex_);
+        std::shared_lock<std::shared_mutex> lock(config_mutex_);
         
         if (!validate_config(config)) {
             LOG_ERROR(logger_, "Invalid routing configuration provided");
@@ -41,7 +41,7 @@ Result<RouteInfo> QueryRouter::route_operation(const std::string& database_id,
         
         // Check cache first
         {
-            std::lock_guard<std::mutex> lock(route_mutex_);
+            std::shared_lock<std::shared_mutex> lock(route_mutex_);
             auto it = route_cache_.find(route_key);
             if (it != route_cache_.end() && is_route_valid(it->second).value_or(true)) {
                 LOG_DEBUG(logger_, "Using cached route for operation: " + route_key);
@@ -59,7 +59,7 @@ Result<RouteInfo> QueryRouter::route_operation(const std::string& database_id,
         auto nodes_result = select_multiple_nodes(database_id, operation_type, operation_key, 1);
         if (!nodes_result.has_value()) {
             LOG_ERROR(logger_, "Failed to select nodes for operation: " + route_key);
-            return nodes_result;
+            return tl::unexpected(nodes_result.error());
         }
         
         route_info.target_nodes = nodes_result.value();
@@ -68,7 +68,7 @@ Result<RouteInfo> QueryRouter::route_operation(const std::string& database_id,
         
         // Cache the route
         {
-            std::lock_guard<std::mutex> lock(route_mutex_);
+            std::shared_lock<std::shared_mutex> lock(route_mutex_);
             // Evict oldest entries if cache is full
             if (route_cache_.size() >= static_cast<size_t>(config_.max_route_cache_size)) {
                 auto oldest_it = route_cache_.begin();
@@ -109,7 +109,7 @@ Result<RouteInfo> QueryRouter::route_vector_operation(const std::string& databas
 
 Result<RouteInfo> QueryRouter::route_search_operation(const std::string& database_id,
                                                    const Vector& query_vector,
-                                                   const SearchParams& search_params) const {
+                                                   const RoutingSearchParams& search_params) const {
     try {
         LOG_DEBUG(logger_, "Routing search operation for database " + database_id);
         
@@ -142,7 +142,7 @@ Result<RouteInfo> QueryRouter::route_batch_operation(const std::string& database
 
 Result<RouteInfo> QueryRouter::get_cached_route(const std::string& route_key) const {
     try {
-        std::lock_guard<std::mutex> lock(route_mutex_);
+        std::shared_lock<std::shared_mutex> lock(route_mutex_);
         auto it = route_cache_.find(route_key);
         if (it != route_cache_.end()) {
             if (is_route_valid(it->second).value_or(true)) {
@@ -151,12 +151,12 @@ Result<RouteInfo> QueryRouter::get_cached_route(const std::string& route_key) co
                 // Expired route, remove it
                 route_cache_.erase(it);
                 LOG_DEBUG(logger_, "Removed expired cached route: " + route_key);
-                RETURN_ERROR(ErrorCode::RESOURCE_EXPIRED, "Route has expired: " + route_key);
+                RETURN_ERROR(ErrorCode::DEADLINE_EXCEEDED, "Route has expired: " + route_key);
             }
         }
         
         LOG_DEBUG(logger_, "Route not found in cache: " + route_key);
-        RETURN_ERROR(ErrorCode::RESOURCE_NOT_FOUND, "Route not found: " + route_key);
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "Route not found: " + route_key);
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in get_cached_route: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to get cached route: " + std::string(e.what()));
@@ -165,7 +165,7 @@ Result<RouteInfo> QueryRouter::get_cached_route(const std::string& route_key) co
 
 Result<bool> QueryRouter::update_routing_config(const RoutingConfig& new_config) {
     try {
-        std::lock_guard<std::mutex> lock(config_mutex_);
+        std::shared_lock<std::shared_mutex> lock(config_mutex_);
         
         if (!validate_config(new_config)) {
             LOG_ERROR(logger_, "Invalid routing configuration provided for update");
@@ -186,7 +186,7 @@ Result<bool> QueryRouter::update_routing_config(const RoutingConfig& new_config)
 
 Result<bool> QueryRouter::update_node_load(const std::string& node_id, int load) {
     try {
-        std::lock_guard<std::mutex> lock(route_mutex_);
+        std::shared_lock<std::shared_mutex> lock(route_mutex_);
         node_load_[node_id] = load;
         
         LOG_DEBUG(logger_, "Updated load for node " + node_id + " to " + std::to_string(load));
@@ -199,7 +199,7 @@ Result<bool> QueryRouter::update_node_load(const std::string& node_id, int load)
 
 Result<bool> QueryRouter::update_node_performance(const std::string& node_id, double performance_score) {
     try {
-        std::lock_guard<std::mutex> lock(route_mutex_);
+        std::shared_lock<std::shared_mutex> lock(route_mutex_);
         node_performance_[node_id] = performance_score;
         
         LOG_DEBUG(logger_, "Updated performance score for node " + node_id + " to " + std::to_string(performance_score));
@@ -211,13 +211,13 @@ Result<bool> QueryRouter::update_node_performance(const std::string& node_id, do
 }
 
 RoutingConfig QueryRouter::get_config() const {
-    std::lock_guard<std::mutex> lock(config_mutex_);
+    std::shared_lock<std::shared_mutex> lock(config_mutex_);
     return config_;
 }
 
 Result<std::unordered_map<std::string, size_t>> QueryRouter::get_routing_stats() const {
     try {
-        std::lock_guard<std::mutex> lock(route_mutex_);
+        std::shared_lock<std::shared_mutex> lock(route_mutex_);
         
         std::unordered_map<std::string, size_t> stats;
         stats["cached_routes"] = route_cache_.size();
@@ -260,7 +260,7 @@ Result<bool> QueryRouter::is_route_valid(const RouteInfo& route) const {
 
 Result<bool> QueryRouter::invalidate_route(const std::string& route_key) {
     try {
-        std::lock_guard<std::mutex> lock(route_mutex_);
+        std::shared_lock<std::shared_mutex> lock(route_mutex_);
         auto erased_count = route_cache_.erase(route_key);
         
         bool invalidated = erased_count > 0;
@@ -279,7 +279,7 @@ Result<bool> QueryRouter::invalidate_route(const std::string& route_key) {
 
 Result<bool> QueryRouter::clear_expired_routes() {
     try {
-        std::lock_guard<std::mutex> lock(route_mutex_);
+        std::shared_lock<std::shared_mutex> lock(route_mutex_);
         size_t initial_size = route_cache_.size();
         size_t removed_count = 0;
         
@@ -331,13 +331,13 @@ Result<std::string> QueryRouter::select_best_node(const std::string& database_id
         auto nodes_result = get_candidate_nodes(database_id);
         if (!nodes_result.has_value()) {
             LOG_ERROR(logger_, "Failed to get candidate nodes for database: " + database_id);
-            return nodes_result;
+            return tl::unexpected(nodes_result.error());
         }
         
         auto nodes = nodes_result.value();
         if (nodes.empty()) {
             LOG_WARN(logger_, "No candidate nodes found for database: " + database_id);
-            RETURN_ERROR(ErrorCode::RESOURCE_NOT_FOUND, "No candidate nodes available for database: " + database_id);
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "No candidate nodes available for database: " + database_id);
         }
         
         // Select node based on routing strategy
@@ -387,18 +387,18 @@ Result<RouteInfo> QueryRouter::route_round_robin(const std::string& database_id,
     try {
         auto nodes_result = get_candidate_nodes(database_id);
         if (!nodes_result.has_value()) {
-            return nodes_result;
+            return tl::unexpected(nodes_result.error());
         }
         
         auto nodes = nodes_result.value();
         if (nodes.empty()) {
-            RETURN_ERROR(ErrorCode::RESOURCE_NOT_FOUND, "No nodes available for round-robin routing");
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "No nodes available for round-robin routing");
         }
         
         RouteInfo route_info;
         
         // Get the round-robin counter for this database
-        std::lock_guard<std::mutex> lock(route_mutex_);
+        std::shared_lock<std::shared_mutex> lock(route_mutex_);
         size_t& counter = round_robin_counters_[database_id];
         route_info.target_nodes.push_back(nodes[counter % nodes.size()]);
         counter++; // Increment for next time
@@ -416,18 +416,18 @@ Result<RouteInfo> QueryRouter::route_least_loaded(const std::string& database_id
     try {
         auto nodes_result = get_candidate_nodes(database_id);
         if (!nodes_result.has_value()) {
-            return nodes_result;
+            return tl::unexpected(nodes_result.error());
         }
         
         auto nodes = nodes_result.value();
         if (nodes.empty()) {
-            RETURN_ERROR(ErrorCode::RESOURCE_NOT_FOUND, "No nodes available for least-loaded routing");
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "No nodes available for least-loaded routing");
         }
         
         RouteInfo route_info;
         
         // Find the node with the least load
-        std::lock_guard<std::mutex> lock(route_mutex_);
+        std::shared_lock<std::shared_mutex> lock(route_mutex_);
         std::string best_node = nodes[0];
         int min_load = std::numeric_limits<int>::max();
         
@@ -453,19 +453,19 @@ Result<RouteInfo> QueryRouter::route_consistent_hash(const std::string& database
     try {
         auto nodes_result = get_candidate_nodes(database_id);
         if (!nodes_result.has_value()) {
-            return nodes_result;
+            return tl::unexpected(nodes_result.error());
         }
         
         auto nodes = nodes_result.value();
         if (nodes.empty()) {
-            RETURN_ERROR(ErrorCode::RESOURCE_NOT_FOUND, "No nodes available for consistent hash routing");
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "No nodes available for consistent hash routing");
         }
         
         RouteInfo route_info;
         
         // Build hash ring if it doesn't exist or is empty
         {
-            std::lock_guard<std::mutex> lock(ring_mutex_);
+            std::shared_lock<std::shared_mutex> lock(ring_mutex_);
             if (hash_ring_.empty() || hash_ring_.size() != nodes.size()) {
                 build_hash_ring(nodes);
             }
@@ -489,18 +489,18 @@ Result<RouteInfo> QueryRouter::route_adaptive(const std::string& database_id,
     try {
         auto nodes_result = get_candidate_nodes(database_id);
         if (!nodes_result.has_value()) {
-            return nodes_result;
+            return tl::unexpected(nodes_result.error());
         }
         
         auto nodes = nodes_result.value();
         if (nodes.empty()) {
-            RETURN_ERROR(ErrorCode::RESOURCE_NOT_FOUND, "No nodes available for adaptive routing");
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "No nodes available for adaptive routing");
         }
         
         RouteInfo route_info;
         
         // Select node based on a combination of load and performance
-        std::lock_guard<std::mutex> lock(route_mutex_);
+        std::shared_lock<std::shared_mutex> lock(route_mutex_);
         std::string best_node = nodes[0];
         double best_score = -1.0;
         
@@ -533,7 +533,7 @@ uint64_t QueryRouter::hash_function(const std::string& key) const {
     return hash;
 }
 
-void QueryRouter::build_hash_ring(const std::vector<std::string>& nodes) {
+void QueryRouter::build_hash_ring(const std::vector<std::string>& nodes) const {
     hash_ring_.clear();
     
     // Add each node multiple times to the ring for better distribution
@@ -602,7 +602,7 @@ Result<std::vector<std::string>> QueryRouter::select_multiple_nodes(const std::s
         
         auto nodes = nodes_result.value();
         if (nodes.empty()) {
-            RETURN_ERROR(ErrorCode::RESOURCE_NOT_FOUND, "No nodes available for selection");
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "No nodes available for selection");
         }
         
         // Just return the first 'count' nodes for now
@@ -620,12 +620,12 @@ Result<std::vector<std::string>> QueryRouter::select_multiple_nodes(const std::s
 }
 
 std::vector<std::string> QueryRouter::get_preferred_nodes_for_database(const std::string& database_id) const {
-    std::lock_guard<std::mutex> lock(config_mutex_);
+    std::shared_lock<std::shared_mutex> lock(config_mutex_);
     return config_.preferred_nodes;
 }
 
 double QueryRouter::calculate_load_factor(const std::string& node_id) const {
-    std::lock_guard<std::mutex> lock(route_mutex_);
+    std::shared_lock<std::shared_mutex> lock(route_mutex_);
     auto it = node_load_.find(node_id);
     if (it != node_load_.end()) {
         // Normalize load to a factor between 0 and 1
@@ -636,7 +636,7 @@ double QueryRouter::calculate_load_factor(const std::string& node_id) const {
 }
 
 double QueryRouter::calculate_performance_factor(const std::string& node_id) const {
-    std::lock_guard<std::mutex> lock(route_mutex_);
+    std::shared_lock<std::shared_mutex> lock(route_mutex_);
     auto it = node_performance_.find(node_id);
     if (it != node_performance_.end()) {
         // Performance score is already normalized between 0 and 1

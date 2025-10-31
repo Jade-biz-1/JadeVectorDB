@@ -181,6 +181,9 @@ public:
     // Remove a node from the cluster
     Result<bool> remove_node_from_cluster(const std::string& node_id);
 
+    // Process incoming RPC requests
+    void register_rpc_handlers();
+
 private:
     // Initialize node ID
     void initialize_node_id();
@@ -199,12 +202,9 @@ private:
     
     // Send RPC request to another node
     template<typename RequestType, typename ResponseType>
-    Result<ResponseType> send_rpc_request(const std::string& node_id, 
+    Result<ResponseType> send_rpc_request(const std::string& node_id,
                                         const RequestType& request);
-    
-    // Process incoming RPC requests
-    void register_rpc_handlers();
-    
+
     // Update cluster role based on Raft algorithm
     void update_cluster_role();
     
