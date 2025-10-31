@@ -8,10 +8,10 @@
 
 namespace jadevectordb {
 
-ClusterService::ClusterService(const std::string& host, int port) 
-    : host_(host), port_(port), current_role_(ClusterRole::FOLLOWER), 
-      running_(false), heartbeat_running_(false), election_running_(false),
-      current_term_(0) {
+ClusterService::ClusterService(const std::string& host, int port)
+    : host_(host), port_(port), current_role_(ClusterRole::FOLLOWER),
+      running_(false), current_term_(0), heartbeat_running_(false),
+      election_running_(false) {
     logger_ = logging::LoggerManager::get_logger("ClusterService");
     initialize_node_id();
 }
@@ -159,7 +159,7 @@ Result<ClusterNode> ClusterService::get_master_node() const {
         std::shared_lock<std::shared_mutex> lock(state_mutex_);
         
         if (cluster_state_.master_node_id.empty()) {
-            RETURN_ERROR(ErrorCode::RESOURCE_NOT_FOUND, "No master node elected");
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "No master node elected");
         }
         
         // Find the master node in the cluster
@@ -169,7 +169,7 @@ Result<ClusterNode> ClusterService::get_master_node() const {
             }
         }
         
-        RETURN_ERROR(ErrorCode::RESOURCE_NOT_FOUND, "Master node not found in cluster");
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "Master node not found in cluster");
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in get_master_node: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to get master node: " + std::string(e.what()));

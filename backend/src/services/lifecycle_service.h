@@ -7,6 +7,7 @@
 #include <chrono>
 
 #include "lib/error_handling.h"
+#include "lib/logging.h"
 #include "models/database.h"
 
 namespace jadevectordb {

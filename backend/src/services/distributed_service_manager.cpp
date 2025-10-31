@@ -492,12 +492,7 @@ Result<bool> DistributedServiceManager::handle_node_failure(const std::string& f
         }
         
         // Notify cluster service about node failure
-        auto result = cluster_service_->handle_node_failure(failed_node_id);
-        if (!result.has_value()) {
-            LOG_ERROR(logger_, "Failed to handle node failure in cluster service: " + 
-                     ErrorHandler::format_error(result.error()));
-            return result;
-        }
+        cluster_service_->handle_node_failure(failed_node_id);
         
         // If sharding is enabled, update sharding service
         if (config_.enable_sharding && sharding_service_) {
@@ -654,7 +649,7 @@ Result<std::string> DistributedServiceManager::get_shard_for_vector(const std::s
         
         auto result = sharding_service_->determine_shard(dummy_vec, dummy_db);
         if (!result.has_value()) {
-            return result;
+            return tl::unexpected(result.error());
         }
         
         return result.value().shard_id;
@@ -717,8 +712,8 @@ Result<bool> DistributedServiceManager::replicate_vector(const Vector& vector, c
                     SecurityEvent(SecurityEventType::DATA_MODIFICATION, "system", "localhost",
                                  database.databaseId, "replicate_vector", false));
             }
-            
-            return result;
+
+            return tl::unexpected(result.error());
         }
         
         LOG_DEBUG(logger_, "Successfully replicated vector " + vector.id);
@@ -753,7 +748,12 @@ Result<bool> DistributedServiceManager::is_vector_fully_replicated(const std::st
             return true; // No replication means no replication issues
         }
         
-        return replication_service_->is_fully_replicated(vector_id);
+        auto repl_result = replication_service_->is_fully_replicated(vector_id);
+        if (repl_result.has_value()) {
+            return true;  // Fully replicated
+        } else {
+            return false; // Not fully replicated or error
+        }
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in is_vector_fully_replicated: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to check vector replication status: " + std::string(e.what()));
@@ -945,9 +945,9 @@ Result<bool> DistributedServiceManager::force_replication_for_database(const std
         
         auto result = replication_service_->force_replication_for_database(database_id);
         if (!result.has_value()) {
-            LOG_ERROR(logger_, "Failed to force replication for database " + database_id + 
+            LOG_ERROR(logger_, "Failed to force replication for database " + database_id +
                      ": " + ErrorHandler::format_error(result.error()));
-            return result;
+            return tl::unexpected(result.error());
         }
         
         LOG_INFO(logger_, "Forced replication completed for database: " + database_id);

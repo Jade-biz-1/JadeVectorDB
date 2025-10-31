@@ -45,14 +45,14 @@ struct RoutingConfig {
 };
 
 // Search parameters for routing
-struct SearchParams {
+struct RoutingSearchParams {
     int top_k;
     double threshold;
     bool include_metadata;
     bool include_vector_data;
     std::unordered_map<std::string, std::string> filters;
     
-    SearchParams() : top_k(10), threshold(0.0), include_metadata(false), include_vector_data(false) {}
+    RoutingSearchParams() : top_k(10), threshold(0.0), include_metadata(false), include_vector_data(false) {}
 };
 
 /**
@@ -73,18 +73,18 @@ public:
 private:
     std::shared_ptr<logging::Logger> logger_;
     RoutingConfig config_;
-    std::unordered_map<std::string, RouteInfo> route_cache_;  // route_key -> RouteInfo
-    std::unordered_map<std::string, int> node_load_;         // node_id -> current_load
-    std::unordered_map<std::string, double> node_performance_; // node_id -> performance_score
+    mutable std::unordered_map<std::string, RouteInfo> route_cache_;  // route_key -> RouteInfo (mutable for cache in const methods)
+    mutable std::unordered_map<std::string, int> node_load_;         // node_id -> current_load (mutable for metrics)
+    mutable std::unordered_map<std::string, double> node_performance_; // node_id -> performance_score (mutable for metrics)
     mutable std::shared_mutex route_mutex_;
     mutable std::shared_mutex config_mutex_;
     
     // Round-robin counters for databases
-    std::unordered_map<std::string, size_t> round_robin_counters_; // database_id -> counter
+    mutable std::unordered_map<std::string, size_t> round_robin_counters_; // database_id -> counter (mutable for routing state)
     
     // Consistent hash ring
-    std::vector<std::pair<uint64_t, std::string>> hash_ring_; // hash -> node_id
-    std::shared_mutex ring_mutex_;
+    mutable std::vector<std::pair<uint64_t, std::string>> hash_ring_; // hash -> node_id (mutable for lazy init)
+    mutable std::shared_mutex ring_mutex_;
 
 public:
     explicit QueryRouter();
@@ -106,7 +106,7 @@ public:
     // Route a search operation to appropriate nodes
     Result<RouteInfo> route_search_operation(const std::string& database_id,
                                           const Vector& query_vector,
-                                          const SearchParams& search_params) const;
+                                          const RoutingSearchParams& search_params) const;
     
     // Route a batch operation to appropriate nodes
     Result<RouteInfo> route_batch_operation(const std::string& database_id,
@@ -181,7 +181,7 @@ private:
     uint64_t hash_function(const std::string& key) const;
     
     // Build consistent hash ring
-    void build_hash_ring(const std::vector<std::string>& nodes);
+    void build_hash_ring(const std::vector<std::string>& nodes) const;
     
     // Get node from hash ring
     std::string get_node_from_ring(uint64_t hash) const;

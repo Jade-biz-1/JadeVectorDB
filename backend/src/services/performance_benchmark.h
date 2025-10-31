@@ -106,7 +106,7 @@ class PerformanceBenchmark {
 private:
     std::shared_ptr<logging::Logger> logger_;
     BenchmarkConfig default_config_;
-    std::mutex config_mutex_;
+    mutable std::mutex config_mutex_;
     std::atomic<bool> benchmark_running_;
     
 public:
