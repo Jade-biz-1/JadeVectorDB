@@ -3,11 +3,14 @@
 
 #include "models/database.h"
 #include "models/vector.h"
+#include "lib/error_handling.h"
+#include "lib/logging.h"
 #include <string>
 #include <vector>
 #include <memory>
 #include <unordered_map>
 #include <functional>
+#include <mutex>
 
 namespace jadevectordb {
 
@@ -60,7 +63,7 @@ private:
     ShardingConfig config_;
     std::vector<ShardInfo> shards_;
     std::unordered_map<std::string, std::vector<ShardInfo>> db_shards_; // database_id -> shards
-    std::mutex config_mutex_;
+    mutable std::mutex config_mutex_;
     
     // Hash function for hash-based sharding
     std::function<uint64_t(const std::string&)> hash_function_;
@@ -136,7 +139,7 @@ private:
     // Range-based sharding implementation
     Result<ShardInfo> range_based_sharding(const Vector& vector, const Database& database) const;
     
-    // Vector-based sharding implementation (based on vector similarity/content)
+    // Vector-based sharding implementation (based on vector content/similarity)
     Result<ShardInfo> vector_based_sharding(const Vector& vector, const Database& database) const;
     
     // Calculate shard number using hash function
@@ -157,7 +160,7 @@ private:
     // Check if a vector belongs to a specific range (for range-based sharding)
     bool vector_in_range(const Vector& vector, const std::pair<std::string, std::string>& range) const;
     
-    // Update shard boundaries for range-based sharding
+    // Update range boundaries for range-based sharding
     void update_range_boundaries();
 };
 

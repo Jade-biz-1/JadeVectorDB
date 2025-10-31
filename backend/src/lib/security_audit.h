@@ -66,7 +66,7 @@ private:
     std::ofstream audit_file_stream_;
     size_t max_file_size_;
     size_t current_file_size_;
-    std::shared_ptr<AuthManager> auth_manager_;
+    AuthManager* auth_manager_;
     
     // Configuration for audit logging
     bool audit_enabled_;

@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 
 project(JadeVectorDB VERSION 1.0.0 LANGUAGES CXX)
 
+option(BUILD_WITH_ARROW "Build with Apache Arrow support" ON)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -21,89 +23,158 @@ endif()
 # Find required packages
 find_package(Threads REQUIRED)
 
-# Use FetchContent to include required libraries directly
+# Use FetchContent to include all required libraries directly from source
 include(FetchContent)
 
-# Eigen
+# Set FetchContent base directory for better organization
+set(FETCHCONTENT_BASE_DIR ${CMAKE_BINARY_DIR}/_deps)
+
+#############################################################################
+# CORE DEPENDENCIES - All fetched from source for reproducible builds
+#############################################################################
+
+# Eigen - Linear algebra library
+message(STATUS "Fetching Eigen...")
 FetchContent_Declare(
     eigen
     GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
     GIT_TAG 3.4.0
+    GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(eigen)
 
-# FlatBuffers
+# FlatBuffers - Serialization library
+message(STATUS "Fetching FlatBuffers...")
 FetchContent_Declare(
     flatbuffers
     GIT_REPOSITORY https://github.com/google/flatbuffers.git
     GIT_TAG v23.5.26
+    GIT_SHALLOW TRUE
 )
+set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(FLATBUFFERS_BUILD_FLATC ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(flatbuffers)
 
-# Crow web framework
+# Crow - Web framework for REST API
+message(STATUS "Fetching Crow...")
 FetchContent_Declare(
     crow
     GIT_REPOSITORY https://github.com/CrowCpp/Crow.git
     GIT_TAG v1.0+5
+    GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(crow)
 
-# Add the Crow include directory explicitly
-include_directories(${crow_SOURCE_DIR}/include)
+# Google Test - Testing framework
+message(STATUS "Fetching Google Test...")
+FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG v1.14.0
+    GIT_SHALLOW TRUE
+)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
 
-# Apache Arrow
-find_package(Arrow REQUIRED)
-if(NOT Arrow_FOUND)
-    message(FATAL_ERROR "Apache Arrow not found. Please install Apache Arrow.")
+# Google Benchmark - Performance testing
+message(STATUS "Fetching Google Benchmark...")
+FetchContent_Declare(
+    benchmark
+    GIT_REPOSITORY https://github.com/google/benchmark.git
+    GIT_TAG v1.8.3
+    GIT_SHALLOW TRUE
+)
+set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(benchmark)
+
+# Apache Arrow - In-memory columnar data format
+# Note: Arrow is large and complex, we'll try to use FetchContent but with minimal options
+message(STATUS "Fetching Apache Arrow...")
+FetchContent_Declare(
+    arrow
+    GIT_REPOSITORY https://github.com/apache/arrow.git
+    GIT_TAG apache-arrow-14.0.0
+    GIT_SHALLOW TRUE
+    SOURCE_SUBDIR cpp
+)
+# Minimize Arrow build - only build what we need
+set(ARROW_BUILD_STATIC ON CACHE BOOL "" FORCE)
+set(ARROW_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(ARROW_DEPENDENCY_SOURCE "BUNDLED" CACHE STRING "" FORCE)
+set(ARROW_VERBOSE_THIRDPARTY_BUILD OFF CACHE BOOL "" FORCE)
+set(ARROW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ARROW_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+set(ARROW_IPC OFF CACHE BOOL "" FORCE)
+set(ARROW_FLIGHT OFF CACHE BOOL "" FORCE)
+set(ARROW_COMPUTE OFF CACHE BOOL "" FORCE)
+set(ARROW_DATASET OFF CACHE BOOL "" FORCE)
+set(ARROW_FILESYSTEM OFF CACHE BOOL "" FORCE)
+set(ARROW_HDFS OFF CACHE BOOL "" FORCE)
+set(ARROW_JSON OFF CACHE BOOL "" FORCE)
+set(ARROW_PARQUET OFF CACHE BOOL "" FORCE)
+set(ARROW_WITH_BROTLI OFF CACHE BOOL "" FORCE)
+set(ARROW_WITH_BZ2 OFF CACHE BOOL "" FORCE)
+set(ARROW_WITH_LZ4 OFF CACHE BOOL "" FORCE)
+set(ARROW_WITH_SNAPPY OFF CACHE BOOL "" FORCE)
+set(ARROW_WITH_ZLIB OFF CACHE BOOL "" FORCE)
+set(ARROW_WITH_ZSTD OFF CACHE BOOL "" FORCE)
+
+# Only fetch Arrow if not already available
+FetchContent_GetProperties(arrow)
+if(NOT arrow_POPULATED)
+    FetchContent_Populate(arrow)
+    add_subdirectory(${arrow_SOURCE_DIR}/cpp ${arrow_BINARY_DIR})
 endif()
 
-# Check if Arrow::arrow target exists, if not try alternative target names
-if(TARGET Arrow::arrow)
-    # Standard installation
-    set(ARROW_LIB_NAME Arrow::arrow)
+# gRPC - RPC framework
+# Note: gRPC is very large, we'll make it optional with stubs as fallback
+message(STATUS "Fetching gRPC (this may take a while)...")
+option(BUILD_WITH_GRPC "Build with full gRPC support" OFF)
+
+if(BUILD_WITH_GRPC)
+    FetchContent_Declare(
+        grpc
+        GIT_REPOSITORY https://github.com/grpc/grpc.git
+        GIT_TAG v1.60.0
+        GIT_SHALLOW TRUE
+    )
+    set(gRPC_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(gRPC_BUILD_CSHARP_EXT OFF CACHE BOOL "" FORCE)
+    set(gRPC_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(grpc)
+    set(GRPC_AVAILABLE TRUE)
 else()
-    # Check if it's built from source with different target name
-    if(TARGET arrow_shared)
-        set(ARROW_LIB_NAME arrow_shared)
-    elseif(TARGET arrow_static)
-        set(ARROW_LIB_NAME arrow_static)
-    else()
-        # Check for libarrow directly
-        find_library(ARROW_LIB arrow PATHS /usr/local/lib /opt/local/lib)
-        if(ARROW_LIB)
-            set(ARROW_LIB_NAME ${ARROW_LIB})
-        else()
-            message(FATAL_ERROR "Arrow target not found. Please check Arrow installation.")
-        endif()
-    endif()
+    message(STATUS "Building with gRPC stubs (use -DBUILD_WITH_GRPC=ON for full gRPC)")
+    set(GRPC_AVAILABLE FALSE)
 endif()
 
-# gRPC (optional - using stub implementation)
-find_package(gRPC CONFIG)
-if(NOT gRPC_FOUND)
-    message(WARNING "gRPC not found. Building without gRPC support (using stubs).")
-endif()
+#############################################################################
+# INCLUDE DIRECTORIES
+#############################################################################
 
-# Google Test for unit tests
-find_package(GTest REQUIRED)
-if(NOT GTest_FOUND)
-    message(FATAL_ERROR "GTest not found. Please install GTest.")
-endif()
-
-# Include directories
 include_directories(${eigen_SOURCE_DIR})
 include_directories(${flatbuffers_SOURCE_DIR}/include)
+include_directories(${crow_SOURCE_DIR}/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/models)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/services)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/lib)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/api)
 
-# For FlatBuffers, Apache Arrow and other dependencies, we'll use package managers or find modules
-# These may need to be installed separately or via vcpkg/conan
+# Arrow includes
+if(TARGET arrow_static)
+    include_directories(${arrow_SOURCE_DIR}/cpp/src)
+    include_directories(${arrow_BINARY_DIR}/cpp/src)
+endif()
 
-# Define backend executable
-add_executable(jadevectordb
-    src/main.cpp
+#############################################################################
+# SOURCE FILES
+#############################################################################
+
+set(CORE_SOURCES
     src/models/vector.cpp
     src/models/database.cpp
     src/models/index.cpp
@@ -122,8 +193,6 @@ add_executable(jadevectordb
     src/services/index/lsh_index.cpp
     src/services/index/ivf_index.cpp
     src/services/index/composite_index.cpp
-    src/api/rest/rest_api.cpp
-    src/api/grpc/grpc_service_stub.cpp
     src/lib/mmap_utils.cpp
     src/lib/simd_ops.cpp
     src/lib/serialization.cpp
@@ -136,165 +205,124 @@ add_executable(jadevectordb
     src/lib/zero_trust.cpp
     src/lib/metrics.cpp
     src/lib/compression.cpp
-    src/lib/encryption_stubs.cpp
+    src/lib/encryption.cpp
     src/lib/gpu_acceleration.cpp
     src/lib/vector_operations.cpp
 )
 
-# Link libraries
-target_link_libraries(jadevectordb 
+set(API_SOURCES
+    src/api/rest/rest_api.cpp
+    src/api/grpc/grpc_service_stub.cpp
+)
+
+#############################################################################
+# BUILD TARGETS
+#############################################################################
+
+# Core library - contains all business logic
+add_library(jadevectordb_core STATIC ${CORE_SOURCES})
+
+target_link_libraries(jadevectordb_core PUBLIC
     Threads::Threads
-    gRPC::gpr
-    gRPC::grpc
-    gRPC::grpc++
-    ${ARROW_LIB_NAME}
+    $<$<BOOL:${GRPC_AVAILABLE}>:grpc++>
+    $<$<BOOL:${GRPC_AVAILABLE}>:grpc>
+    $<$<BOOL:${GRPC_AVAILABLE}>:gpr>
+    $<TARGET_NAME_IF_EXISTS:arrow_static>
     ${CMAKE_DL_LIBS}
 )
 
-# Create a library target for the core functionality
-add_library(jadevectordb_core
-    src/models/vector.cpp
-    src/models/database.cpp
-    src/models/index.cpp
-    src/models/embedding_model.cpp
-    src/services/vector_storage.cpp
-    src/services/similarity_search.cpp
-    src/services/database_service.cpp
-    src/services/database_layer.cpp
-    src/services/index_service.cpp
-    src/lib/mmap_utils.cpp
-    src/lib/simd_ops.cpp
-    src/lib/serialization.cpp
-    src/lib/storage_format.cpp
-    src/lib/logging.cpp
-    src/lib/error_handling.cpp
-    src/lib/config.cpp
-    src/lib/thread_pool.cpp
-    src/lib/auth.cpp
-    src/lib/metrics.cpp
-    src/lib/compression.cpp
-    src/lib/encryption.cpp
+# Main executable
+add_executable(jadevectordb
+    src/main.cpp
+    ${API_SOURCES}
 )
 
-target_link_libraries(jadevectordb_core 
-    Threads::Threads
-    ${ARROW_LIB_NAME}
-    ${CMAKE_DL_LIBS}
-)
-
-# Add tests executable
-add_executable(jadevectordb_tests
-    tests/test_vector_storage.cpp
-    tests/test_similarity_search.cpp
-    tests/test_database_service.cpp
-    tests/test_vector_storage_service.cpp
-    tests/test_vector_api_integration.cpp
-    tests/test_similarity_search_unit.cpp
-    tests/test_search_api_integration.cpp
-    tests/test_metadata_filter_unit.cpp
-    tests/test_advanced_search_integration.cpp
-    tests/test_database_service_unit.cpp
-    tests/test_database_api_integration.cpp
-    tests/test_e2e_filtered_search.cpp
-    tests/test_search_quality.cpp
-    tests/test_integration_comprehensive.cpp
-    tests/test_core_services_comprehensive.cpp
-    tests/test_service_interactions.cpp
-    tests/test_advanced_filtering.cpp
-    tests/test_advanced_filtering_integration.cpp
-    tests/test_advanced_embedding_unit.cpp
-    tests/test_advanced_embedding_integration.cpp
-)
-
-target_link_libraries(jadevectordb_tests 
-    GTest::gtest 
-    GTest::gtest_main 
+target_link_libraries(jadevectordb PRIVATE
     jadevectordb_core
+    Threads::Threads
+    $<$<BOOL:${GRPC_AVAILABLE}>:grpc++>
+    $<$<BOOL:${GRPC_AVAILABLE}>:grpc>
+    $<$<BOOL:${GRPC_AVAILABLE}>:gpr>
+    $<TARGET_NAME_IF_EXISTS:arrow_static>
+    ${CMAKE_DL_LIBS}
 )
 
-enable_testing()
-add_test(NAME VectorStorageTest COMMAND jadevectordb_tests)
+#############################################################################
+# TESTING
+#############################################################################
 
-# Add Google Benchmark executable for performance testing
-find_package(benchmark REQUIRED)
-if(NOT benchmark_FOUND)
-    message(FATAL_ERROR "Google Benchmark not found. Please install Google Benchmark.")
+option(BUILD_TESTS "Build test suite" ON)
+
+if(BUILD_TESTS)
+    enable_testing()
+
+    add_executable(jadevectordb_tests
+        tests/test_vector_storage.cpp
+        tests/test_similarity_search.cpp
+        tests/test_database_service.cpp
+        tests/test_vector_storage_service.cpp
+        tests/test_vector_api_integration.cpp
+        tests/test_similarity_search_unit.cpp
+        tests/test_search_api_integration.cpp
+        tests/test_metadata_filter_unit.cpp
+        tests/test_advanced_search_integration.cpp
+        tests/test_database_service_unit.cpp
+        tests/test_database_api_integration.cpp
+        tests/test_e2e_filtered_search.cpp
+        tests/test_search_quality.cpp
+        tests/test_integration_comprehensive.cpp
+        tests/test_core_services_comprehensive.cpp
+        tests/test_service_interactions.cpp
+        tests/test_advanced_filtering.cpp
+        tests/test_advanced_filtering_integration.cpp
+        tests/test_advanced_embedding_unit.cpp
+        tests/test_advanced_embedding_integration.cpp
+    )
+
+    target_link_libraries(jadevectordb_tests PRIVATE
+        GTest::gtest
+        GTest::gtest_main
+        GTest::gmock
+        jadevectordb_core
+    )
+
+    add_test(NAME VectorStorageTest COMMAND jadevectordb_tests)
 endif()
 
-add_executable(search_benchmarks
-    tests/benchmarks/search_benchmarks.cpp
-    tests/benchmarks/advanced_filtering_benchmarks.cpp
-    tests/benchmarks/advanced_indexing_benchmarks.cpp
-    src/services/vector_storage.cpp
-    src/services/similarity_search.cpp
-    src/services/database_service.cpp
-    src/services/database_layer.cpp
-    src/services/index_service.cpp
-    src/services/index/pq_index.cpp
-    src/services/index/opq_index.cpp
-    src/services/index/sq_index.cpp
-    src/services/index/composite_index.cpp
-    src/models/vector.cpp
-    src/models/database.cpp
-    src/models/index.cpp
-    src/models/embedding_model.cpp
-    src/lib/mmap_utils.cpp
-    src/lib/simd_ops.cpp
-    src/lib/serialization.cpp
-    src/lib/storage_format.cpp
-    src/lib/logging.cpp
-    src/lib/error_handling.cpp
-    src/lib/config.cpp
-    src/lib/thread_pool.cpp
-    src/lib/auth.cpp
-    src/lib/metrics.cpp
-)
+#############################################################################
+# BENCHMARKING
+#############################################################################
 
-target_link_libraries(search_benchmarks
-    benchmark::benchmark
-    benchmark::benchmark_main
-    Threads::Threads
-    ${ARROW_LIB_NAME}
-    ${CMAKE_DL_LIBS}
-)
+option(BUILD_BENCHMARKS "Build benchmark suite" ON)
 
-add_executable(filtered_search_benchmarks
-    tests/benchmarks/filtered_search_benchmarks.cpp
-    src/services/vector_storage.cpp
-    src/services/similarity_search.cpp
-    src/services/database_service.cpp
-    src/services/database_layer.cpp
-    src/services/metadata_filter.cpp
-    src/services/index_service.cpp
-    src/services/index/pq_index.cpp
-    src/services/index/opq_index.cpp
-    src/services/index/sq_index.cpp
-    src/services/index/composite_index.cpp
-    src/models/vector.cpp
-    src/models/database.cpp
-    src/models/index.cpp
-    src/models/embedding_model.cpp
-    src/lib/mmap_utils.cpp
-    src/lib/simd_ops.cpp
-    src/lib/serialization.cpp
-    src/lib/storage_format.cpp
-    src/lib/logging.cpp
-    src/lib/error_handling.cpp
-    src/lib/config.cpp
-    src/lib/thread_pool.cpp
-    src/lib/auth.cpp
-    src/lib/metrics.cpp
-)
+if(BUILD_BENCHMARKS)
+    add_executable(search_benchmarks
+        tests/benchmarks/search_benchmarks.cpp
+        tests/benchmarks/advanced_filtering_benchmarks.cpp
+        tests/benchmarks/advanced_indexing_benchmarks.cpp
+    )
 
-target_link_libraries(filtered_search_benchmarks
-    benchmark::benchmark
-    benchmark::benchmark_main
-    Threads::Threads
-    ${ARROW_LIB_NAME}
-    ${CMAKE_DL_LIBS}
-)
+    target_link_libraries(search_benchmarks PRIVATE
+        benchmark::benchmark
+        benchmark::benchmark_main
+        jadevectordb_core
+    )
 
-# Coverage target (only when BUILD_COVERAGE is enabled)
+    add_executable(filtered_search_benchmarks
+        tests/benchmarks/filtered_search_benchmarks.cpp
+    )
+
+    target_link_libraries(filtered_search_benchmarks PRIVATE
+        benchmark::benchmark
+        benchmark::benchmark_main
+        jadevectordb_core
+    )
+endif()
+
+#############################################################################
+# COVERAGE
+#############################################################################
+
 if(BUILD_COVERAGE)
     find_program(LCOV_PATH lcov)
     find_program(GENHTML_PATH genhtml)
@@ -317,3 +345,32 @@ if(BUILD_COVERAGE)
         message(WARNING "lcov or genhtml not found. Coverage target will not be available.")
     endif()
 endif()
+
+#############################################################################
+# INSTALLATION
+#############################################################################
+
+install(TARGETS jadevectordb
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+)
+
+install(TARGETS jadevectordb_core
+    ARCHIVE DESTINATION lib
+)
+
+#############################################################################
+# BUILD INFORMATION
+#############################################################################
+
+message(STATUS "")
+message(STATUS "JadeVectorDB Build Configuration:")
+message(STATUS "  CMake version: ${CMAKE_VERSION}")
+message(STATUS "  C++ Compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "  Build tests: ${BUILD_TESTS}")
+message(STATUS "  Build benchmarks: ${BUILD_BENCHMARKS}")
+message(STATUS "  Build coverage: ${BUILD_COVERAGE}")
+message(STATUS "  Build with gRPC: ${BUILD_WITH_GRPC}")
+message(STATUS "")

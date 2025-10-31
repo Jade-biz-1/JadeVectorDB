@@ -14,6 +14,9 @@
 
 #include "services/index_service.h"
 #include "services/lifecycle_service.h"
+#include "services/sharding_service.h"
+#include "services/replication_service.h"
+#include "services/query_router.h"
 
 // Forward declarations for services
 namespace jadevectordb {
@@ -23,6 +26,9 @@ namespace jadevectordb {
     class IndexService;
     class LifecycleService;
     class AuthManager;
+    class ShardingService;
+    class ReplicationService;
+    class QueryRouter;
 }
 
 // For now, we'll define a basic interface structure
@@ -168,6 +174,9 @@ public:
     
     // Authentication helper
     Result<bool> authenticate_request(const std::string& api_key) const;
+    
+    // Initialize distributed services
+    void initialize_distributed_services();
 };
 
 } // namespace jadevectordb

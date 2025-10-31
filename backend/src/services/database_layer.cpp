@@ -1,5 +1,8 @@
 #include "database_layer.h"
 #include "lib/logging.h"
+#include "services/sharding_service.h"
+#include "services/replication_service.h"
+#include "services/query_router.h"
 #include <random>
 #include <algorithm>
 #include <sstream>
@@ -8,7 +11,13 @@
 namespace jadevectordb {
 
 // InMemoryDatabasePersistence implementation
-InMemoryDatabasePersistence::InMemoryDatabasePersistence() {
+InMemoryDatabasePersistence::InMemoryDatabasePersistence(
+    std::shared_ptr<ShardingService> sharding_service,
+    std::shared_ptr<QueryRouter> query_router,
+    std::shared_ptr<ReplicationService> replication_service)
+    : sharding_service_(sharding_service)
+    , query_router_(query_router)
+    , replication_service_(replication_service) {
     logger_ = logging::LoggerManager::get_logger("InMemoryDatabasePersistence");
 }
 
@@ -447,12 +456,24 @@ bool InMemoryDatabasePersistence::validate_vector_dimensions(const Vector& vecto
 }
 
 // DatabaseLayer implementation
-DatabaseLayer::DatabaseLayer(std::unique_ptr<DatabasePersistenceInterface> persistence)
-    : persistence_layer_(std::move(persistence)) {
+DatabaseLayer::DatabaseLayer(
+    std::unique_ptr<DatabasePersistenceInterface> persistence,
+    std::shared_ptr<ShardingService> sharding_service,
+    std::shared_ptr<QueryRouter> query_router,
+    std::shared_ptr<ReplicationService> replication_service)
+    : sharding_service_(sharding_service)
+    , query_router_(query_router)
+    , replication_service_(replication_service)
+    , persistence_layer_(std::move(persistence)) {
     
     if (!persistence_layer_) {
         // If no persistence layer is provided, use in-memory implementation
-        persistence_layer_ = std::make_unique<InMemoryDatabasePersistence>();
+        // Pass distributed services to the persistence layer
+        persistence_layer_ = std::make_unique<InMemoryDatabasePersistence>(
+            sharding_service_,
+            query_router_,
+            replication_service_
+        );
     }
     
     logger_ = logging::LoggerManager::get_logger("DatabaseLayer");
@@ -501,11 +522,52 @@ Result<void> DatabaseLayer::store_vector(const std::string& database_id, const V
         RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid vector data");
     }
     
-    return persistence_layer_->store_vector(database_id, vector);
+    // For distributed systems, determine the target shard
+    std::string target_shard = database_id; // Default to database ID as shard if no sharding service
+    if (sharding_service_) {
+        auto shard_result = sharding_service_->get_shard_for_vector(vector.id, database_id);
+        if (shard_result.has_value()) {
+            target_shard = shard_result.value();
+        } else {
+            LOG_WARN(logger_, "Could not determine shard for vector " << vector.id << 
+                    ", using default: " << target_shard);
+        }
+    }
+    
+    // Store vector in the determined shard
+    auto result = persistence_layer_->store_vector(target_shard, vector);
+    
+    if (result.has_value()) {
+        LOG_DEBUG(logger_, "Stored vector: " << vector.id << " in database: " << database_id << 
+                 " on shard: " << target_shard);
+        
+        // Replicate the vector to other nodes if replication is enabled
+        if (replication_service_) {
+            auto replication_result = replicate_vector(vector, database_id);
+            if (!replication_result.has_value()) {
+                LOG_WARN(logger_, "Replication failed for vector " << vector.id << 
+                        ": " << ErrorHandler::format_error(replication_result.error()));
+            }
+        }
+    }
+    
+    return result;
 }
 
 Result<Vector> DatabaseLayer::retrieve_vector(const std::string& database_id, const std::string& vector_id) const {
-    return persistence_layer_->retrieve_vector(database_id, vector_id);
+    // For distributed systems, determine the source shard
+    std::string source_shard = database_id; // Default to database ID as shard if no sharding service
+    if (sharding_service_) {
+        auto shard_result = sharding_service_->get_shard_for_vector(vector_id, database_id);
+        if (shard_result.has_value()) {
+            source_shard = shard_result.value();
+        } else {
+            LOG_WARN(logger_, "Could not determine shard for vector " << vector_id << 
+                    ", using default: " << source_shard);
+        }
+    }
+    
+    return persistence_layer_->retrieve_vector(source_shard, vector_id);
 }
 
 Result<std::vector<Vector>> DatabaseLayer::retrieve_vectors(const std::string& database_id, 
@@ -605,6 +667,25 @@ Result<size_t> DatabaseLayer::get_index_count(const std::string& database_id) co
 
 Result<std::vector<std::string>> DatabaseLayer::get_all_vector_ids(const std::string& database_id) const {
     return persistence_layer_->get_all_vector_ids(database_id);
+}
+
+Result<void> DatabaseLayer::replicate_vector(const Vector& vector, const std::string& database_id) {
+    if (!replication_service_) {
+        RETURN_ERROR(ErrorCode::SERVICE_UNAVAILABLE, "Replication service not available");
+    }
+    
+    Database dummy_db;
+    dummy_db.databaseId = database_id;
+    
+    auto result = replication_service_->replicate_vector(vector, dummy_db);
+    if (!result.has_value()) {
+        LOG_ERROR(logger_, "Failed to replicate vector " << vector.id << 
+                 ": " << ErrorHandler::format_error(result.error()));
+        return result;
+    }
+    
+    LOG_DEBUG(logger_, "Successfully replicated vector: " << vector.id);
+    return {};
 }
 
 } // namespace jadevectordb
