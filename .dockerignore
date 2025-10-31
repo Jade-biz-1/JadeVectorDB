@@ -1,32 +1,19 @@
-# JadeVectorDB Docker Ignore File
-# Excludes unnecessary files from Docker build context
-
-# Git
-.git
-.gitignore
-.gitattributes
-.github
-
-# Documentation
-*.md
-!DOCKER_DEPLOYMENT.md
-docs/
-tutorial/
-
-# Frontend (not needed for backend build)
-frontend/
-ui/
-
 # Build artifacts
 backend/build/
 backend/build_*/
-backend/cmake-build-*/
-**/CMakeCache.txt
+backend/.cmake/
 **/CMakeFiles/
+**/CMakeCache.txt
 **/*.o
 **/*.a
 **/*.so
-**/*.dylib
+
+# Dependencies
+backend/_deps/
+**/node_modules/
+**/.eggs/
+**/__pycache__/
+*.pyc
 
 # IDE and editor files
 .vscode/
@@ -35,85 +22,49 @@ backend/cmake-build-*/
 *.swo
 *~
 .DS_Store
-Thumbs.db
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-venv/
-env/
-ENV/
-*.egg-info/
+# Git
+.git/
+.gitignore
+.gitattributes
 
-# Node.js
-node_modules/
-npm-debug.log
-yarn-error.log
-package-lock.json
-yarn.lock
-
-# Test files and coverage
-*.test
-*.spec
-coverage/
-.coverage
-htmlcov/
-.pytest_cache/
-.tox/
+# Documentation (not needed for build)
+docs/
+tutorials/
+examples/
+specs/
 
 # CI/CD
-.travis.yml
+.github/
 .gitlab-ci.yml
-azure-pipelines.yml
-.circleci/
+.travis.yml
 
-# Archives and backups
-*.tar
-*.tar.gz
-*.zip
-*.7z
-*.bak
-*.backup
-*.old
-*.orig
+# Frontend (not needed for backend build)
+frontend/
+tutorial/
+cli/
 
-# Logs
+# Test and coverage files
+coverage/
+coverage_report/
+*.gcov
+*.gcda
+*.gcno
+
+# Logs and temporary files
 *.log
-logs/
-*.log.*
-
-# Temporary files
 tmp/
 temp/
 *.tmp
-*.temp
 
-# OS specific
-.DS_Store
-Desktop.ini
-$RECYCLE.BIN/
-
-# Docker related (don't copy Docker files into Docker)
-Dockerfile*
+# Docker files (avoid recursion)
+Dockerfile
+Dockerfile.*
 docker-compose*.yml
-.dockerignore
 
-# Specs and planning docs
-specs/
-planning/
-
-# Example and sample data
-examples/
-samples/
-data/
-*.sample
-
-# Monitoring config (will be mounted as volumes)
-prometheus/
-grafana/
-
-# Archive folder
-archive/
+# Other
+charts/
+k8s/
+deployments/
+chaos-engineering/
+property-tests/

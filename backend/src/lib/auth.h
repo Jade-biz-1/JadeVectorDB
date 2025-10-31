@@ -9,6 +9,7 @@
 #include <shared_mutex>
 #include <vector>
 #include <set>
+#include <atomic>
 
 #include "error_handling.h"
 #include "zero_trust.h"
@@ -71,9 +72,17 @@ private:
     static const std::string USER_ROLE;
     static const std::string READER_ROLE;
     
-public:
+    // Singleton pattern
+    static std::unique_ptr<AuthManager> instance_;
+    static std::once_flag once_flag_;
+    
     AuthManager();
+    
+public:
     ~AuthManager() = default;
+    
+    // Singleton pattern
+    static AuthManager* get_instance();
     
     // User management
     Result<std::string> create_user(const std::string& username, 

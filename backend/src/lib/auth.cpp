@@ -18,9 +18,20 @@ const std::string AuthManager::ADMIN_ROLE = "admin";
 const std::string AuthManager::USER_ROLE = "user";
 const std::string AuthManager::READER_ROLE = "reader";
 
+// Singleton instance and flag
+std::unique_ptr<AuthManager> AuthManager::instance_ = nullptr;
+std::once_flag AuthManager::once_flag_;
+
 AuthManager::AuthManager() {
     initialize_default_roles();
     initialize_zero_trust();
+}
+
+AuthManager* AuthManager::get_instance() {
+    std::call_once(once_flag_, []() {
+        instance_ = std::unique_ptr<AuthManager>(new AuthManager());
+    });
+    return instance_.get();
 }
 
 void AuthManager::initialize_default_roles() {

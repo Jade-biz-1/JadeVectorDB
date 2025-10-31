@@ -90,12 +90,19 @@ bool RestApiImpl::initialize(int port) {
     db_service_ = std::make_unique<DatabaseService>();
     vector_storage_service_ = std::make_unique<VectorStorageService>();
     similarity_search_service_ = std::make_unique<SimilaritySearchService>();
+    index_service_ = std::make_unique<IndexService>();
+    lifecycle_service_ = std::make_unique<LifecycleService>();
     auth_manager_ = std::make_unique<AuthManager>();
 
     // Initialize the services
     db_service_->initialize();
     vector_storage_service_->initialize();
     similarity_search_service_->initialize();
+    index_service_->initialize();
+    lifecycle_service_->initialize();
+    
+    // Initialize distributed services if they exist
+    initialize_distributed_services();
     
     // Create Crow app instance
     app_ = std::make_unique<crow::App<>>();
@@ -121,23 +128,7 @@ void RestApiImpl::register_routes() {
     LOG_INFO(logger_, "Registering REST API routes");
     
     // Health and monitoring endpoints
-    app_->route_dynamic("/health")
-        ([]() {
-            crow::json::wvalue response;
-            response["status"] = "healthy";
-            response["timestamp"] = std::to_string(std::time(nullptr));
-            return crow::response(response);
-        });
     handle_health_check();
-    
-    app_->route_dynamic("/status")
-        ([this]() {
-            crow::json::wvalue response;
-            response["status"] = "running";
-            response["version"] = "1.0.0";
-            response["service"] = "JadeVectorDB";
-            return crow::response(response);
-        });
     handle_system_status();
     
     // Database management endpoints
@@ -2349,6 +2340,43 @@ void RestApiImpl::setup_request_validation() {
 void RestApiImpl::setup_response_serialization() {
     LOG_DEBUG(logger_, "Setting up response serialization");
     // In a real implementation, this would set up JSON serialization
+}
+
+void RestApiImpl::initialize_distributed_services() {
+    // Create distributed services
+    auto sharding_service = std::make_shared<ShardingService>();
+    auto replication_service = std::make_shared<ReplicationService>();
+    auto query_router = std::make_shared<QueryRouter>();
+    
+    // Set up sharding configuration
+    ShardingConfig sharding_config;
+    sharding_config.strategy = "hash";
+    sharding_config.num_shards = 4;  // Default to 4 shards
+    sharding_config.replication_factor = 1;  // Default replication
+    
+    sharding_service->initialize(sharding_config);
+    
+    // Set up replication configuration
+    ReplicationConfig repl_config;
+    repl_config.default_replication_factor = 1;  // Default to 1 for now
+    repl_config.synchronous_replication = false;
+    replication_service->initialize(repl_config);
+    
+    // Initialize the vector storage service with distributed services
+    if (vector_storage_service_) {
+        auto result = vector_storage_service_->initialize_distributed(
+            sharding_service, 
+            query_router, 
+            replication_service
+        );
+        
+        if (!result.has_value()) {
+            LOG_ERROR(logger_, "Failed to initialize VectorStorageService with distributed services: " 
+                      << ErrorHandler::format_error(result.error()));
+        } else {
+            LOG_INFO(logger_, "VectorStorageService initialized with distributed services successfully");
+        }
+    }
 }
 
 crow::response RestApiImpl::handle_generate_embedding_request(const crow::request& req) {

@@ -15,13 +15,25 @@ echo "Compiling core components..."
 
 # Compile all .cpp files in the src directory
 g++ -std=c++20 -Wall -Wextra -O3 \
+    -fcoroutines \
+    -D_GLIBCXX_USE_CXX11_ABI=1 \
     -I../src \
     -I../src/lib \
     -I../src/models \
     -I../src/services \
     -I../src/api \
+    -DRANGES_ENABLE_CONCEPTS=1 \
+    -fconcepts \
+    -fconcepts-diagnostics-depth=2 \
+    -DCONCEPTS_ENHANCED=1 \
+    -DCONCEPTS_LIBRARY_SUPPORTED=1 \
+    -fmodules-ts \
+    -fmodules-ts \
+    -ftemplate-backtrace-limit=0 \
+    -ftemplate-depth=1024 \
     $(find ../src -name "*.cpp" | grep -v test | grep -v benchmark) \
     -pthread \
+    -lm \
     -o jadevectordb \
     2>&1 | tee build.log
 

@@ -48,7 +48,7 @@ docker logs jadevectordb-core-dev
 docker exec -it jadevectordb-core-dev /bin/bash
 
 # Inside the container, verify the library
-cd /app/backend/build_coverage
+cd /app/backend/build
 ls -lh libjadevectordb_core.a
 ```
 
@@ -61,7 +61,7 @@ For active development work:
 docker-compose -f docker-compose.dev.yml run --rm jadevectordb-shell
 
 # Inside the shell, you can rebuild as needed
-cd /app/backend/build_coverage
+cd /app/backend/build
 make clean
 cmake .. -DCMAKE_BUILD_TYPE=Debug
 make -j$(nproc) jadevectordb_core
@@ -116,7 +116,7 @@ Edit files in `./backend/` directory. The container mounts this as a read-only v
 
 ```bash
 docker exec -it jadevectordb-core-dev /bin/bash
-cd /app/backend/build_coverage
+cd /app/backend/build
 make -j$(nproc) jadevectordb_core
 ```
 
@@ -167,7 +167,7 @@ docker-compose -f docker-compose.yml up -d
 ### Development Container (`jadevectordb-core`)
 ```
 /app/backend/                     # Source code
-/app/backend/build_coverage/      # Build directory
+/app/backend/build/      # Build directory
   ├── libjadevectordb_core.a      # Core library (33 MB)
   ├── CMakeCache.txt              # CMake configuration
   └── ...                         # Other build artifacts
@@ -204,16 +204,16 @@ The development setup creates a bridge network `jadevectordb_dev_network` for in
 
 ```bash
 # Check library exists and size
-docker exec jadevectordb-core-dev ls -lh /app/backend/build_coverage/libjadevectordb_core.a
+docker exec jadevectordb-core-dev ls -lh /app/backend/build/libjadevectordb_core.a
 
 # Check library symbols
-docker exec jadevectordb-core-dev nm /app/backend/build_coverage/libjadevectordb_core.a | grep -i "search\|vector\|database" | head -20
+docker exec jadevectordb-core-dev nm /app/backend/build/libjadevectordb_core.a | grep -i "search\|vector\|database" | head -20
 ```
 
 ### Run Unit Tests (if available)
 
 ```bash
-docker exec jadevectordb-core-dev /bin/bash -c "cd /app/backend/build_coverage && make jadevectordb_tests && ./jadevectordb_tests"
+docker exec jadevectordb-core-dev /bin/bash -c "cd /app/backend/build && make jadevectordb_tests && ./jadevectordb_tests"
 ```
 
 ## 📝 Common Commands

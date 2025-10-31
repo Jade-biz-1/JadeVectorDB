@@ -112,6 +112,15 @@ public:
     jadevectordb::Vector encrypt_vector_data(const Vector& vector);
     jadevectordb::Vector decrypt_vector_data(const Vector& vector);
 
+    // Get the sharding service
+    std::shared_ptr<ShardingService> get_sharding_service() const { return sharding_service_; }
+    
+    // Get the query router
+    std::shared_ptr<QueryRouter> get_query_router() const { return query_router_; }
+    
+    // Get the replication service
+    std::shared_ptr<ReplicationService> get_replication_service() const { return replication_service_; }
+
 private:
     // Helper to get the appropriate shard for a vector
     Result<std::string> get_target_shard(const std::string& vector_id, 

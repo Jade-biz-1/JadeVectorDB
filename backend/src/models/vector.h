@@ -11,6 +11,7 @@ namespace jadevectordb {
 
 struct Vector {
     std::string id;
+    std::string databaseId;  // Database identifier this vector belongs to
     std::vector<float> values;
     struct Metadata {
         std::string source;
@@ -44,11 +45,12 @@ struct Vector {
     bool deleted;
     
     // Constructors
-    Vector() : version(1), deleted(false) {}
+    Vector() : databaseId(""), version(1), deleted(false) {}
     
     // Methods for validation
     bool validate() const {
         return !id.empty() && 
+               !databaseId.empty() &&
                !values.empty() &&
                (metadata.status == "active" || 
                 metadata.status == "archived" || 
@@ -63,6 +65,7 @@ struct Vector {
 // Utility functions
 inline bool operator==(const Vector& lhs, const Vector& rhs) {
     return lhs.id == rhs.id && 
+           lhs.databaseId == rhs.databaseId &&
            lhs.values == rhs.values && 
            lhs.metadata.status == rhs.metadata.status;
 }

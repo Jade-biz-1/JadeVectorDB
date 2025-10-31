@@ -14,6 +14,13 @@
 #include "lib/error_handling.h"
 #include "lib/logging.h"
 
+// Forward declarations for distributed services
+namespace jadevectordb {
+    class ShardingService;
+    class ReplicationService;
+    class QueryRouter;
+}
+
 namespace jadevectordb {
 
 // Forward declaration
@@ -74,9 +81,18 @@ private:
     mutable std::shared_mutex indexes_mutex_;
     
     std::shared_ptr<logging::Logger> logger_;
+    
+    // Distributed services
+    std::shared_ptr<ShardingService> sharding_service_;
+    std::shared_ptr<QueryRouter> query_router_;
+    std::shared_ptr<ReplicationService> replication_service_;
 
 public:
-    InMemoryDatabasePersistence();
+    explicit InMemoryDatabasePersistence(
+        std::shared_ptr<ShardingService> sharding_service = nullptr,
+        std::shared_ptr<QueryRouter> query_router = nullptr,
+        std::shared_ptr<ReplicationService> replication_service = nullptr
+    );
     ~InMemoryDatabasePersistence() = default;
     
     // Database operations
@@ -126,9 +142,19 @@ class DatabaseLayer {
 private:
     std::unique_ptr<DatabasePersistenceInterface> persistence_layer_;
     std::shared_ptr<logging::Logger> logger_;
+    
+    // Distributed services
+    std::shared_ptr<ShardingService> sharding_service_;
+    std::shared_ptr<QueryRouter> query_router_;
+    std::shared_ptr<ReplicationService> replication_service_;
 
 public:
-    explicit DatabaseLayer(std::unique_ptr<DatabasePersistenceInterface> persistence = nullptr);
+    explicit DatabaseLayer(
+        std::unique_ptr<DatabasePersistenceInterface> persistence = nullptr,
+        std::shared_ptr<ShardingService> sharding_service = nullptr,
+        std::shared_ptr<QueryRouter> query_router = nullptr,
+        std::shared_ptr<ReplicationService> replication_service = nullptr
+    );
     ~DatabaseLayer() = default;
     
     // Initialize the database layer with a specific persistence implementation
@@ -174,6 +200,10 @@ public:
     
     // Additional utility methods
     Result<std::vector<std::string>> get_all_vector_ids(const std::string& database_id) const;
+    
+private:
+    // Helper method for vector replication
+    Result<void> replicate_vector(const Vector& vector, const std::string& database_id);
 };
 
 } // namespace jadevectordb

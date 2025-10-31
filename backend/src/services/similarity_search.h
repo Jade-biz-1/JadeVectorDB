@@ -7,6 +7,61 @@
 #include <unordered_map>
 #include <functional>
 #include <cmath>
+#include <algorithm>
+#include <type_traits>
+
+// Core C++20 features
+#include <concepts>
+#include <iterator>
+#include <ranges>
+
+// Range and iterator concepts
+namespace ranges = std::ranges;
+namespace concepts = std::ranges;
+
+// Import core ranges functionality
+using std::ranges::begin;
+using std::ranges::end;
+using std::ranges::size;
+using std::ranges::empty;
+using std::ranges::iterator_t;
+using std::ranges::range_value_t;
+
+// Iterator concepts
+using std::input_iterator;
+using std::forward_iterator;
+using std::bidirectional_iterator;
+using std::random_access_iterator;
+using std::contiguous_iterator;
+
+// Range concepts
+using std::ranges::range;
+using std::ranges::input_range;
+using std::ranges::forward_range;
+using std::ranges::bidirectional_range;
+using std::ranges::random_access_range;
+using std::ranges::contiguous_range;
+using std::ranges::sized_range;
+using std::ranges::common_range;
+using std::ranges::viewable_range;
+
+// Range adaptors and views
+using namespace std::ranges::views;
+
+// Iterator utilities 
+using std::indirectly_readable;
+using std::indirectly_writable;
+using std::indirect_result_t;
+using std::indirect_unary_predicate;
+using std::indirect_binary_predicate;
+using std::projected;
+
+// Common concepts
+using std::equality_comparable;
+using std::totally_ordered;
+
+// Functional
+using std::identity;
 
 #include "models/vector.h"
 #include "models/database.h"

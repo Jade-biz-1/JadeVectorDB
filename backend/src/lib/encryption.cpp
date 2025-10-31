@@ -269,7 +269,7 @@ public:
 class KeyManagementServiceImpl : public IKeyManagementService {
 private:
     std::map<std::string, EncryptionKey> keys_;
-    std::mutex keys_mutex_;
+    mutable std::mutex keys_mutex_;
     
 public:
     std::string create_key(const EncryptionConfig& config) override {

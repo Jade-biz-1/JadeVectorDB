@@ -38,11 +38,48 @@ Result<void> VectorStorageService::initialize() {
     return {};
 }
 
+Result<void> VectorStorageService::initialize_distributed(
+    std::shared_ptr<ShardingService> sharding_service,
+    std::shared_ptr<QueryRouter> query_router,
+    std::shared_ptr<ReplicationService> replication_service) {
+    
+    if (!sharding_service || !query_router || !replication_service) {
+        RETURN_ERROR(ErrorCode::INITIALIZE_ERROR, "One or more distributed services are null");
+    }
+    
+    sharding_service_ = sharding_service;
+    query_router_ = query_router;
+    replication_service_ = replication_service;
+    
+    LOG_INFO(logger_, "VectorStorageService initialized with distributed services");
+    return {};
+}
+
 Result<void> VectorStorageService::store_vector(const std::string& database_id, const Vector& vector) {
     // Validate the vector before storing
     auto validation_result = validate_vector(database_id, vector);
     if (!validation_result.has_value()) {
         return validation_result;
+    }
+    
+    // Check cluster health before distributed operations
+    if (sharding_service_ && query_router_ && replication_service_) {
+        auto cluster_health = check_cluster_health();
+        if (!cluster_health.has_value() || !cluster_health.value()) {
+            LOG_WARN(logger_, "Cluster health check failed, proceeding with local storage only");
+        }
+    }
+    
+    // For distributed systems, determine the target shard
+    std::string target_shard = database_id; // Default to database ID as shard if no sharding service
+    if (sharding_service_) {
+        auto shard_result = get_target_shard(vector.id, database_id);
+        if (shard_result.has_value()) {
+            target_shard = shard_result.value();
+        } else {
+            LOG_WARN(logger_, "Could not determine shard for vector " << vector.id << 
+                    ", using default: " << target_shard);
+        }
     }
     
     // Encrypt the vector if encryption is enabled
@@ -51,9 +88,21 @@ Result<void> VectorStorageService::store_vector(const std::string& database_id, 
         encrypted_vector = encrypt_vector_data(vector);
     }
     
-    auto result = db_layer_->store_vector(database_id, encrypted_vector);
+    // Store vector in the determined shard
+    auto result = db_layer_->store_vector(target_shard, encrypted_vector);
+    
     if (result.has_value()) {
-        LOG_DEBUG(logger_, "Stored vector: " << vector.id << " in database: " << database_id);
+        LOG_DEBUG(logger_, "Stored vector: " << vector.id << " in database: " << database_id << 
+                 " on shard: " << target_shard);
+        
+        // Replicate the vector to other nodes if replication is enabled
+        if (replication_service_) {
+            auto replication_result = replicate_vector(vector, database_id);
+            if (!replication_result.has_value()) {
+                LOG_WARN(logger_, "Replication failed for vector " << vector.id << 
+                        ": " << ErrorHandler::format_error(replication_result.error()));
+            }
+        }
     }
     
     return result;
@@ -289,6 +338,53 @@ jadevectordb::Vector VectorStorageService::decrypt_vector_data(const Vector& vec
     // Use the vector data encryptor to decrypt the vector
     encryption::VectorDataEncryptor encryptor(field_encryption_service_);
     return encryptor.decrypt_vector(vector);
+}
+
+Result<void> VectorStorageService::replicate_vector(const Vector& vector, const std::string& database_id) {
+    if (!replication_service_) {
+        RETURN_ERROR(ErrorCode::SERVICE_UNAVAILABLE, "Replication service not available");
+    }
+    
+    auto result = replication_service_->replicate_vector(vector, Database{});
+    if (!result.has_value()) {
+        LOG_ERROR(logger_, "Failed to replicate vector " << vector.id << 
+                 ": " << ErrorHandler::format_error(result.error()));
+        return result;
+    }
+    
+    LOG_DEBUG(logger_, "Successfully replicated vector: " << vector.id);
+    return {};
+}
+
+Result<std::string> VectorStorageService::get_target_shard(const std::string& vector_id, 
+                                                          const std::string& database_id) const {
+    if (!sharding_service_) {
+        // If no sharding service, return database_id as default shard
+        return database_id;
+    }
+    
+    auto shard_result = sharding_service_->get_shard_for_vector(vector_id, database_id);
+    if (!shard_result.has_value()) {
+        LOG_ERROR(logger_, "Failed to get shard for vector " << vector_id << 
+                 ": " << ErrorHandler::format_error(shard_result.error()));
+        return shard_result;
+    }
+    
+    return shard_result;
+}
+
+Result<bool> VectorStorageService::check_cluster_health() const {
+    // This would check the health of distributed components
+    // For now, just return true if all services are available
+    bool has_all_services = sharding_service_ && query_router_ && replication_service_;
+    if (!has_all_services) {
+        LOG_WARN(logger_, "One or more distributed services are not available");
+        return false;
+    }
+    
+    // In a real implementation, we would check actual cluster health
+    // through the cluster service
+    return true;
 }
 
 } // namespace jadevectordb

@@ -14,57 +14,40 @@ namespace jadevectordb {
 
 // Index management service
 class IndexService {
+private:
+    std::shared_ptr<logging::Logger> logger_;
+    
+    // Storage for index configurations
+    std::map<std::string, std::map<std::string, Index>> database_indexes_; // database_id -> (index_id -> index)
+    std::mutex index_mutex_;
+
 public:
-    IndexService() = default;
+    IndexService();
     ~IndexService() = default;
     
     // Create a new index for a database
-    Result<std::string> create_index(const Database& database, const Index& index_config) {
-        // Implementation would go here
-        return std::string("index_id");
-    }
+    Result<std::string> create_index(const Database& database, const Index& index_config);
     
     // Get index by ID
-    Result<Index> get_index(const std::string& database_id, const std::string& index_id) {
-        // Implementation would go here
-        return Index{};
-    }
+    Result<Index> get_index(const std::string& database_id, const std::string& index_id);
     
     // List all indexes for a database
-    Result<std::vector<Index>> list_indexes(const std::string& database_id) {
-        // Implementation would go here
-        return std::vector<Index>{};
-    }
+    Result<std::vector<Index>> list_indexes(const std::string& database_id);
     
     // Update index configuration
-    Result<void> update_index(const std::string& database_id, const std::string& index_id, const Index& new_config) {
-        // Implementation would go here
-        return Result<void>{};
-    }
+    Result<void> update_index(const std::string& database_id, const std::string& index_id, const Index& new_config);
     
     // Delete an index
-    Result<void> delete_index(const std::string& database_id, const std::string& index_id) {
-        // Implementation would go here
-        return Result<void>{};
-    }
+    Result<void> delete_index(const std::string& database_id, const std::string& index_id);
     
     // Build/rebuild an index
-    Result<void> build_index(const std::string& database_id, const std::string& index_id) {
-        // Implementation would go here
-        return Result<void>{};
-    }
+    Result<void> build_index(const std::string& database_id, const std::string& index_id);
     
     // Check if index is ready for queries
-    Result<bool> is_index_ready(const std::string& database_id, const std::string& index_id) {
-        // Implementation would go here
-        return true;
-    }
+    Result<bool> is_index_ready(const std::string& database_id, const std::string& index_id);
     
     // Get index statistics
-    Result<std::map<std::string, double>> get_index_stats(const std::string& database_id, const std::string& index_id) {
-        // Implementation would go here
-        return std::map<std::string, double>{};
-    }
+    Result<std::map<std::string, double>> get_index_stats(const std::string& database_id, const std::string& index_id);
 };
 
 } // namespace jadevectordb
