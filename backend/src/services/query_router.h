@@ -2,141 +2,207 @@
 #define JADEVECTORDB_QUERY_ROUTER_H
 
 #include "models/database.h"
-#include "services/sharding_service.h"
+#include "models/vector.h"
+#include "lib/error_handling.h"
+#include "lib/logging.h"
 #include <string>
 #include <vector>
 #include <memory>
 #include <unordered_map>
 #include <mutex>
+#include <thread>
+#include <chrono>
+#include <atomic>
+#include <shared_mutex>
 
 namespace jadevectordb {
 
-// Represents a query route
-struct QueryRoute {
+// Represents a route in the distributed system
+struct RouteInfo {
+    std::string route_id;
     std::string database_id;
-    std::vector<std::string> target_shards;  // Shards to query
-    std::vector<std::string> target_nodes;   // Nodes to send query to
-    std::string query_type;                  // "search", "get", "store", etc.
-    bool requires_aggregation;               // Whether results need to be aggregated
+    std::string shard_id;
+    std::string node_id;
+    std::string operation_type;  // "read", "write", "search", etc.
+    std::vector<std::string> target_nodes;  // Nodes that should handle this request
+    std::chrono::steady_clock::time_point created_at;
+    std::chrono::steady_clock::time_point expires_at;
+    std::string status;         // "active", "pending", "expired", etc.
     
-    QueryRoute() : requires_aggregation(false) {}
-    QueryRoute(const std::string& db_id, const std::string& q_type)
-        : database_id(db_id), query_type(q_type), requires_aggregation(false) {}
+    RouteInfo() : created_at(std::chrono::steady_clock::now()), status("active") {}
 };
 
 // Configuration for query routing
-struct QueryRoutingConfig {
-    bool enable_query_optimization;        // Whether to optimize query routing
-    int max_parallel_queries;              // Maximum number of parallel queries
-    int query_timeout_ms;                  // Timeout for individual queries
-    std::string routing_algorithm;         // "direct", "adaptive", "load_balanced"
-    bool enable_caching;                   // Whether to cache routing decisions
+struct RoutingConfig {
+    std::string strategy;          // "round_robin", "least_loaded", "consistent_hash", "adaptive"
+    int max_route_cache_size;     // Maximum number of cached routes
+    int route_ttl_seconds;        // Time-to-live for cached routes
+    bool enable_adaptive_routing; // Whether to adjust routing based on node performance
+    std::vector<std::string> preferred_nodes; // Preferred nodes for routing
     
-    QueryRoutingConfig() : 
-        enable_query_optimization(true), 
-        max_parallel_queries(10), 
-        query_timeout_ms(5000),
-        enable_caching(true) {}
+    RoutingConfig() : max_route_cache_size(1000), route_ttl_seconds(300), 
+                     enable_adaptive_routing(true) {}
+};
+
+// Search parameters for routing
+struct SearchParams {
+    int top_k;
+    double threshold;
+    bool include_metadata;
+    bool include_vector_data;
+    std::unordered_map<std::string, std::string> filters;
+    
+    SearchParams() : top_k(10), threshold(0.0), include_metadata(false), include_vector_data(false) {}
 };
 
 /**
- * @brief Service for routing queries to appropriate shards and nodes
+ * @brief Service for routing queries to appropriate nodes in a distributed system
  * 
- * This service determines which nodes should handle specific queries
- * based on sharding strategy and cluster state.
+ * This service determines which nodes should handle specific database operations
+ * based on sharding configuration, node health, and load balancing strategies.
  */
 class QueryRouter {
+public:
+    enum class RoutingStrategy {
+        ROUND_ROBIN,
+        LEAST_LOADED,
+        CONSISTENT_HASH,
+        ADAPTIVE
+    };
+
 private:
     std::shared_ptr<logging::Logger> logger_;
-    std::shared_ptr<ShardingService> sharding_service_;
-    QueryRoutingConfig config_;
-    std::unordered_map<std::string, QueryRoute> route_cache_;  // query_pattern -> route
-    mutable std::shared_mutex cache_mutex_;
+    RoutingConfig config_;
+    std::unordered_map<std::string, RouteInfo> route_cache_;  // route_key -> RouteInfo
+    std::unordered_map<std::string, int> node_load_;         // node_id -> current_load
+    std::unordered_map<std::string, double> node_performance_; // node_id -> performance_score
+    mutable std::shared_mutex route_mutex_;
+    mutable std::shared_mutex config_mutex_;
     
+    // Round-robin counters for databases
+    std::unordered_map<std::string, size_t> round_robin_counters_; // database_id -> counter
+    
+    // Consistent hash ring
+    std::vector<std::pair<uint64_t, std::string>> hash_ring_; // hash -> node_id
+    std::shared_mutex ring_mutex_;
+
 public:
-    explicit QueryRouter(std::shared_ptr<ShardingService> sharding_service);
+    explicit QueryRouter();
     ~QueryRouter() = default;
     
     // Initialize the query router with configuration
-    bool initialize(const QueryRoutingConfig& config);
+    bool initialize(const RoutingConfig& config);
     
-    // Route a vector storage query
-    Result<QueryRoute> route_store_query(const std::string& vector_id, 
-                                       const std::string& database_id);
+    // Route a database operation to appropriate nodes
+    Result<RouteInfo> route_operation(const std::string& database_id,
+                                    const std::string& operation_type,
+                                    const std::string& operation_key = "") const;
     
-    // Route a vector retrieval query
-    Result<QueryRoute> route_get_query(const std::string& vector_id, 
-                                     const std::string& database_id);
+    // Route a vector operation to appropriate nodes
+    Result<RouteInfo> route_vector_operation(const std::string& database_id,
+                                          const std::string& vector_id,
+                                          const std::string& operation_type) const;
     
-    // Route a similarity search query
-    Result<QueryRoute> route_search_query(const std::vector<float>& query_vector, 
-                                        const std::string& database_id);
+    // Route a search operation to appropriate nodes
+    Result<RouteInfo> route_search_operation(const std::string& database_id,
+                                          const Vector& query_vector,
+                                          const SearchParams& search_params) const;
     
-    // Route an advanced search query with filters
-    Result<QueryRoute> route_advanced_search_query(const std::vector<float>& query_vector, 
-                                                  const std::string& database_id,
-                                                  const std::string& filters);
+    // Route a batch operation to appropriate nodes
+    Result<RouteInfo> route_batch_operation(const std::string& database_id,
+                                          const std::vector<std::string>& vector_ids,
+                                          const std::string& operation_type) const;
     
-    // Route a database management query
-    Result<QueryRoute> route_db_management_query(const std::string& database_id,
-                                               const std::string& operation);
-    
-    // Route a batch operation query
-    Result<QueryRoute> route_batch_query(const std::vector<std::string>& vector_ids,
-                                       const std::string& database_id);
-    
-    // Get all nodes participating in a specific database
-    Result<std::vector<std::string>> get_nodes_for_database(const std::string& database_id) const;
-    
-    // Update routing based on cluster changes
-    Result<bool> update_routing_for_cluster_change();
-    
-    // Invalidate routing cache for a database
-    void invalidate_cache_for_database(const std::string& database_id);
-    
-    // Get current routing configuration
-    QueryRoutingConfig get_config() const;
+    // Get cached route information for a specific operation
+    Result<RouteInfo> get_cached_route(const std::string& route_key) const;
     
     // Update routing configuration
-    Result<bool> update_config(const QueryRoutingConfig& new_config);
+    Result<bool> update_routing_config(const RoutingConfig& new_config);
     
-    // Route a query based on complex criteria
-    Result<QueryRoute> route_complex_query(const std::string& database_id,
-                                         const std::string& operation_type,
-                                         const std::unordered_map<std::string, std::string>& parameters);
+    // Update node load information
+    Result<bool> update_node_load(const std::string& node_id, int load);
     
-    // Get statistics about query routing
-    Result<std::unordered_map<std::string, int>> get_routing_stats() const;
+    // Update node performance metrics
+    Result<bool> update_node_performance(const std::string& node_id, double performance_score);
+    
+    // Get current routing configuration
+    RoutingConfig get_config() const;
+    
+    // Get statistics about routing decisions
+    Result<std::unordered_map<std::string, size_t>> get_routing_stats() const;
+    
+    // Check if a route is still valid
+    Result<bool> is_route_valid(const RouteInfo& route) const;
+    
+    // Invalidate a cached route
+    Result<bool> invalidate_route(const std::string& route_key);
+    
+    // Clear expired routes from cache
+    Result<bool> clear_expired_routes();
+    
+    // Get all candidate nodes for a database
+    Result<std::vector<std::string>> get_candidate_nodes(const std::string& database_id) const;
+    
+    // Select the best node for an operation based on current strategy
+    Result<std::string> select_best_node(const std::string& database_id,
+                                       const std::string& operation_type,
+                                       const std::string& operation_key = "") const;
+    
+    // Get routing strategy for a specific database
+    RoutingStrategy get_strategy_for_database(const std::string& database_id) const;
 
 private:
-    // Determine target shards for an operation
-    Result<std::vector<std::string>> determine_target_shards(const std::string& operation_type,
-                                                           const std::string& database_id,
-                                                           const std::string& key) const;
+    // Generate a cache key for a route
+    std::string generate_route_key(const std::string& database_id,
+                                  const std::string& operation_type,
+                                  const std::string& operation_key) const;
     
-    // Apply routing algorithm to select nodes
-    std::vector<std::string> apply_routing_algorithm(const std::vector<std::string>& candidate_nodes) const;
+    // Route using round-robin strategy
+    Result<RouteInfo> route_round_robin(const std::string& database_id,
+                                      const std::string& operation_type,
+                                      const std::string& operation_key) const;
     
-    // Check if route is cached
-    bool is_route_cached(const std::string& query_pattern, QueryRoute& route) const;
+    // Route using least-loaded strategy
+    Result<RouteInfo> route_least_loaded(const std::string& database_id,
+                                       const std::string& operation_type,
+                                       const std::string& operation_key) const;
     
-    // Cache a route decision
-    void cache_route(const std::string& query_pattern, const QueryRoute& route);
+    // Route using consistent hash strategy
+    Result<RouteInfo> route_consistent_hash(const std::string& database_id,
+                                          const std::string& operation_type,
+                                          const std::string& operation_key) const;
     
-    // Validate query routing configuration
-    bool validate_config(const QueryRoutingConfig& config) const;
+    // Route using adaptive strategy based on performance
+    Result<RouteInfo> route_adaptive(const std::string& database_id,
+                                   const std::string& operation_type,
+                                   const std::string& operation_key) const;
     
-    // Calculate load on nodes to make routing decisions
-    std::unordered_map<std::string, double> calculate_node_loads() const;
+    // Hash function for consistent hashing
+    uint64_t hash_function(const std::string& key) const;
     
-    // Perform adaptive routing based on current cluster state
-    Result<QueryRoute> adaptive_route(const std::string& operation_type,
-                                    const std::string& database_id,
-                                    const std::string& key) const;
+    // Build consistent hash ring
+    void build_hash_ring(const std::vector<std::string>& nodes);
     
-    // Perform load-balanced routing
-    std::vector<std::string> load_balanced_routing(const std::vector<std::string>& candidate_nodes,
-                                                  int required_nodes) const;
+    // Get node from hash ring
+    std::string get_node_from_ring(uint64_t hash) const;
+    
+    // Validate routing configuration
+    bool validate_config(const RoutingConfig& config) const;
+    
+    // Select multiple nodes for replication or redundancy
+    Result<std::vector<std::string>> select_multiple_nodes(const std::string& database_id,
+                                                         const std::string& operation_type,
+                                                         const std::string& operation_key,
+                                                         int count) const;
+    
+    // Get preferred nodes for a database
+    std::vector<std::string> get_preferred_nodes_for_database(const std::string& database_id) const;
+    
+    // Calculate load factor for a node
+    double calculate_load_factor(const std::string& node_id) const;
+    
+    // Calculate performance factor for a node
+    double calculate_performance_factor(const std::string& node_id) const;
 };
 
 } // namespace jadevectordb

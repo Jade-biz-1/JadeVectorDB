@@ -1,14 +1,19 @@
 #ifndef JADEVECTORDB_CLUSTER_SERVICE_H
 #define JADEVECTORDB_CLUSTER_SERVICE_H
 
+#include "models/database.h"
+#include "models/vector.h"
+#include "lib/error_handling.h"
+#include "lib/logging.h"
 #include <string>
 #include <vector>
 #include <memory>
 #include <unordered_map>
 #include <mutex>
+#include <thread>
+#include <chrono>
 #include <atomic>
-
-#include "lib/logging.h"
+#include <shared_mutex>
 
 namespace jadevectordb {
 
@@ -41,6 +46,29 @@ struct ClusterState {
     ClusterState() : term(0) {}
 };
 
+// Configuration for cluster service
+struct ClusterConfig {
+    std::string cluster_name;
+    std::string node_id;
+    std::string host;
+    int port;
+    std::vector<std::string> seed_nodes;  // List of seed nodes to join the cluster
+    int heartbeat_interval_ms;            // Interval between heartbeats
+    int election_timeout_min_ms;          // Minimum election timeout
+    int election_timeout_max_ms;          // Maximum election timeout
+    bool enable_raft_consensus;          // Whether to use Raft consensus protocol
+    int replication_factor;              // Default replication factor for data
+    std::string strategy;                // Sharding strategy ("hash", "range", "vector", "auto")
+    int num_shards;                     // Number of shards for sharding
+    std::vector<std::string> node_list;  // List of nodes in the cluster
+    std::string hash_function;           // Hash function for sharding ("murmur", "fnv", etc.)
+    
+    ClusterConfig() : port(0), heartbeat_interval_ms(1000), 
+                     election_timeout_min_ms(1500), election_timeout_max_ms(3000),
+                     enable_raft_consensus(true), replication_factor(3),
+                     num_shards(1) {}
+};
+
 /**
  * @brief Service for managing cluster membership and node coordination
  * 
@@ -57,10 +85,10 @@ public:
     };
 
 private:
+    std::shared_ptr<logging::Logger> logger_;
+    ClusterConfig config_;
     ClusterState cluster_state_;
     mutable std::shared_mutex state_mutex_;
-    std::shared_ptr<logging::Logger> logger_;
-    
     std::string node_id_;
     std::string host_;
     int port_;
@@ -78,8 +106,12 @@ private:
     std::atomic<bool> heartbeat_running_;
     std::atomic<bool> election_running_;
     
+    // Timing
+    std::chrono::steady_clock::time_point last_heartbeat_time_;
+    std::chrono::steady_clock::time_point last_election_timeout_;
+    
 public:
-    ClusterService(const std::string& host, int port);
+    explicit ClusterService(const std::string& host = "localhost", int port = 8080);
     ~ClusterService();
     
     // Initialize the cluster service
@@ -93,6 +125,9 @@ public:
     
     // Join an existing cluster
     Result<bool> join_cluster(const std::string& seed_node_host, int seed_node_port);
+    
+    // Leave the current cluster
+    Result<bool> leave_cluster();
     
     // Get current cluster state
     Result<ClusterState> get_cluster_state() const;
@@ -139,6 +174,12 @@ public:
     
     // Get cluster statistics
     Result<std::unordered_map<std::string, std::string>> get_cluster_stats() const;
+    
+    // Add a node to the cluster
+    Result<bool> add_node_to_cluster(const std::string& node_id);
+    
+    // Remove a node from the cluster
+    Result<bool> remove_node_from_cluster(const std::string& node_id);
 
 private:
     // Initialize node ID
@@ -172,6 +213,18 @@ private:
     
     // Get random election timeout
     std::chrono::milliseconds get_election_timeout() const;
+    
+    // Connect to a seed node
+    Result<bool> connect_to_seed_node(const std::string& host, int port);
+    
+    // Register this node with the cluster
+    Result<bool> register_node_with_cluster();
+    
+    // Discover other nodes in the cluster
+    Result<std::vector<ClusterNode>> discover_cluster_nodes();
+    
+    // Validate cluster configuration
+    bool validate_config(const ClusterConfig& config) const;
 };
 
 } // namespace jadevectordb

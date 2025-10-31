@@ -3,11 +3,16 @@
 
 #include "models/database.h"
 #include "models/vector.h"
+#include "lib/error_handling.h"
+#include "lib/logging.h"
 #include <string>
 #include <vector>
 #include <memory>
 #include <unordered_map>
 #include <mutex>
+#include <thread>
+#include <chrono>
+#include <atomic>
 
 namespace jadevectordb {
 
@@ -19,11 +24,15 @@ struct ReplicationStatus {
     std::vector<std::string> pending_nodes;  // Nodes where replication is pending
     int replication_factor;                  // Expected number of replicas
     std::chrono::steady_clock::time_point last_updated;
+    std::chrono::steady_clock::time_point last_replicated;
+    std::string status;                      // "replicating", "completed", "failed", "pending"
     
     ReplicationStatus() : replication_factor(0) {}
     ReplicationStatus(const std::string& id, const std::string& db_id, int factor)
         : vector_id(id), database_id(db_id), replication_factor(factor), 
-          last_updated(std::chrono::steady_clock::now()) {}
+          last_updated(std::chrono::steady_clock::now()),
+          last_replicated(std::chrono::steady_clock::now()),
+          status("pending") {}
 };
 
 // Configuration for replication
@@ -33,6 +42,7 @@ struct ReplicationConfig {
     int replication_timeout_ms;          // Timeout for replication operations
     std::string replication_strategy;    // "simple", "chain", "star", etc.
     bool enable_cross_region;            // Whether to allow cross-region replication
+    std::vector<std::string> preferred_regions; // Preferred regions for replication
     
     ReplicationConfig() : 
         default_replication_factor(1), 
@@ -52,7 +62,8 @@ private:
     ReplicationConfig config_;
     std::unordered_map<std::string, ReplicationStatus> replication_status_; // vector_id -> status
     std::unordered_map<std::string, std::vector<std::string>> db_replicas_; // database_id -> node_ids
-    std::mutex status_mutex_;
+    mutable std::mutex status_mutex_;
+    mutable std::mutex config_mutex_;
     
 public:
     explicit ReplicationService();
@@ -62,18 +73,18 @@ public:
     bool initialize(const ReplicationConfig& config);
     
     // Replicate a vector to multiple nodes
-    Result<bool> replicate_vector(const Vector& vector, const Database& database);
+    Result<void> replicate_vector(const Vector& vector, const Database& database);
     
     // Replicate a vector to specific nodes
-    Result<bool> replicate_vector_to_nodes(const Vector& vector, 
+    Result<void> replicate_vector_to_nodes(const Vector& vector, 
                                          const std::vector<std::string>& target_nodes);
     
     // Update a vector and replicate the changes
-    Result<bool> update_and_replicate(const Vector& updated_vector, 
+    Result<void> update_and_replicate(const Vector& updated_vector, 
                                     const Database& database);
     
     // Delete a vector and its replicas
-    Result<bool> delete_and_replicate(const std::string& vector_id, 
+    Result<void> delete_and_replicate(const std::string& vector_id, 
                                     const Database& database);
     
     // Get replication status for a specific vector
@@ -95,10 +106,10 @@ public:
     Result<std::unordered_map<std::string, int>> get_replication_stats() const;
     
     // Handle node failure and re-replicate data
-    Result<bool> handle_node_failure(const std::string& failed_node_id);
+    Result<void> handle_node_failure(const std::string& failed_node_id);
     
     // Add a new node and replicate data to it
-    Result<bool> add_node_and_replicate(const std::string& new_node_id);
+    Result<void> add_node_and_replicate(const std::string& new_node_id);
     
     // Update replication configuration
     Result<bool> update_replication_config(const ReplicationConfig& new_config);
@@ -114,17 +125,17 @@ public:
 
 private:
     // Select target nodes for replication based on current cluster state
-    std::vector<std::string> select_replica_nodes(const std::string& primary_node,
+    Result<std::vector<std::string>> select_replica_nodes(const std::string& primary_node,
                                                 int replication_factor) const;
     
     // Send vector data to target nodes for replication
     Result<bool> send_replication_request(const Vector& vector, 
-                                        const std::string& target_node_id);
+                                        const std::vector<std::string>& target_nodes);
     
     // Update replication status after operation completes
     void update_replication_status(const std::string& vector_id, 
-                                 const std::string& node_id, 
-                                 bool success);
+                                 const std::string& database_id, 
+                                 const std::vector<std::string>& replica_nodes);
     
     // Validate replication configuration
     bool validate_config(const ReplicationConfig& config) const;

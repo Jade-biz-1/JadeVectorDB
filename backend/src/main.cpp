@@ -15,6 +15,11 @@
 #include "models/index.h"
 #include "models/embedding_model.h"
 #include "services/database_layer.h"
+#include "services/sharding_service.h"
+#include "services/replication_service.h"
+#include "services/query_router.h"
+#include "services/cluster_service.h"
+#include "services/distributed_service_manager.h"
 #include "api/rest/rest_api.h"
 #include "api/grpc/grpc_service.h"
 
@@ -35,6 +40,7 @@ private:
     std::unique_ptr<AuthManager> auth_mgr_;
     std::unique_ptr<MetricsRegistry> metrics_registry_;
     std::unique_ptr<DatabaseLayer> db_layer_;
+    std::unique_ptr<DistributedServiceManager> distributed_service_manager_;
     std::unique_ptr<RestApiService> rest_api_service_;
     std::unique_ptr<VectorDatabaseService> grpc_service_;
     
@@ -90,6 +96,55 @@ public:
             return db_result;
         }
         
+        // Initialize distributed services
+        distributed_service_manager_ = std::make_unique<DistributedServiceManager>();
+        DistributedConfig dist_config;
+        
+        // Configure sharding
+        dist_config.sharding_config.strategy = "hash";
+        dist_config.sharding_config.num_shards = 4;
+        dist_config.sharding_config.replication_factor = 3;
+        
+        // Configure replication
+        dist_config.replication_config.default_replication_factor = 3;
+        dist_config.replication_config.synchronous_replication = false;
+        dist_config.replication_config.replication_timeout_ms = 5000;
+        dist_config.replication_config.replication_strategy = "simple";
+        
+        // Configure routing
+        dist_config.routing_config.strategy = "round_robin";
+        dist_config.routing_config.max_route_cache_size = 1000;
+        dist_config.routing_config.route_ttl_seconds = 300;
+        dist_config.routing_config.enable_adaptive_routing = true;
+        
+        // Configure clustering
+        dist_config.cluster_host = config.host;
+        dist_config.cluster_port = config.port + 1000; // Use different port for cluster communication
+        dist_config.seed_nodes = {}; // Empty for standalone mode
+        
+        // Enable all distributed features
+        dist_config.enable_sharding = true;
+        dist_config.enable_replication = true;
+        dist_config.enable_clustering = true;
+        
+        auto dist_result = distributed_service_manager_->initialize(dist_config);
+        if (!dist_result.has_value()) {
+            LOG_WARN(logger_, "Failed to initialize distributed services: " << 
+                     ErrorHandler::format_error(dist_result.error()));
+            // Continue without distributed services in standalone mode
+        } else {
+            LOG_INFO(logger_, "Distributed services initialized successfully");
+            
+            // Start distributed services
+            auto start_result = distributed_service_manager_->start();
+            if (!start_result.has_value()) {
+                LOG_WARN(logger_, "Failed to start distributed services: " << 
+                         ErrorHandler::format_error(start_result.error()));
+            } else {
+                LOG_INFO(logger_, "Distributed services started successfully");
+            }
+        }
+        
         // Initialize REST API service
         rest_api_service_ = std::make_unique<RestApiService>(config.port);
         
@@ -140,6 +195,15 @@ public:
         LOG_INFO(logger_, "Shutting down JadeVectorDB application...");
         
         running_ = false;
+        
+        // Stop distributed services
+        if (distributed_service_manager_) {
+            auto stop_result = distributed_service_manager_->stop();
+            if (!stop_result.has_value()) {
+                LOG_WARN(logger_, "Failed to stop distributed services: " << 
+                         ErrorHandler::format_error(stop_result.error()));
+            }
+        }
         
         // Stop services in reverse order
         if (grpc_service_) {
