@@ -335,15 +335,15 @@ Result<bool> PerformanceBenchmark::save_results(const std::vector<BenchmarkResul
     try {
         std::ofstream output_file(file_path);
         if (!output_file.is_open()) {
-            RETURN_ERROR(ErrorCode::IO_ERROR, "Failed to open output file: " + file_path);
+            RETURN_ERROR(ErrorCode::STORAGE_IO_ERROR, "Failed to open output file: " + file_path);
         }
         
         // Generate the report and save to file
         auto report_result = generate_report(results);
         if (!report_result.has_value()) {
-            return report_result;
+            return tl::unexpected(report_result.error());
         }
-        
+
         output_file << report_result.value();
         output_file.close();
         

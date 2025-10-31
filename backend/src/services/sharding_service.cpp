@@ -212,7 +212,7 @@ Result<bool> ShardingService::migrate_shard(const std::string& shard_id, const s
         }
         
         LOG_WARN(logger_, "Shard not found for migration: " + shard_id);
-        RETURN_ERROR(ErrorCode::RESOURCE_NOT_FOUND, "Shard not found: " + shard_id);
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "Shard not found: " + shard_id);
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in migrate_shard: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to migrate shard: " + std::string(e.what()));
@@ -243,7 +243,7 @@ Result<bool> ShardingService::is_balanced() const {
     try {
         auto distribution_result = get_shard_distribution();
         if (!distribution_result.has_value()) {
-            return distribution_result;
+            return tl::unexpected(distribution_result.error());
         }
         
         auto distribution = distribution_result.value();
@@ -418,9 +418,9 @@ void ShardingService::initialize_hash_function() {
 Result<ShardInfo> ShardingService::hash_based_sharding(const Vector& vector, const Database& database) const {
     std::string vector_id = vector.id.empty() ? "temp_vector" : vector.id;
     auto shard_id_result = get_shard_for_vector(vector_id, database.databaseId);
-    
+
     if (!shard_id_result.has_value()) {
-        return shard_id_result;
+        return tl::unexpected(shard_id_result.error());
     }
     
     ShardInfo shard_info;

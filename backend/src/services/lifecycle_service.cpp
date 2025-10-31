@@ -59,7 +59,7 @@ Result<void> LifecycleService::perform_cleanup(const std::string& database_id) {
         auto policy_result = get_retention_policy(database_id);
         if (!policy_result.has_value()) {
             LOG_WARN(logger_, "Could not get retention policy for database " + database_id);
-            return policy_result;
+            return tl::unexpected(policy_result.error());
         }
         
         auto [max_age, archive_on_expire] = policy_result.value();

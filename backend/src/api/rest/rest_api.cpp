@@ -92,14 +92,13 @@ bool RestApiImpl::initialize(int port) {
     similarity_search_service_ = std::make_unique<SimilaritySearchService>();
     index_service_ = std::make_unique<IndexService>();
     lifecycle_service_ = std::make_unique<LifecycleService>();
-    auth_manager_ = std::make_unique<AuthManager>();
+    auth_manager_ = AuthManager::get_instance();
 
     // Initialize the services
     db_service_->initialize();
     vector_storage_service_->initialize();
     similarity_search_service_->initialize();
-    index_service_->initialize();
-    lifecycle_service_->initialize();
+    // Note: IndexService and LifecycleService don't have initialize() methods
     
     // Initialize distributed services if they exist
     initialize_distributed_services();
@@ -288,7 +287,7 @@ void RestApiImpl::handle_create_database() {
             }
             
             // Check if user has permission to create databases
-            auto auth_manager = auth_manager_.get();
+            auto auth_manager = auth_manager_;
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "database:create");
@@ -361,7 +360,7 @@ void RestApiImpl::handle_list_databases() {
             }
             
             // Check if user has permission to list databases
-            auto auth_manager = auth_manager_.get();
+            auto auth_manager = auth_manager_;
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "database:list");
@@ -465,7 +464,7 @@ void RestApiImpl::handle_get_database() {
             }
             
             // Check if user has permission to get database details
-            auto auth_manager = auth_manager_.get();
+            auto auth_manager = auth_manager_;
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "database:read");
@@ -533,7 +532,7 @@ void RestApiImpl::handle_update_database() {
             }
             
             // Check if user has permission to update database configuration
-            auto auth_manager = auth_manager_.get();
+            auto auth_manager = auth_manager_;
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "database:update");
@@ -608,7 +607,7 @@ void RestApiImpl::handle_delete_database() {
             }
             
             // Check if user has permission to delete databases
-            auto auth_manager = auth_manager_.get();
+            auto auth_manager = auth_manager_;
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "database:delete");
@@ -673,7 +672,7 @@ void RestApiImpl::handle_store_vector() {
             }
             
             // Check if user has permission to store vectors in this database
-            auto auth_manager = auth_manager_.get();
+            auto auth_manager = auth_manager_;
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "vector:add");
@@ -757,7 +756,7 @@ void RestApiImpl::handle_get_vector() {
             }
             
             // Check if user has permission to retrieve vectors from this database
-            auto auth_manager = auth_manager_.get();
+            auto auth_manager = auth_manager_;
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "vector:read");
@@ -1102,7 +1101,7 @@ void RestApiImpl::handle_advanced_search() {
             }
             
             // Authorize user for advanced search operation
-            auto auth_manager = auth_manager_.get();
+            auto auth_manager = auth_manager_;
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (!user_id_result.has_value()) {
                 res.status = 401; // Unauthorized
@@ -1286,7 +1285,7 @@ void RestApiImpl::handle_system_status() {
             }
 
             // Check if user has permission to view system status
-            auto auth_manager = auth_manager_.get();
+            auto auth_manager = auth_manager_;
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "monitoring:read");
@@ -1354,7 +1353,7 @@ void RestApiImpl::handle_database_status() {
             }
 
             // Check if user has permission to view database status
-            auto auth_manager = auth_manager_.get();
+            auto auth_manager = auth_manager_;
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "monitoring:read");
@@ -2303,7 +2302,7 @@ void RestApiImpl::setup_authentication() {
     LOG_DEBUG(logger_, "Setting up authentication middleware");
     // In a real implementation, this would set up API key validation
     // using the AuthManager
-    auto auth_manager = auth_manager_.get();
+    auto auth_manager = auth_manager_;
 }
 
 Result<bool> RestApiImpl::authenticate_request(const std::string& api_key) const {
@@ -2312,7 +2311,7 @@ Result<bool> RestApiImpl::authenticate_request(const std::string& api_key) const
     }
     
     // Use the AuthManager to validate the API key
-    auto auth_manager = auth_manager_.get();
+    auto auth_manager = auth_manager_;
     auto validation_result = auth_manager->validate_api_key(api_key);
     
     if (!validation_result.has_value()) {
@@ -2399,7 +2398,7 @@ crow::response RestApiImpl::handle_generate_embedding_request(const crow::reques
         }
 
         // Check if user has permission to generate embeddings
-        auto auth_manager = auth_manager_.get();
+        auto auth_manager = auth_manager_;
         auto user_id_result = auth_manager->get_user_from_api_key(api_key);
         if (user_id_result.has_value()) {
             auto perm_result = auth_manager->has_permission_with_api_key(api_key, "embedding:generate");
@@ -2489,7 +2488,7 @@ crow::response RestApiImpl::handle_create_index_request(const crow::request& req
         }
 
         // Check if user has permission to create indexes
-        auto auth_manager = auth_manager_.get();
+        auto auth_manager = auth_manager_;
         auto user_id_result = auth_manager->get_user_from_api_key(api_key);
         if (user_id_result.has_value()) {
             auto perm_result = auth_manager->has_permission_with_api_key(api_key, "index:create");
@@ -2597,7 +2596,7 @@ crow::response RestApiImpl::handle_list_indexes_request(const crow::request& req
         }
 
         // Check if user has permission to list indexes
-        auto auth_manager = auth_manager_.get();
+        auto auth_manager = auth_manager_;
         auto user_id_result = auth_manager->get_user_from_api_key(api_key);
         if (user_id_result.has_value()) {
             auto perm_result = auth_manager->has_permission_with_api_key(api_key, "index:read");
@@ -2674,7 +2673,7 @@ crow::response RestApiImpl::handle_update_index_request(const crow::request& req
         }
 
         // Check if user has permission to update indexes
-        auto auth_manager = auth_manager_.get();
+        auto auth_manager = auth_manager_;
         auto user_id_result = auth_manager->get_user_from_api_key(api_key);
         if (user_id_result.has_value()) {
             auto perm_result = auth_manager->has_permission_with_api_key(api_key, "index:update");
@@ -2763,7 +2762,7 @@ crow::response RestApiImpl::handle_delete_index_request(const crow::request& req
         }
 
         // Check if user has permission to delete indexes
-        auto auth_manager = auth_manager_.get();
+        auto auth_manager = auth_manager_;
         auto user_id_result = auth_manager->get_user_from_api_key(api_key);
         if (user_id_result.has_value()) {
             auto perm_result = auth_manager->has_permission_with_api_key(api_key, "index:delete");
@@ -2833,7 +2832,7 @@ crow::response RestApiImpl::handle_configure_retention_request(const crow::reque
         }
 
         // Check if user has permission to configure retention
-        auto auth_manager = auth_manager_.get();
+        auto auth_manager = auth_manager_;
         auto user_id_result = auth_manager->get_user_from_api_key(api_key);
         if (user_id_result.has_value()) {
             auto perm_result = auth_manager->has_permission_with_api_key(api_key, "lifecycle:configure");
@@ -2934,7 +2933,7 @@ crow::response RestApiImpl::handle_lifecycle_status_request(const crow::request&
         }
 
         // Check if user has permission to view lifecycle status
-        auto auth_manager = auth_manager_.get();
+        auto auth_manager = auth_manager_;
         auto user_id_result = auth_manager->get_user_from_api_key(api_key);
         if (user_id_result.has_value()) {
             auto perm_result = auth_manager->has_permission_with_api_key(api_key, "lifecycle:read");
@@ -3021,7 +3020,7 @@ void RestApiImpl::handle_batch_get_vectors() {
             }
             
             // Check if user has permission to retrieve vectors from this database
-            auto auth_manager = auth_manager_.get();
+            auto auth_manager = auth_manager_;
             auto user_id_result = auth_manager->get_user_from_api_key(api_key);
             if (user_id_result.has_value()) {
                 auto perm_result = auth_manager->has_permission_with_api_key(api_key, "vector:read");
