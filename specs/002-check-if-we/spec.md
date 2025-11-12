@@ -390,6 +390,19 @@ As a system administrator, I want to manage the lifecycle of vector data includi
 - **FR-027**: System MUST support specific approximate nearest neighbor (ANN) algorithms for fast similarity search, including HNSW (Hierarchical Navigable Small World), IVF (Inverted File), and LSH (Locality Sensitive Hashing) with configurable parameters for performance vs. accuracy trade-offs
 - **FR-028**: System MUST handle polysemy and homonymy issues in text embeddings appropriately
 
+---
+
+**FR-029**: System MUST automatically create default users (`admin`, `dev`, `test`) with appropriate roles and permissions when deployed in local, development, or test environments. These users MUST have the following properties:
+
+- `admin`: Full administrative permissions, status `active`.
+- `dev`: Development permissions, status `active`.
+- `test`: Limited/test permissions, status `active`.
+- These default users MUST NOT be created or enabled in production deployments; in production, they MUST be set to `inactive` or removed entirely.
+- The creation logic MUST be environment-aware and documented in implementation notes.
+- Rationale: This enables rapid local development and testing, while ensuring security in production.
+
+Implementation Note: The backend MUST include logic to detect local/dev/test environments and create these users only in those cases. Documentation MUST clearly state the restrictions and rationale. Tests MUST verify correct creation, role assignment, and status enforcement for these users.
+
 ### Key Entities *(include if feature involves data)*
 
 - **Vector**: A mathematical representation of data in N-dimensional space, including the vector values and associated metadata

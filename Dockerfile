@@ -16,6 +16,7 @@
 #############################################################################
 # Stage 1: Builder
 #############################################################################
+
 FROM ubuntu:24.04 AS builder
 
 LABEL maintainer="JadeVectorDB Team"
@@ -24,14 +25,14 @@ LABEL description="High-Performance Distributed Vector Database - Builder Stage"
 # Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install only essential build tools
-# CMake, C++ compiler, Git (for FetchContent), and make
+# Install essential build tools and Boost development libraries
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     git \
     ninja-build \
     pkg-config \
+    libboost-all-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Verify installations
