@@ -1,37 +1,31 @@
+// Stub implementation when gRPC is not available
+// This file provides no-op implementations to allow the project to build without gRPC
+
 #include "grpc_service.h"
 
 namespace jadevectordb {
 
 // VectorDatabaseService stub implementation
 VectorDatabaseService::VectorDatabaseService(const std::string& server_address)
-    : server_address_(server_address) {
+    : server_(nullptr), service_impl_(nullptr), server_address_(server_address) {
     // Stub constructor
 }
 
 VectorDatabaseService::~VectorDatabaseService() {
-    // Stub destructor
-    if (server_) {
-        server_->Shutdown();
-    }
+    // Stub destructor - no cleanup needed since nothing is initialized
 }
 
 bool VectorDatabaseService::start() {
-    // Stub: Return false to indicate gRPC is not implemented
+    // Stub: Return false to indicate gRPC is not available
     return false;
 }
 
 void VectorDatabaseService::stop() {
     // Stub: Do nothing
-    if (server_) {
-        server_->Shutdown();
-    }
 }
 
 void VectorDatabaseService::wait() {
     // Stub: Do nothing
-    if (server_) {
-        server_->Wait();
-    }
 }
 
 bool VectorDatabaseService::is_running() const {

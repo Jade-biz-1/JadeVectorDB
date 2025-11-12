@@ -3,6 +3,12 @@
 ## Overview
 This document outlines the tasks to be completed in the next development session for JadeVectorDB. These tasks build upon the comprehensive work already completed and focus on enhancing the system further.
 
+**Note**: Task numbering updated 2025-11-02:
+- T202-T214: Advanced features (COMPLETE - see master tasks list)
+- T215.01-T215.30: Interactive tutorial (28/30 complete - see tutorial_pending_tasks.md)
+- T216-T218: cURL command generation (COMPLETE - see master tasks list)
+- T219+: Future enhancement tasks (listed below)
+
 ## Priority Tasks
 
 ### 1. Implementation Tasks
@@ -160,7 +166,7 @@ This document outlines the tasks to be completed in the next development session
 - **Dependencies**: T190 (Documentation)
 - **Estimated Effort**: 3-4 days
 
-#### T216: Implement Community Contribution Framework
+#### T219: Implement Community Contribution Framework
 - **Description**: Create framework to facilitate community contributions
 - **Components**:
   - Contributor onboarding guide
@@ -173,16 +179,16 @@ This document outlines the tasks to be completed in the next development session
 ## Future Roadmap Items
 
 ### Q3 2026 Objectives
-1. **T217**: Multi-modal vector search capabilities
-2. **T218**: Real-time streaming vector ingestion
-3. **T219**: Graph-based vector relationships
-4. **T220**: Automated hyperparameter tuning
+1. **T220**: Multi-modal vector search capabilities
+2. **T221**: Real-time streaming vector ingestion
+3. **T222**: Graph-based vector relationships
+4. **T223**: Automated hyperparameter tuning
 
 ### Q4 2026 Objectives
-1. **T221**: Federated learning capabilities
-2. **T222**: Quantum-resistant cryptography
-3. **T223**: Edge computing deployment support
-4. **T224**: Natural language querying interface
+1. **T224**: Federated learning capabilities
+2. **T225**: Quantum-resistant cryptography
+3. **T226**: Edge computing deployment support
+4. **T227**: Natural language querying interface
 
 ## Task Prioritization Matrix
 

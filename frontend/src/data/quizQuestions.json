@@ -1,0 +1,472 @@
+{
+  "modules": {
+    "getting-started": {
+      "title": "Module 1: Getting Started",
+      "passingScore": 70,
+      "timeLimit": 600,
+      "questions": [
+        {
+          "id": "gs-q1",
+          "type": "multiple-choice",
+          "question": "What is the primary purpose of a vector database?",
+          "options": [
+            "Store traditional relational data with SQL queries",
+            "Store and search high-dimensional vector embeddings for similarity search",
+            "Cache web pages for faster loading",
+            "Manage user authentication and authorization"
+          ],
+          "correctAnswer": 1,
+          "explanation": "Vector databases are specifically designed to store high-dimensional vector embeddings and perform efficient similarity searches, which is crucial for AI/ML applications like semantic search, recommendation systems, and RAG (Retrieval Augmented Generation).",
+          "points": 10,
+          "difficulty": "easy"
+        },
+        {
+          "id": "gs-q2",
+          "type": "multiple-choice",
+          "question": "What does the 'dimensions' parameter represent when creating a database in JadeVectorDB?",
+          "options": [
+            "The number of databases you can create",
+            "The size of the vector embeddings that will be stored",
+            "The maximum number of vectors allowed",
+            "The number of similarity metrics available"
+          ],
+          "correctAnswer": 1,
+          "explanation": "The dimensions parameter specifies the size (number of components) of each vector embedding. All vectors in a database must have the same dimensionality. For example, if using 384-dimensional embeddings from a model, you'd set dimensions to 384.",
+          "points": 10,
+          "difficulty": "easy"
+        },
+        {
+          "id": "gs-q3",
+          "type": "code-completion",
+          "question": "Complete the code to create a new database named 'products' with 512 dimensions:",
+          "codeTemplate": "const db = await jadedb._____({\n  name: '_____',\n  dimensions: _____\n});",
+          "correctAnswer": ["createDatabase", "products", "512"],
+          "explanation": "The createDatabase method requires a name and dimensions parameter. The name identifies the database, and dimensions must match your embedding model's output size.",
+          "points": 15,
+          "difficulty": "medium"
+        },
+        {
+          "id": "gs-q4",
+          "type": "multiple-choice",
+          "question": "Which of the following is NOT a valid similarity metric in JadeVectorDB?",
+          "options": [
+            "Cosine similarity",
+            "Euclidean distance",
+            "Dot product",
+            "Manhattan distance"
+          ],
+          "correctAnswer": 3,
+          "explanation": "JadeVectorDB supports cosine similarity, Euclidean distance, and dot product. While Manhattan distance is a valid distance metric, it's not commonly used for high-dimensional vector similarity search and is not currently supported.",
+          "points": 10,
+          "difficulty": "medium"
+        },
+        {
+          "id": "gs-q5",
+          "type": "scenario",
+          "question": "You're building a semantic search system for product recommendations. Your embedding model outputs 768-dimensional vectors. What should you consider when creating your database?",
+          "options": [
+            "Set dimensions to 768 and choose cosine similarity for normalized embeddings",
+            "Set dimensions to 1024 for better performance",
+            "Use the default dimensions and any similarity metric",
+            "Create multiple databases with different dimensions"
+          ],
+          "correctAnswer": 0,
+          "explanation": "Match the dimensions to your model's output (768). Cosine similarity is ideal for normalized embeddings as it measures angular similarity regardless of magnitude, which is perfect for semantic search.",
+          "points": 15,
+          "difficulty": "hard"
+        }
+      ]
+    },
+    "vector-manipulation": {
+      "title": "Module 2: Vector Manipulation",
+      "passingScore": 70,
+      "timeLimit": 600,
+      "questions": [
+        {
+          "id": "vm-q1",
+          "type": "multiple-choice",
+          "question": "What is required to add a vector to JadeVectorDB?",
+          "options": [
+            "Only the vector values",
+            "Vector ID, vector values, and database name",
+            "Vector values and index type",
+            "Only metadata"
+          ],
+          "correctAnswer": 1,
+          "explanation": "To add a vector, you need: (1) a unique vector ID for retrieval, (2) the vector values (array of numbers), and (3) the target database name. Metadata is optional but recommended.",
+          "points": 10,
+          "difficulty": "easy"
+        },
+        {
+          "id": "vm-q2",
+          "type": "code-completion",
+          "question": "Complete the code to add a vector with metadata:",
+          "codeTemplate": "await jadedb.addVector({\n  id: 'vec-001',\n  vector: [0.1, 0.2, ..., 0.768],\n  _____: 'products',\n  _____: { title: 'Laptop', category: 'Electronics' }\n});",
+          "correctAnswer": ["database", "metadata"],
+          "explanation": "The database parameter specifies which database to add the vector to, and metadata allows you to attach searchable attributes to your vectors for filtering.",
+          "points": 15,
+          "difficulty": "medium"
+        },
+        {
+          "id": "vm-q3",
+          "type": "multiple-choice",
+          "question": "What happens when you try to add a vector with dimensions that don't match the database?",
+          "options": [
+            "The vector is automatically resized",
+            "An error is thrown and the vector is rejected",
+            "The extra dimensions are truncated",
+            "A new database is created automatically"
+          ],
+          "correctAnswer": 1,
+          "explanation": "JadeVectorDB enforces dimensional consistency. If you try to add a vector with mismatched dimensions, the operation fails with an error. This ensures data integrity and prevents corrupted similarity searches.",
+          "points": 10,
+          "difficulty": "easy"
+        },
+        {
+          "id": "vm-q4",
+          "type": "debugging",
+          "question": "Find the error in this code:",
+          "code": "const vector = await jadedb.addVector({\n  id: 'vec-123',\n  values: [0.1, 0.2, 0.3],\n  database: 'products'\n});",
+          "correctAnswer": "The parameter should be 'vector' not 'values'",
+          "explanation": "The correct parameter name is 'vector', not 'values'. The API expects: { id, vector, database, metadata }",
+          "points": 15,
+          "difficulty": "medium"
+        },
+        {
+          "id": "vm-q5",
+          "type": "scenario",
+          "question": "You need to update a vector's metadata without changing its embedding. What's the best approach?",
+          "options": [
+            "Delete the vector and add it again with new metadata",
+            "Use the updateVector method with only the metadata field",
+            "Create a new vector with a different ID",
+            "Metadata cannot be changed after creation"
+          ],
+          "correctAnswer": 1,
+          "explanation": "The updateVector method allows you to update metadata without re-uploading the entire vector embedding, which is more efficient and preserves the vector ID.",
+          "points": 15,
+          "difficulty": "hard"
+        }
+      ]
+    },
+    "advanced-search": {
+      "title": "Module 3: Advanced Search",
+      "passingScore": 70,
+      "timeLimit": 600,
+      "questions": [
+        {
+          "id": "as-q1",
+          "type": "multiple-choice",
+          "question": "What does the 'k' parameter represent in similarity search?",
+          "options": [
+            "The search accuracy percentage",
+            "The number of nearest neighbors to return",
+            "The similarity threshold value",
+            "The number of dimensions to compare"
+          ],
+          "correctAnswer": 1,
+          "explanation": "The 'k' parameter in k-NN (k-Nearest Neighbors) search specifies how many of the most similar vectors to return. For example, k=10 returns the 10 most similar vectors.",
+          "points": 10,
+          "difficulty": "easy"
+        },
+        {
+          "id": "as-q2",
+          "type": "code-completion",
+          "question": "Complete the similarity search to find 5 nearest neighbors with a minimum similarity of 0.8:",
+          "codeTemplate": "const results = await jadedb.search({\n  vector: queryVector,\n  database: 'products',\n  k: _____,\n  _____: 0.8\n});",
+          "correctAnswer": ["5", "threshold"],
+          "explanation": "Set k=5 for 5 results and threshold=0.8 to only return vectors with similarity >= 0.8. This filters out low-quality matches.",
+          "points": 15,
+          "difficulty": "medium"
+        },
+        {
+          "id": "as-q3",
+          "type": "multiple-choice",
+          "question": "When should you use cosine similarity vs Euclidean distance?",
+          "options": [
+            "Always use cosine similarity as it's faster",
+            "Use cosine for normalized vectors focusing on direction; Euclidean for magnitude-sensitive comparisons",
+            "They produce identical results, so it doesn't matter",
+            "Use Euclidean for text embeddings, cosine for images"
+          ],
+          "correctAnswer": 1,
+          "explanation": "Cosine similarity measures angular similarity (direction) and is ideal for normalized embeddings. Euclidean distance considers magnitude and is better when vector lengths matter. Most text embeddings use cosine similarity.",
+          "points": 15,
+          "difficulty": "hard"
+        },
+        {
+          "id": "as-q4",
+          "type": "scenario",
+          "question": "Your similarity search returns results with scores: [0.95, 0.92, 0.45, 0.12]. What does this indicate?",
+          "options": [
+            "All results are highly relevant",
+            "The first two results are highly relevant, the last two are poor matches",
+            "The search failed",
+            "You need to increase k value"
+          ],
+          "correctAnswer": 1,
+          "explanation": "Similarity scores typically range from 0 to 1. Scores above 0.85-0.90 indicate high similarity, while scores below 0.5 suggest poor matches. You might want to set a threshold to filter out low-scoring results.",
+          "points": 15,
+          "difficulty": "medium"
+        },
+        {
+          "id": "as-q5",
+          "type": "multiple-choice",
+          "question": "What is the computational complexity of brute-force k-NN search?",
+          "options": [
+            "O(1) - constant time",
+            "O(log n) - logarithmic time",
+            "O(n) - linear time",
+            "O(n²) - quadratic time"
+          ],
+          "correctAnswer": 2,
+          "explanation": "Brute-force k-NN must compare the query vector against all n vectors in the database, resulting in O(n) complexity. This is why indexing algorithms like HNSW are crucial for large datasets.",
+          "points": 10,
+          "difficulty": "hard"
+        }
+      ]
+    },
+    "metadata-filtering": {
+      "title": "Module 4: Metadata Filtering",
+      "passingScore": 70,
+      "timeLimit": 600,
+      "questions": [
+        {
+          "id": "mf-q1",
+          "type": "multiple-choice",
+          "question": "What is the purpose of metadata filtering in vector search?",
+          "options": [
+            "To reduce vector dimensions",
+            "To pre-filter vectors before similarity comparison based on attributes",
+            "To improve vector embedding quality",
+            "To compress the database"
+          ],
+          "correctAnswer": 1,
+          "explanation": "Metadata filtering allows you to pre-filter vectors based on attributes (like category, date, price) before performing similarity search. This combines semantic search with traditional filtering for more precise results.",
+          "points": 10,
+          "difficulty": "easy"
+        },
+        {
+          "id": "mf-q2",
+          "type": "code-completion",
+          "question": "Complete the filtered search for electronics products under $1000:",
+          "codeTemplate": "const results = await jadedb.search({\n  vector: queryVector,\n  database: 'products',\n  k: 10,\n  filter: {\n    _____: 'Electronics',\n    price: { $lt: _____ }\n  }\n});",
+          "correctAnswer": ["category", "1000"],
+          "explanation": "Filters use field names (category) and comparison operators ($lt for less than). This pre-filters vectors before similarity search, combining structured and semantic search.",
+          "points": 15,
+          "difficulty": "medium"
+        },
+        {
+          "id": "mf-q3",
+          "type": "multiple-choice",
+          "question": "Which filter operator would you use to match any value in a list?",
+          "options": [
+            "$eq (equals)",
+            "$in (in array)",
+            "$regex (pattern match)",
+            "$all (all values match)"
+          ],
+          "correctAnswer": 1,
+          "explanation": "The $in operator checks if a field value matches any value in the provided array. Example: { category: { $in: ['Electronics', 'Computers'] } } matches vectors in either category.",
+          "points": 10,
+          "difficulty": "medium"
+        },
+        {
+          "id": "mf-q4",
+          "type": "scenario",
+          "question": "You want to find similar products that are in stock AND (price < 100 OR on_sale = true). How do you structure this filter?",
+          "options": [
+            "Use nested $and and $or operators",
+            "Filters don't support complex boolean logic",
+            "Run two separate queries and merge results",
+            "Use regex to match the pattern"
+          ],
+          "correctAnswer": 0,
+          "explanation": "Advanced filters support boolean operators: { $and: [{ in_stock: true }, { $or: [{ price: { $lt: 100 } }, { on_sale: true }] }] }. This enables complex querying while maintaining semantic search.",
+          "points": 15,
+          "difficulty": "hard"
+        },
+        {
+          "id": "mf-q5",
+          "type": "multiple-choice",
+          "question": "What happens to search performance when you add metadata filters?",
+          "options": [
+            "Performance always improves due to smaller search space",
+            "Performance always degrades due to filter overhead",
+            "Performance typically improves by reducing candidate vectors",
+            "Filters have no effect on performance"
+          ],
+          "correctAnswer": 2,
+          "explanation": "Filters usually improve performance by reducing the number of vectors that require expensive similarity calculations. However, very selective filters on non-indexed fields might add overhead. Proper indexing is key.",
+          "points": 15,
+          "difficulty": "hard"
+        }
+      ]
+    },
+    "index-management": {
+      "title": "Module 5: Index Management",
+      "passingScore": 70,
+      "timeLimit": 600,
+      "questions": [
+        {
+          "id": "im-q1",
+          "type": "multiple-choice",
+          "question": "Why do we need vector indexes?",
+          "options": [
+            "To make vectors searchable",
+            "To accelerate similarity search from O(n) to sub-linear time",
+            "To compress vector storage",
+            "To validate vector dimensions"
+          ],
+          "correctAnswer": 1,
+          "explanation": "Indexes like HNSW, IVF, and LSH reduce search complexity from O(n) brute-force to sub-linear time (e.g., O(log n)), making searches on millions of vectors feasible in milliseconds.",
+          "points": 10,
+          "difficulty": "easy"
+        },
+        {
+          "id": "im-q2",
+          "type": "multiple-choice",
+          "question": "What does HNSW stand for?",
+          "options": [
+            "High-speed Numerical Search Workflow",
+            "Hierarchical Navigable Small World",
+            "Hybrid Neural Search Web",
+            "Heuristic Nearest Similarity Weight"
+          ],
+          "correctAnswer": 1,
+          "explanation": "HNSW (Hierarchical Navigable Small World) is a graph-based index that creates multiple layers of connections between vectors, enabling very fast approximate nearest neighbor search.",
+          "points": 10,
+          "difficulty": "easy"
+        },
+        {
+          "id": "im-q3",
+          "type": "code-completion",
+          "question": "Complete the code to create an HNSW index with M=16 and efConstruction=200:",
+          "codeTemplate": "await jadedb.createIndex({\n  database: 'products',\n  type: '_____',\n  parameters: {\n    M: _____,\n    efConstruction: _____\n  }\n});",
+          "correctAnswer": ["HNSW", "16", "200"],
+          "explanation": "M controls the number of connections per node (higher = better accuracy, more memory). efConstruction controls build-time search quality (higher = better index, slower build).",
+          "points": 15,
+          "difficulty": "medium"
+        },
+        {
+          "id": "im-q4",
+          "type": "multiple-choice",
+          "question": "What is the trade-off when choosing between HNSW and IVF indexes?",
+          "options": [
+            "HNSW: faster search, more memory; IVF: slower search, less memory",
+            "HNSW: exact search; IVF: approximate search",
+            "IVF: better for small datasets; HNSW: better for large datasets",
+            "No significant difference between them"
+          ],
+          "correctAnswer": 0,
+          "explanation": "HNSW provides faster queries and better recall but uses more memory. IVF (Inverted File Index) is more memory-efficient but typically has slower queries and may need tuning for good recall.",
+          "points": 15,
+          "difficulty": "hard"
+        },
+        {
+          "id": "im-q5",
+          "type": "scenario",
+          "question": "Your dataset has 10 million vectors and queries must return results in <50ms. Which index should you choose?",
+          "options": [
+            "Flat (brute-force) for guaranteed accuracy",
+            "HNSW with optimized parameters for speed",
+            "IVF with many clusters for faster filtering",
+            "LSH for approximate results"
+          ],
+          "correctAnswer": 1,
+          "explanation": "HNSW is the best choice for large-scale, low-latency requirements. With proper tuning (M=16-32, ef=100-200), it can achieve <50ms queries on millions of vectors with >95% recall.",
+          "points": 15,
+          "difficulty": "hard"
+        }
+      ]
+    },
+    "advanced-features": {
+      "title": "Module 6: Advanced Features",
+      "passingScore": 70,
+      "timeLimit": 600,
+      "questions": [
+        {
+          "id": "af-q1",
+          "type": "multiple-choice",
+          "question": "What is a hybrid search?",
+          "options": [
+            "Searching multiple databases simultaneously",
+            "Combining vector similarity search with keyword/full-text search",
+            "Using multiple similarity metrics together",
+            "Searching both vectors and metadata"
+          ],
+          "correctAnswer": 1,
+          "explanation": "Hybrid search combines semantic vector search with traditional keyword/BM25 search, then merges results (often with reciprocal rank fusion). This provides both semantic understanding and exact keyword matching.",
+          "points": 15,
+          "difficulty": "hard"
+        },
+        {
+          "id": "af-q2",
+          "type": "multiple-choice",
+          "question": "What is the purpose of vector quantization?",
+          "options": [
+            "To increase vector dimensions",
+            "To reduce memory footprint by compressing vectors",
+            "To improve search accuracy",
+            "To generate new vectors"
+          ],
+          "correctAnswer": 1,
+          "explanation": "Quantization (like PQ or SQ) compresses vectors by reducing precision or grouping similar values, decreasing memory by 8-32x with minimal accuracy loss. Crucial for billion-scale deployments.",
+          "points": 15,
+          "difficulty": "hard"
+        },
+        {
+          "id": "af-q3",
+          "type": "scenario",
+          "question": "You need to implement RAG (Retrieval Augmented Generation). What's the typical workflow?",
+          "options": [
+            "Generate text → embed → search similar vectors → return results",
+            "Embed query → vector search → retrieve documents → pass to LLM with context",
+            "Search database → generate embeddings → compare similarity",
+            "Train LLM on vector database directly"
+          ],
+          "correctAnswer": 1,
+          "explanation": "RAG workflow: (1) Embed user query, (2) Vector search for relevant documents, (3) Retrieve top-k document chunks, (4) Pass to LLM as context with original query. This grounds LLM responses in your data.",
+          "points": 15,
+          "difficulty": "hard"
+        },
+        {
+          "id": "af-q4",
+          "type": "multiple-choice",
+          "question": "What is the recall@k metric in vector search?",
+          "options": [
+            "The percentage of queries that return k results",
+            "The percentage of true top-k neighbors found among returned results",
+            "The time taken to return k results",
+            "The accuracy of the k-th result"
+          ],
+          "correctAnswer": 1,
+          "explanation": "Recall@k measures what percentage of the true k nearest neighbors (from brute-force search) are found by your indexed search. A recall@10 of 0.95 means 95% of the true top-10 are retrieved.",
+          "points": 15,
+          "difficulty": "hard"
+        },
+        {
+          "id": "af-q5",
+          "type": "scenario",
+          "question": "Your production system needs 99.9% uptime. What strategies should you implement?",
+          "options": [
+            "Just use a reliable hosting provider",
+            "Implement replication, sharding, health checks, and circuit breakers",
+            "Buy more servers",
+            "Only rely on database backups"
+          ],
+          "correctAnswer": 1,
+          "explanation": "High availability requires: (1) Replication for redundancy, (2) Sharding for load distribution, (3) Health checks for failure detection, (4) Circuit breakers for graceful degradation, (5) Regular backups, (6) Monitoring and alerting.",
+          "points": 15,
+          "difficulty": "hard"
+        }
+      ]
+    }
+  },
+  "metadata": {
+    "version": "1.0",
+    "totalQuestions": 30,
+    "createdDate": "2025-11-02",
+    "lastUpdated": "2025-11-02"
+  }
+}
