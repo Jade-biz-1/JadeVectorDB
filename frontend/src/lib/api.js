@@ -267,3 +267,129 @@ export const lifecycleApi = {
     return handleResponse(response);
   },
 };
+
+// API Service for User Management
+export const userApi = {
+  listUsers: async () => {
+    const response = await fetch(`${API_BASE_URL}/users`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+  createUser: async (userData) => {
+    const response = await fetch(`${API_BASE_URL}/users`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(userData),
+    });
+    return handleResponse(response);
+  },
+  updateUser: async (userId, updateData) => {
+    const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(updateData),
+    });
+    return handleResponse(response);
+  },
+  deleteUser: async (userId) => {
+    const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};
+
+// API Service for Security Monitoring (Audit Logs)
+export const securityApi = {
+  listAuditLogs: async (limit = 50, offset = 0) => {
+    const response = await fetch(`${API_BASE_URL}/audit/logs?limit=${limit}&offset=${offset}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};
+
+// API Service for API Key Management
+export const apiKeyApi = {
+  listKeys: async () => {
+    const response = await fetch(`${API_BASE_URL}/apikeys`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+  createKey: async (keyData) => {
+    const response = await fetch(`${API_BASE_URL}/apikeys`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(keyData),
+    });
+    return handleResponse(response);
+  },
+  revokeKey: async (keyId) => {
+    const response = await fetch(`${API_BASE_URL}/apikeys/${keyId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};
+
+// API Service for Alerting
+export const alertApi = {
+  listAlerts: async () => {
+    const response = await fetch(`${API_BASE_URL}/alerts`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+  createAlert: async (alertData) => {
+    const response = await fetch(`${API_BASE_URL}/alerts`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(alertData),
+    });
+    return handleResponse(response);
+  },
+  acknowledgeAlert: async (alertId) => {
+    const response = await fetch(`${API_BASE_URL}/alerts/${alertId}/acknowledge`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};
+
+// API Service for Cluster Management
+export const clusterApi = {
+  listNodes: async () => {
+    const response = await fetch(`${API_BASE_URL}/cluster/nodes`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+  getNodeStatus: async (nodeId) => {
+    const response = await fetch(`${API_BASE_URL}/cluster/nodes/${nodeId}/status`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};
+
+// API Service for Performance Metrics
+export const performanceApi = {
+  getMetrics: async () => {
+    const response = await fetch(`${API_BASE_URL}/metrics/performance`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 project(JadeVectorDB VERSION 1.0.0 LANGUAGES CXX)
 
-option(BUILD_WITH_ARROW "Build with Apache Arrow support" ON)
+option(BUILD_WITH_ARROW "Build with Apache Arrow support" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -55,6 +55,16 @@ set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(FLATBUFFERS_BUILD_FLATC ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(flatbuffers)
 
+# nlohmann/json - JSON library for C++
+message(STATUS "Fetching nlohmann/json...")
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.2
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 # Crow - Web framework for REST API
 message(STATUS "Fetching Crow...")
 FetchContent_Declare(
@@ -92,45 +102,46 @@ FetchContent_MakeAvailable(benchmark)
 
 # Apache Arrow - In-memory columnar data format
 # Note: Arrow is large and complex, we'll make it conditional with minimal options
-if(BUILD_WITH_ARROW)
-    message(STATUS "Fetching Apache Arrow...")
-    # Fetch a version that is known to work with modern CMake
-    FetchContent_Declare(
-        arrow
-        GIT_REPOSITORY https://github.com/apache/arrow.git
-        GIT_TAG apache-arrow-12.0.1  # Using an older, more stable version
-        GIT_SHALLOW TRUE
-        SOURCE_SUBDIR cpp
-    )
-    # Minimize Arrow build - only build what we need
-    set(ARROW_BUILD_STATIC ON CACHE BOOL "" FORCE)
-    set(ARROW_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-    set(ARROW_DEPENDENCY_SOURCE "BUNDLED" CACHE STRING "" FORCE)
-    set(ARROW_VERBOSE_THIRDPARTY_BUILD OFF CACHE BOOL "" FORCE)
-    set(ARROW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(ARROW_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
-    set(ARROW_IPC OFF CACHE BOOL "" FORCE)
-    set(ARROW_FLIGHT OFF CACHE BOOL "" FORCE)
-    set(ARROW_COMPUTE OFF CACHE BOOL "" FORCE)
-    set(ARROW_DATASET OFF CACHE BOOL "" FORCE)
-    set(ARROW_FILESYSTEM OFF CACHE BOOL "" FORCE)
-    set(ARROW_HDFS OFF CACHE BOOL "" FORCE)
-    set(ARROW_JSON OFF CACHE BOOL "" FORCE)
-    set(ARROW_PARQUET OFF CACHE BOOL "" FORCE)
-    set(ARROW_WITH_BROTLI OFF CACHE BOOL "" FORCE)
-    set(ARROW_WITH_BZ2 OFF CACHE BOOL "" FORCE)
-    set(ARROW_WITH_LZ4 OFF CACHE BOOL "" FORCE)
-    set(ARROW_WITH_SNAPPY OFF CACHE BOOL "" FORCE)
-    set(ARROW_WITH_ZLIB OFF CACHE BOOL "" FORCE)
-    set(ARROW_WITH_ZSTD OFF CACHE BOOL "" FORCE)
+# Temporarily disabled due to CMake issues
+# if(BUILD_WITH_ARROW)
+#     message(STATUS "Fetching Apache Arrow...")
+#     # Fetch a version that is known to work with modern CMake
+#     FetchContent_Declare(
+#         arrow
+#         GIT_REPOSITORY https://github.com/apache/arrow.git
+#         GIT_TAG apache-arrow-10.0.1  # Using a stable version that works with CMake
+#         GIT_SHALLOW TRUE
+#         SOURCE_SUBDIR cpp
+#     )
+#     # Minimize Arrow build - only build what we need
+#     set(ARROW_BUILD_STATIC ON CACHE BOOL "" FORCE)
+#     set(ARROW_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+#     set(ARROW_DEPENDENCY_SOURCE "BUNDLED" CACHE STRING "" FORCE)
+#     set(ARROW_VERBOSE_THIRDPARTY_BUILD OFF CACHE BOOL "" FORCE)
+#     set(ARROW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+#     set(ARROW_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+#     set(ARROW_IPC OFF CACHE BOOL "" FORCE)
+#     set(ARROW_FLIGHT OFF CACHE BOOL "" FORCE)
+#     set(ARROW_COMPUTE OFF CACHE BOOL "" FORCE)
+#     set(ARROW_DATASET OFF CACHE BOOL "" FORCE)
+#     set(ARROW_FILESYSTEM OFF CACHE BOOL "" FORCE)
+#     set(ARROW_HDFS OFF CACHE BOOL "" FORCE)
+#     set(ARROW_JSON OFF CACHE BOOL "" FORCE)
+#     set(ARROW_PARQUET OFF CACHE BOOL "" FORCE)
+#     set(ARROW_WITH_BROTLI OFF CACHE BOOL "" FORCE)
+#     set(ARROW_WITH_BZ2 OFF CACHE BOOL "" FORCE)
+#     set(ARROW_WITH_LZ4 OFF CACHE BOOL "" FORCE)
+#     set(ARROW_WITH_SNAPPY OFF CACHE BOOL "" FORCE)
+#     set(ARROW_WITH_ZLIB OFF CACHE BOOL "" FORCE)
+#     set(ARROW_WITH_ZSTD OFF CACHE BOOL "" FORCE)
 
-    # Only fetch Arrow if not already available
-    FetchContent_GetProperties(arrow)
-    if(NOT arrow_POPULATED)
-        FetchContent_Populate(arrow)
-        add_subdirectory(${arrow_SOURCE_DIR}/cpp ${arrow_BINARY_DIR})
-    endif()
-endif()
+#     # Only fetch Arrow if not already available
+#     FetchContent_GetProperties(arrow)
+#     if(NOT arrow_POPULATED)
+#         FetchContent_Populate(arrow)
+#         add_subdirectory(${arrow_SOURCE_DIR}/cpp ${arrow_BINARY_DIR})
+#     endif()
+# endif()
 
 # gRPC - RPC framework
 # Note: gRPC is very large, we'll make it optional with stubs as fallback
@@ -160,6 +171,7 @@ endif()
 
 include_directories(${eigen_SOURCE_DIR})
 include_directories(${flatbuffers_SOURCE_DIR}/include)
+include_directories(${nlohmann_json_SOURCE_DIR}/include)
 include_directories(${crow_SOURCE_DIR}/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/models)

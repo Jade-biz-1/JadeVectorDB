@@ -90,6 +90,7 @@ public:
                                   const std::vector<std::string>& initial_roles = {});
     
     Result<User> get_user(const std::string& user_id) const;
+    Result<std::vector<User>> list_users() const;
     Result<void> update_user(const std::string& user_id, 
                            const std::vector<std::string>& new_roles);
     Result<void> deactivate_user(const std::string& user_id);

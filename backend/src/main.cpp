@@ -83,6 +83,49 @@ public:
         
         // Initialize auth manager
         auth_mgr_ = AuthManager::get_instance();
+
+        // --- Default User Creation for Local/Dev/Test Environments ---
+        // Detect environment (simple heuristic: ENV=local|dev|test, or host=localhost, or port=8080)
+        std::string env = std::getenv("JADEVECTORDB_ENV") ? std::getenv("JADEVECTORDB_ENV") : "";
+        bool is_local_env = (env == "local" || env == "dev" || env == "test" || config.host == "localhost" || config.host == "127.0.0.1" || config.port == 8080);
+
+        if (is_local_env) {
+            LOG_INFO(logger_, "Creating default users for local/dev/test environment...");
+            // Create admin user
+            auto admin_result = auth_mgr_->create_user("admin", "admin@jadevectordb.local", {"role_admin"});
+            if (!admin_result) {
+                LOG_WARN(logger_, "Default admin user creation: " << ErrorHandler::format_error(admin_result.error()));
+            }
+            // Create dev user
+            auto dev_result = auth_mgr_->create_user("dev", "dev@jadevectordb.local", {"role_user"});
+            if (!dev_result) {
+                LOG_WARN(logger_, "Default dev user creation: " << ErrorHandler::format_error(dev_result.error()));
+            }
+            // Create test user
+            auto test_result = auth_mgr_->create_user("test", "test@jadevectordb.local", {"role_reader"});
+            if (!test_result) {
+                LOG_WARN(logger_, "Default test user creation: " << ErrorHandler::format_error(test_result.error()));
+            }
+            // Ensure all are active
+            if (admin_result) auth_mgr_->activate_user(admin_result.value());
+            if (dev_result) auth_mgr_->activate_user(dev_result.value());
+            if (test_result) auth_mgr_->activate_user(test_result.value());
+        } else {
+            LOG_INFO(logger_, "Production environment detected: default users will NOT be created or enabled.");
+            // If any default users exist, deactivate them
+            for (const std::string& uname : {"admin", "dev", "test"}) {
+                // Try to find user by username
+                auto users_result = auth_mgr_->list_users();
+                if (users_result) {
+                    for (const auto& user : users_result.value()) {
+                        if (user.username == uname) {
+                            auth_mgr_->deactivate_user(user.user_id);
+                            LOG_INFO(logger_, "Deactivated default user: " << uname);
+                        }
+                    }
+                }
+            }
+        }
         
         // Initialize metrics registry
         metrics_registry_ = std::unique_ptr<MetricsRegistry>(MetricsManager::get_registry());
@@ -95,6 +138,81 @@ public:
                      ErrorHandler::format_error(db_result.error()));
             return db_result;
         }
+
+            // --- Default Database Creation for Local/Dev/Test Environments ---
+            if (is_local_env) {
+                LOG_INFO(logger_, "Creating default database for local/dev/test environment...");
+                Database default_db;
+                default_db.name = "defaultdb";
+                default_db.description = "Default database for local development and testing.";
+                default_db.owner = "admin";
+                default_db.vectorDimension = 128;
+                default_db.indexType = "HNSW";
+                default_db.indexParameters = { {"M", "16"}, {"efConstruction", "200"}, {"efSearch", "64"} };
+                default_db.sharding = {"hash", 1};
+                default_db.replication = {1, true};
+                default_db.created_at = "2025-11-12T00:00:00Z";
+                default_db.updated_at = "2025-11-12T00:00:00Z";
+                default_db.accessControl = { {"admin", "user", "reader"}, {"read", "search"} };
+                // Add a basic embedding model
+                Database::EmbeddingModel emb_model;
+                emb_model.name = "BERT";
+                emb_model.version = "base-uncased";
+                emb_model.provider = "huggingface";
+                emb_model.inputType = "text";
+                emb_model.outputDimension = 128;
+                emb_model.parameters = { {"maxTokens", "512"}, {"normalize", "true"} };
+                emb_model.status = "active";
+                default_db.embeddingModels.push_back(emb_model);
+                // Metadata schema
+                default_db.metadataSchema = { {"owner", "string"}, {"tags", "array<string>"}, {"category", "string"}, {"score", "float"}, {"status", "enum:active|archived|deleted"} };
+                // Retention policy
+                default_db.retentionPolicy = std::make_unique<Database::RetentionPolicy>(Database::RetentionPolicy{365, true});
+
+                auto create_db_result = db_layer_->create_database(default_db);
+                if (!create_db_result) {
+                    LOG_WARN(logger_, "Default database creation: " << ErrorHandler::format_error(create_db_result.error()));
+                } else {
+                    LOG_INFO(logger_, "Default database 'defaultdb' created successfully.");
+                }
+            }
+
+            // --- Basic Verification Steps After Deployment ---
+            LOG_INFO(logger_, "Running basic deployment verification checks...");
+            // Check default users
+            bool admin_ok = false, dev_ok = false, test_ok = false;
+            auto users_result = auth_mgr_->list_users();
+            if (users_result) {
+                for (const auto& user : users_result.value()) {
+                    if (user.username == "admin" && user.is_active) admin_ok = true;
+                    if (user.username == "dev" && user.is_active) dev_ok = true;
+                    if (user.username == "test" && user.is_active) test_ok = true;
+                }
+            }
+            if (admin_ok && dev_ok && test_ok) {
+                LOG_INFO(logger_, "Default users (admin, dev, test) are active.");
+            } else {
+                LOG_WARN(logger_, "One or more default users are missing or inactive.");
+            }
+            // Check default database
+            auto db_list_result = db_layer_->list_databases();
+            bool defaultdb_ok = false;
+            if (db_list_result) {
+                for (const auto& db : db_list_result.value()) {
+                    if (db.name == "defaultdb") defaultdb_ok = true;
+                }
+            }
+            if (defaultdb_ok) {
+                LOG_INFO(logger_, "Default database 'defaultdb' is available.");
+            } else {
+                LOG_WARN(logger_, "Default database 'defaultdb' is missing.");
+            }
+            // Final deployment status
+            if (admin_ok && dev_ok && test_ok && defaultdb_ok) {
+                LOG_INFO(logger_, "JadeVectorDB deployment verification PASSED: All basic checks succeeded.");
+            } else {
+                LOG_WARN(logger_, "JadeVectorDB deployment verification FAILED: Please check logs for details.");
+            }
         
         // Initialize distributed services
         distributed_service_manager_ = std::make_unique<DistributedServiceManager>();
@@ -174,7 +292,8 @@ public:
         
         // Start gRPC service
         if (!grpc_service_->start()) {
-            RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to start gRPC service");
+            LOG_WARN(logger_, "Failed to start gRPC service - continuing without gRPC support");
+            // Don't fail the application if gRPC is not available
         }
         
         LOG_INFO(logger_, "JadeVectorDB application started successfully");

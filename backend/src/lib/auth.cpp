@@ -115,6 +115,19 @@ Result<User> AuthManager::get_user(const std::string& user_id) const {
     return it->second;
 }
 
+Result<std::vector<User>> AuthManager::list_users() const {
+    std::shared_lock<std::shared_mutex> lock(auth_mutex_);
+    
+    std::vector<User> user_list;
+    user_list.reserve(users_.size());
+    
+    for (const auto& pair : users_) {
+        user_list.push_back(pair.second);
+    }
+    
+    return user_list;
+}
+
 Result<void> AuthManager::update_user(const std::string& user_id,
                                     const std::vector<std::string>& new_roles) {
     std::unique_lock<std::shared_mutex> lock(auth_mutex_);
