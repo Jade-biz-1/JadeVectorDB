@@ -10,6 +10,7 @@
 #include <vector>
 #include <set>
 #include <atomic>
+#include <optional>
 
 #include "error_handling.h"
 #include "zero_trust.h"
@@ -90,9 +91,14 @@ public:
                                   const std::vector<std::string>& initial_roles = {});
     
     Result<User> get_user(const std::string& user_id) const;
+    Result<User> get_user_by_username(const std::string& username) const;
     Result<std::vector<User>> list_users() const;
     Result<void> update_user(const std::string& user_id, 
                            const std::vector<std::string>& new_roles);
+    Result<void> update_user_details(const std::string& user_id,
+                                   const std::optional<std::string>& new_username,
+                                   const std::optional<std::string>& new_email,
+                                   const std::vector<std::string>& new_roles);
     Result<void> deactivate_user(const std::string& user_id);
     Result<void> activate_user(const std::string& user_id);
     
@@ -115,6 +121,8 @@ public:
     Result<std::string> get_user_from_api_key(const std::string& api_key) const;
     Result<std::vector<std::string>> get_permissions_from_api_key(const std::string& api_key) const;
     Result<void> revoke_api_key(const std::string& key_id);
+    Result<std::vector<ApiKey>> list_api_keys() const;
+    Result<std::vector<ApiKey>> list_api_keys_for_user(const std::string& user_id) const;
     
     // Permission checking
     Result<bool> has_permission(const std::string& user_id, const std::string& permission) const;
@@ -142,6 +150,9 @@ public:
     
     // Initialize default roles
     void initialize_default_roles();
+
+    // Administrative helper
+    Result<void> create_user_with_id(const User& user);
     
 private:
     std::string generate_id() const;
