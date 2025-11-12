@@ -5,6 +5,9 @@
 #include <memory>
 #include <thread>
 #include <future>
+#include <mutex>
+#include <unordered_map>
+#include <chrono>
 
 #include "lib/logging.h"
 #include "lib/config.h"
@@ -17,6 +20,8 @@
 #include "services/sharding_service.h"
 #include "services/replication_service.h"
 #include "services/query_router.h"
+#include "services/authentication_service.h"
+#include "services/security_audit_logger.h"
 
 // Forward declarations for services
 namespace jadevectordb {
@@ -80,6 +85,32 @@ private:
     std::unique_ptr<IndexService> index_service_;
     std::unique_ptr<LifecycleService> lifecycle_service_;
     AuthManager* auth_manager_;  // Singleton - not owned
+    std::unique_ptr<AuthenticationService> authentication_service_;
+    std::shared_ptr<SecurityAuditLogger> security_audit_logger_;
+    AuthenticationConfig authentication_config_;
+
+    struct PasswordResetToken {
+        std::string token;
+        std::string user_id;
+        std::chrono::system_clock::time_point expires_at;
+    };
+
+    struct AlertRecord {
+        std::string alert_id;
+        std::string type;
+        std::string severity;
+        std::string message;
+        bool acknowledged;
+        std::chrono::system_clock::time_point created_at;
+        std::chrono::system_clock::time_point acknowledged_at;
+    };
+
+    std::mutex password_reset_mutex_;
+    std::unordered_map<std::string, PasswordResetToken> password_reset_tokens_;
+
+    std::mutex alert_mutex_;
+    std::unordered_map<std::string, AlertRecord> alert_store_;
+    std::string runtime_environment_;
     
     // Crow app instance
     std::unique_ptr<crow::App<>> app_;
@@ -166,6 +197,42 @@ public:
     void handle_configure_retention();    // PUT /v1/databases/{databaseId}/lifecycle
     void handle_lifecycle_status();       // GET /v1/databases/{databaseId}/lifecycle/status
     
+    // Authentication and user management routes
+    void handle_authentication_routes();
+    void handle_user_management_routes();
+    void handle_api_key_routes();
+    void handle_security_routes();
+    void handle_alert_routes();
+    void handle_cluster_routes();
+    void handle_performance_routes();
+
+    crow::response handle_register_request(const crow::request& req);
+    crow::response handle_login_request(const crow::request& req);
+    crow::response handle_logout_request(const crow::request& req);
+    crow::response handle_forgot_password_request(const crow::request& req);
+    crow::response handle_reset_password_request(const crow::request& req);
+
+    crow::response handle_create_user_request(const crow::request& req);
+    crow::response handle_list_users_request(const crow::request& req);
+    crow::response handle_update_user_request(const crow::request& req, const std::string& user_id);
+    crow::response handle_delete_user_request(const crow::request& req, const std::string& user_id);
+    crow::response handle_user_status_request(const crow::request& req, const std::string& user_id, bool activate);
+
+    crow::response handle_list_api_keys_request(const crow::request& req);
+    crow::response handle_create_api_key_request(const crow::request& req);
+    crow::response handle_revoke_api_key_request(const crow::request& req, const std::string& key_id);
+
+    crow::response handle_list_audit_logs_request(const crow::request& req);
+
+    crow::response handle_list_alerts_request(const crow::request& req);
+    crow::response handle_create_alert_request(const crow::request& req);
+    crow::response handle_acknowledge_alert_request(const crow::request& req, const std::string& alert_id);
+
+    crow::response handle_list_cluster_nodes_request(const crow::request& req);
+    crow::response handle_cluster_node_status_request(const crow::request& req, const std::string& node_id);
+
+    crow::response handle_performance_metrics_request(const crow::request& req);
+
     // Helper methods
     void setup_error_handling();
     void setup_authentication();
@@ -177,6 +244,14 @@ public:
     
     // Initialize distributed services
     void initialize_distributed_services();
+    std::string generate_secure_token() const;
+    crow::json::wvalue serialize_user(const User& user) const;
+    crow::json::wvalue serialize_api_key(const ApiKey& key) const;
+    crow::json::wvalue serialize_alert(const AlertRecord& record) const;
+    crow::json::wvalue serialize_audit_event(const SecurityEvent& event) const;
+    std::string to_iso_string(const std::chrono::system_clock::time_point& time_point) const;
+    std::string extract_api_key(const crow::request& req) const;
+    Result<std::string> authorize_api_key(const crow::request& req, const std::string& permission = "") const;
 };
 
 } // namespace jadevectordb

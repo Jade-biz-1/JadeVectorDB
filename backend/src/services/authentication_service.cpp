@@ -33,9 +33,10 @@ bool AuthenticationService::initialize(const AuthenticationConfig& config,
     }
 }
 
-Result<bool> AuthenticationService::register_user(const std::string& username,
-                                                  const std::string& password,
-                                                  const std::vector<std::string>& roles) {
+Result<std::string> AuthenticationService::register_user(const std::string& username,
+                                                         const std::string& password,
+                                                         const std::vector<std::string>& roles,
+                                                         const std::string& user_id_override) {
     try {
         if (username.empty() || password.empty()) {
             RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Username and password are required");
@@ -58,7 +59,10 @@ Result<bool> AuthenticationService::register_user(const std::string& username,
         }
 
         // Generate user ID
-        std::string user_id = "user_" + generate_token();
+        std::string user_id = user_id_override;
+        if (user_id.empty()) {
+            user_id = "user_" + generate_token();
+        }
 
         // Generate salt and hash password
         std::string salt = generate_salt();
@@ -77,14 +81,44 @@ Result<bool> AuthenticationService::register_user(const std::string& username,
 
         users_[user_id] = credentials;
 
-        LOG_INFO(logger_, "User registered successfully: " + username);
+        LOG_INFO(logger_, "User registered successfully: " + username + " (" + user_id + ")");
         log_auth_event(SecurityEventType::AUTHENTICATION_SUCCESS, user_id, "", true,
                       "User registration");
 
-        return true;
+        return user_id;
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in register_user: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to register user: " + std::string(e.what()));
+    }
+}
+
+Result<bool> AuthenticationService::update_username(const std::string& user_id,
+                                                    const std::string& new_username) {
+    try {
+        if (user_id.empty() || new_username.empty()) {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "User id and username are required");
+        }
+
+        std::lock_guard<std::mutex> lock(users_mutex_);
+
+        auto it = users_.find(user_id);
+        if (it == users_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
+        }
+
+        for (const auto& entry : users_) {
+            if (entry.first != user_id && entry.second.username == new_username) {
+                RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "Username already exists");
+            }
+        }
+
+        it->second.username = new_username;
+        log_auth_event(SecurityEventType::ADMIN_OPERATION, user_id, "", true,
+                       "Username updated");
+        return true;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in update_username: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to update username: " + std::string(e.what()));
     }
 }
 

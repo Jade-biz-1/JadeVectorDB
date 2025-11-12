@@ -110,9 +110,14 @@ public:
                    std::shared_ptr<SecurityAuditLogger> audit_logger = nullptr);
 
     // User registration
-    Result<bool> register_user(const std::string& username,
-                              const std::string& password,
-                              const std::vector<std::string>& roles);
+    Result<std::string> register_user(const std::string& username,
+                                     const std::string& password,
+                                     const std::vector<std::string>& roles,
+                                     const std::string& user_id_override = "");
+    
+    // Update username
+    Result<bool> update_username(const std::string& user_id,
+                                const std::string& new_username);
 
     // User authentication
     Result<AuthToken> authenticate(const std::string& username,

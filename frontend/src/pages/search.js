@@ -31,7 +31,8 @@ export default function SearchInterface() {
     setFetchingDatabases(true);
     try {
       const response = await databaseApi.listDatabases();
-      setDatabases(response.databases.map(db => ({
+      const dbList = response.databases || [];
+      setDatabases(dbList.map(db => ({
         id: db.databaseId,
         name: db.name
       })));
@@ -66,11 +67,12 @@ export default function SearchInterface() {
         topK: parseInt(topK),
         threshold: parseFloat(threshold),
         includeMetadata: includeMetadata,
+        includeVectorData: includeValues,
         includeValues: includeValues
       };
       
-      const response = await searchApi.similaritySearch(selectedDatabase, searchRequest);
-      setResults(response.results);
+  const response = await searchApi.similaritySearch(selectedDatabase, searchRequest);
+  setResults(response.results || []);
     } catch (error) {
       console.error('Error performing search:', error);
       alert(`Error performing search: ${error.message}`);
@@ -246,13 +248,15 @@ export default function SearchInterface() {
               </div>
               <ul className="divide-y divide-gray-200">
                 {results.map((result, index) => (
-                  <li key={result.id || index} className={index === 0 ? 'border-t border-gray-200' : ''}>
+                  <li key={result.vector?.id || result.vectorId || index} className={index === 0 ? 'border-t border-gray-200' : ''}>
                     <div className="px-4 py-4 sm:px-6">
                       <div className="flex items-center justify-between">
-                        <div className="text-sm font-medium text-indigo-600 truncate">Vector ID: {result.id || result.vectorId}</div>
+                        <div className="text-sm font-medium text-indigo-600 truncate">
+                          Vector ID: {result.vector?.id || result.vectorId || 'Unknown'}
+                        </div>
                         <div className="ml-2 flex-shrink-0 flex">
                           <span className="inline-flex px-2 text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                            {(result.similarity || result.similarityScore || 0).toFixed(4)} similarity
+                            {(result.score || result.similarity || result.similarityScore || 0).toFixed(4)} similarity
                           </span>
                         </div>
                       </div>
@@ -265,20 +269,27 @@ export default function SearchInterface() {
                           <div className="mt-1 flex flex-col space-y-1">
                             {Object.entries(result.vector.metadata).map(([key, value]) => (
                               <div key={key} className="text-sm text-gray-500">
-                                <span className="font-medium">{key}:</span> {JSON.stringify(value)}
+                                <span className="font-medium">{key}:</span> {typeof value === 'string' ? value : JSON.stringify(value)}
                               </div>
                             ))}
                           </div>
                         </div>
                       )}
                       
-                      {result.values && includeValues && (
+                      {result.vector && result.vector.values && includeValues && (
                         <div className="mt-2">
                           <div className="text-sm text-gray-900">
                             <span className="font-medium">Values (first 10):</span>
                           </div>
                           <div className="mt-1 text-sm text-gray-500">
-                            [{result.values.slice(0, 10).map(v => v.toFixed(4)).join(', ')}{result.values.length > 10 ? '...' : ''}]
+                            {(() => {
+                              const values = result.vector.values || [];
+                              const displayValues = values.slice(0, 10).map((v) => {
+                                const numeric = Number(v);
+                                return Number.isFinite(numeric) ? numeric.toFixed(4) : String(v);
+                              }).join(', ');
+                              return `[${displayValues}${values.length > 10 ? '...' : ''}]`;
+                            })()}
                           </div>
                         </div>
                       )}

@@ -2,11 +2,18 @@
 #include "lib/logging.h"
 #include "lib/config.h"
 #include "lib/auth.h"
+#include "lib/error_handling.h"
 #include "services/database_service.h"
 #include "services/vector_storage.h"
 #include "services/similarity_search.h"
 #include <chrono>
 #include <thread>
+#include <random>
+#include <cstdlib>
+#include <sstream>
+#include <iomanip>
+#include <algorithm>
+#include <ctime>
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
@@ -93,12 +100,89 @@ bool RestApiImpl::initialize(int port) {
     index_service_ = std::make_unique<IndexService>();
     lifecycle_service_ = std::make_unique<LifecycleService>();
     auth_manager_ = AuthManager::get_instance();
+    security_audit_logger_ = std::make_shared<SecurityAuditLogger>();
+    authentication_service_ = std::make_unique<AuthenticationService>();
 
     // Initialize the services
     db_service_->initialize();
     vector_storage_service_->initialize();
     similarity_search_service_->initialize();
     // Note: IndexService and LifecycleService don't have initialize() methods
+
+    // Initialize audit logging
+    SecurityAuditConfig audit_config;
+    audit_config.log_file_path = "./logs/security_audit.log";
+    audit_config.enabled = true;
+    if (!security_audit_logger_->initialize(audit_config)) {
+        LOG_WARN(logger_, "Failed to initialize security audit logger");
+    }
+
+    // Initialize authentication service
+    authentication_config_ = AuthenticationConfig{};
+    authentication_config_.enable_api_keys = true;
+    authentication_config_.require_strong_passwords = true;
+    authentication_config_.min_password_length = 10;
+    if (!authentication_service_->initialize(authentication_config_, security_audit_logger_)) {
+        LOG_ERROR(logger_, "Failed to initialize authentication service");
+        return false;
+    }
+
+    // Seed default users for non-production environments
+    const char* env_ptr = std::getenv("JADEVECTORDB_ENV");
+    runtime_environment_ = env_ptr ? std::string(env_ptr) : "dev";
+    const bool allow_default_users = !(runtime_environment_ == "prod" || runtime_environment_ == "production");
+
+    auto ensure_default_user = [&](const std::string& username,
+                                   const std::string& email,
+                                   const std::string& password,
+                                   const std::vector<std::string>& roles,
+                                   bool activate) {
+        auto users_result = auth_manager_->list_users();
+        if (!users_result.has_value()) {
+            LOG_WARN(logger_, "Unable to list users while seeding defaults: "
+                << ErrorHandler::format_error(users_result.error()));
+            return;
+        }
+
+        for (const auto& existing : users_result.value()) {
+            if (existing.username == username) {
+                if (activate && !existing.is_active) {
+                    auth_manager_->activate_user(existing.user_id);
+                } else if (!activate && existing.is_active) {
+                    auth_manager_->deactivate_user(existing.user_id);
+                }
+                return;
+            }
+        }
+
+        auto user_id_result = auth_manager_->create_user(username, email, roles);
+        if (!user_id_result.has_value()) {
+            LOG_WARN(logger_, "Failed to create default user " << username << ": "
+                << ErrorHandler::format_error(user_id_result.error()));
+            return;
+        }
+
+        const std::string user_id = user_id_result.value();
+        auto register_result = authentication_service_->register_user(username, password, roles, user_id);
+        if (!register_result.has_value()) {
+            LOG_ERROR(logger_, "Failed to register credentials for default user " << username
+                << ": " << ErrorHandler::format_error(register_result.error()));
+        }
+
+        if (!activate) {
+            auth_manager_->deactivate_user(user_id);
+        }
+    };
+
+    if (allow_default_users) {
+        ensure_default_user("admin", "admin@example.local", "Admin!2345", {"role_admin"}, true);
+        ensure_default_user("dev", "dev@example.local", "Developer!2345", {"role_user"}, true);
+        ensure_default_user("test", "test@example.local", "Tester!2345", {"role_user"}, true);
+    } else {
+        ensure_default_user("admin", "admin@example.local", "Admin!2345", {"role_admin"}, false);
+        ensure_default_user("dev", "dev@example.local", "Developer!2345", {"role_user"}, false);
+        ensure_default_user("test", "test@example.local", "Tester!2345", {"role_user"}, false);
+    }
     
     // Initialize distributed services if they exist
     initialize_distributed_services();
@@ -253,6 +337,15 @@ void RestApiImpl::register_routes() {
             return crow::response(405, "Method not allowed");
         });
     handle_generate_embedding();
+
+    // Security, authentication, and administration endpoints
+    handle_authentication_routes();
+    handle_user_management_routes();
+    handle_api_key_routes();
+    handle_security_routes();
+    handle_alert_routes();
+    handle_cluster_routes();
+    handle_performance_routes();
     
     LOG_INFO(logger_, "All REST API routes registered successfully");
 }
@@ -1837,6 +1930,9 @@ crow::response RestApiImpl::handle_similarity_search_request(const crow::request
         if (body_json.has("includeVectorData")) {
             search_params.include_vector_data = body_json["includeVectorData"].b();
         }
+        if (!search_params.include_vector_data && body_json.has("includeValues")) {
+            search_params.include_vector_data = body_json["includeValues"].b();
+        }
         
         // Validate search parameters
         auto validation_result = similarity_search_service_->validate_search_params(search_params);
@@ -1848,32 +1944,78 @@ crow::response RestApiImpl::handle_similarity_search_request(const crow::request
         auto result = similarity_search_service_->similarity_search(database_id, query_vector, search_params);
         
         if (result.has_value()) {
-            // Serialize results to JSON
             auto search_results = result.value();
             crow::json::wvalue response;
+            response["count"] = static_cast<int>(search_results.size());
 
             int idx = 0;
             for (const auto& search_result : search_results) {
                 crow::json::wvalue result_obj;
                 result_obj["vectorId"] = search_result.vector_id;
-                result_obj["similarityScore"] = search_result.similarity_score;
+                result_obj["score"] = search_result.similarity_score;
 
                 if (search_params.include_vector_data || search_params.include_metadata) {
                     crow::json::wvalue vector_obj;
                     vector_obj["id"] = search_result.vector_data.id;
 
-                    // Add values as an array
-                    crow::json::wvalue values_array;
-                    int val_idx = 0;
-                    for (auto val : search_result.vector_data.values) {
-                        values_array[val_idx++] = val;
+                    if (search_params.include_vector_data) {
+                        crow::json::wvalue values_array;
+                        int val_idx = 0;
+                        for (auto val : search_result.vector_data.values) {
+                            values_array[val_idx++] = val;
+                        }
+                        vector_obj["values"] = std::move(values_array);
                     }
-                    vector_obj["values"] = std::move(values_array);
+
+                    if (search_params.include_metadata) {
+                        crow::json::wvalue metadata_obj;
+                        const auto& metadata = search_result.vector_data.metadata;
+                        metadata_obj["source"] = metadata.source;
+                        metadata_obj["owner"] = metadata.owner;
+                        metadata_obj["category"] = metadata.category;
+                        metadata_obj["status"] = metadata.status;
+                        metadata_obj["createdAt"] = metadata.created_at;
+                        metadata_obj["updatedAt"] = metadata.updated_at;
+                        metadata_obj["score"] = metadata.score;
+
+                        if (!metadata.tags.empty()) {
+                            crow::json::wvalue tags_array;
+                            int tag_idx = 0;
+                            for (const auto& tag : metadata.tags) {
+                                tags_array[tag_idx++] = tag;
+                            }
+                            metadata_obj["tags"] = std::move(tags_array);
+                        }
+
+                        if (!metadata.permissions.empty()) {
+                            crow::json::wvalue permissions_array;
+                            int perm_idx = 0;
+                            for (const auto& permission : metadata.permissions) {
+                                permissions_array[perm_idx++] = permission;
+                            }
+                            metadata_obj["permissions"] = std::move(permissions_array);
+                        }
+
+                        if (!metadata.custom.empty()) {
+                            crow::json::wvalue custom_obj;
+                            for (const auto& [key, value] : metadata.custom) {
+                                auto parsed_value = crow::json::load(value.dump());
+                                if (parsed_value) {
+                                    custom_obj[key] = parsed_value;
+                                } else {
+                                    custom_obj[key] = value.dump();
+                                }
+                            }
+                            metadata_obj["custom"] = std::move(custom_obj);
+                        }
+
+                        vector_obj["metadata"] = std::move(metadata_obj);
+                    }
 
                     result_obj["vector"] = std::move(vector_obj);
                 }
 
-                response[idx++] = std::move(result_obj);
+                response["results"][idx++] = std::move(result_obj);
             }
 
             crow::response resp(200, response);
@@ -1946,6 +2088,9 @@ crow::response RestApiImpl::handle_advanced_search_request(const crow::request& 
         if (body_json.has("includeVectorData")) {
             search_params.include_vector_data = body_json["includeVectorData"].b();
         }
+        if (!search_params.include_vector_data && body_json.has("includeValues")) {
+            search_params.include_vector_data = body_json["includeValues"].b();
+        }
         
         // Parse filters
         if (body_json.has("filters")) {
@@ -1963,32 +2108,78 @@ crow::response RestApiImpl::handle_advanced_search_request(const crow::request& 
         auto result = similarity_search_service_->similarity_search(database_id, query_vector, search_params);
         
         if (result.has_value()) {
-            // Serialize results to JSON
             auto search_results = result.value();
             crow::json::wvalue response;
+            response["count"] = static_cast<int>(search_results.size());
 
             int idx = 0;
             for (const auto& search_result : search_results) {
                 crow::json::wvalue result_obj;
                 result_obj["vectorId"] = search_result.vector_id;
-                result_obj["similarityScore"] = search_result.similarity_score;
+                result_obj["score"] = search_result.similarity_score;
 
                 if (search_params.include_vector_data || search_params.include_metadata) {
                     crow::json::wvalue vector_obj;
                     vector_obj["id"] = search_result.vector_data.id;
 
-                    // Add values as an array
-                    crow::json::wvalue values_array;
-                    int val_idx = 0;
-                    for (auto val : search_result.vector_data.values) {
-                        values_array[val_idx++] = val;
+                    if (search_params.include_vector_data) {
+                        crow::json::wvalue values_array;
+                        int val_idx = 0;
+                        for (auto val : search_result.vector_data.values) {
+                            values_array[val_idx++] = val;
+                        }
+                        vector_obj["values"] = std::move(values_array);
                     }
-                    vector_obj["values"] = std::move(values_array);
+
+                    if (search_params.include_metadata) {
+                        crow::json::wvalue metadata_obj;
+                        const auto& metadata = search_result.vector_data.metadata;
+                        metadata_obj["source"] = metadata.source;
+                        metadata_obj["owner"] = metadata.owner;
+                        metadata_obj["category"] = metadata.category;
+                        metadata_obj["status"] = metadata.status;
+                        metadata_obj["createdAt"] = metadata.created_at;
+                        metadata_obj["updatedAt"] = metadata.updated_at;
+                        metadata_obj["score"] = metadata.score;
+
+                        if (!metadata.tags.empty()) {
+                            crow::json::wvalue tags_array;
+                            int tag_idx = 0;
+                            for (const auto& tag : metadata.tags) {
+                                tags_array[tag_idx++] = tag;
+                            }
+                            metadata_obj["tags"] = std::move(tags_array);
+                        }
+
+                        if (!metadata.permissions.empty()) {
+                            crow::json::wvalue permissions_array;
+                            int perm_idx = 0;
+                            for (const auto& permission : metadata.permissions) {
+                                permissions_array[perm_idx++] = permission;
+                            }
+                            metadata_obj["permissions"] = std::move(permissions_array);
+                        }
+
+                        if (!metadata.custom.empty()) {
+                            crow::json::wvalue custom_obj;
+                            for (const auto& [key, value] : metadata.custom) {
+                                auto parsed_value = crow::json::load(value.dump());
+                                if (parsed_value) {
+                                    custom_obj[key] = parsed_value;
+                                } else {
+                                    custom_obj[key] = value.dump();
+                                }
+                            }
+                            metadata_obj["custom"] = std::move(custom_obj);
+                        }
+
+                        vector_obj["metadata"] = std::move(metadata_obj);
+                    }
 
                     result_obj["vector"] = std::move(vector_obj);
                 }
 
-                response[idx++] = std::move(result_obj);
+                response["results"][idx++] = std::move(result_obj);
             }
 
             crow::response resp(200, response);
@@ -2103,8 +2294,8 @@ crow::response RestApiImpl::handle_list_databases_request(const crow::request& r
         if (result.has_value()) {
             auto databases = result.value();
 
-            // Serialize databases to JSON
             crow::json::wvalue response;
+            response["total"] = static_cast<int>(databases.size());
 
             int idx = 0;
             for (const auto& db : databases) {
@@ -2117,7 +2308,7 @@ crow::response RestApiImpl::handle_list_databases_request(const crow::request& r
                 db_obj["created_at"] = db.created_at;
                 db_obj["updated_at"] = db.updated_at;
 
-                response[idx++] = std::move(db_obj);
+                response["databases"][idx++] = std::move(db_obj);
             }
 
             crow::response resp(200, response);
