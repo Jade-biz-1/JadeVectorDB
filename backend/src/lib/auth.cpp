@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <set>
+#include <optional>
 #include "zero_trust.h"
 
 // Include header for string hashing (we'll use a simple approach)
@@ -41,7 +42,8 @@ void AuthManager::initialize_default_roles() {
         "database:create", "database:read", "database:update", "database:delete",
         "vector:add", "vector:read", "vector:update", "vector:delete",
         "index:create", "index:read", "index:update", "index:delete",
-        "search:execute", "user:manage", "api_key:manage", "config:manage"
+        "search:execute", "user:manage", "api_key:manage", "config:manage",
+        "monitoring:read", "monitoring:write", "alert:read", "alert:ack", "audit:read"
     };
     admin_role.created_at = std::chrono::system_clock::now();
     admin_role.updated_at = std::chrono::system_clock::now();
@@ -50,7 +52,7 @@ void AuthManager::initialize_default_roles() {
     Role user_role("role_user", "Standard User");
     user_role.permissions = {
         "database:read", "vector:add", "vector:read", "vector:update",
-        "search:execute", "index:read"
+        "search:execute", "index:read", "monitoring:read", "alert:read"
     };
     user_role.created_at = std::chrono::system_clock::now();
     user_role.updated_at = std::chrono::system_clock::now();
@@ -58,7 +60,7 @@ void AuthManager::initialize_default_roles() {
     // Create default reader role with read-only permissions
     Role reader_role("role_reader", "Reader");
     reader_role.permissions = {
-        "database:read", "vector:read", "search:execute"
+        "database:read", "vector:read", "search:execute", "monitoring:read", "alert:read"
     };
     reader_role.created_at = std::chrono::system_clock::now();
     reader_role.updated_at = std::chrono::system_clock::now();
@@ -104,6 +106,71 @@ Result<std::string> AuthManager::create_user(const std::string& username,
     return user_id;
 }
 
+Result<void> AuthManager::create_user_with_id(const User& user) {
+    std::unique_lock<std::shared_mutex> lock(auth_mutex_);
+
+    if (user.user_id.empty()) {
+        RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "User id cannot be empty");
+    }
+
+    if (users_.find(user.user_id) != users_.end()) {
+        RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "User already exists: " + user.user_id);
+    }
+
+    for (const auto& entry : users_) {
+        if (!user.email.empty() && entry.second.email == user.email) {
+            RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "User with this email already exists");
+        }
+        if (!user.username.empty() && entry.second.username == user.username) {
+            RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "User with this username already exists");
+        }
+    }
+
+    for (const auto& role : user.roles) {
+        if (roles_.find(role) == roles_.end()) {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid role: " + role);
+        }
+    }
+
+    User stored_user = user;
+    if (stored_user.created_at.time_since_epoch().count() == 0) {
+        stored_user.created_at = std::chrono::system_clock::now();
+    }
+
+    users_[stored_user.user_id] = stored_user;
+    return {};
+}
+
+Result<void> AuthManager::create_user_with_id(const User& user) {
+    std::unique_lock<std::shared_mutex> lock(auth_mutex_);
+
+    if (user.user_id.empty()) {
+        RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "User id cannot be empty");
+    }
+
+    if (users_.find(user.user_id) != users_.end()) {
+        RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "User already exists: " + user.user_id);
+    }
+
+    for (const auto& pair : users_) {
+        if (!user.email.empty() && pair.second.email == user.email) {
+            RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "User with this email already exists");
+        }
+        if (!user.username.empty() && pair.second.username == user.username) {
+            RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "User with this username already exists");
+        }
+    }
+
+    for (const auto& role : user.roles) {
+        if (roles_.find(role) == roles_.end()) {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid role: " + role);
+        }
+    }
+
+    users_[user.user_id] = user;
+    return {};
+}
+
 Result<User> AuthManager::get_user(const std::string& user_id) const {
     std::shared_lock<std::shared_mutex> lock(auth_mutex_);
     
@@ -113,6 +180,18 @@ Result<User> AuthManager::get_user(const std::string& user_id) const {
     }
     
     return it->second;
+}
+
+Result<User> AuthManager::get_user_by_username(const std::string& username) const {
+    std::shared_lock<std::shared_mutex> lock(auth_mutex_);
+
+    for (const auto& pair : users_) {
+        if (pair.second.username == username) {
+            return pair.second;
+        }
+    }
+
+    RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + username);
 }
 
 Result<std::vector<User>> AuthManager::list_users() const {
@@ -130,21 +209,52 @@ Result<std::vector<User>> AuthManager::list_users() const {
 
 Result<void> AuthManager::update_user(const std::string& user_id,
                                     const std::vector<std::string>& new_roles) {
+    return update_user_details(user_id, std::nullopt, std::nullopt, new_roles);
+}
+
+Result<void> AuthManager::update_user_details(const std::string& user_id,
+                                            const std::optional<std::string>& new_username,
+                                            const std::optional<std::string>& new_email,
+                                            const std::vector<std::string>& new_roles) {
     std::unique_lock<std::shared_mutex> lock(auth_mutex_);
-    
+
     auto it = users_.find(user_id);
     if (it == users_.end()) {
         RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
     }
-    
-    // Validate roles exist
-    for (const auto& role : new_roles) {
-        if (roles_.find(role) == roles_.end()) {
-            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid role: " + role);
+
+    if (new_username.has_value()) {
+        const std::string& username = new_username.value();
+        if (username.empty()) {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Username cannot be empty");
         }
+        for (const auto& entry : users_) {
+            if (entry.first != user_id && entry.second.username == username) {
+                RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "Username already in use: " + username);
+            }
+        }
+        it->second.username = username;
     }
-    
-    it->second.roles = new_roles;
+
+    if (new_email.has_value()) {
+        const std::string& email = new_email.value();
+        for (const auto& entry : users_) {
+            if (entry.first != user_id && entry.second.email == email) {
+                RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "Email already in use: " + email);
+            }
+        }
+        it->second.email = email;
+    }
+
+    if (!new_roles.empty()) {
+        for (const auto& role : new_roles) {
+            if (roles_.find(role) == roles_.end()) {
+                RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid role: " + role);
+            }
+        }
+        it->second.roles = new_roles;
+    }
+
     return {};
 }
 
@@ -412,6 +522,29 @@ Result<void> AuthManager::revoke_api_key(const std::string& key_id) {
     
     it->second.is_active = false;  // Mark as inactive instead of deleting
     return {};
+}
+
+Result<std::vector<ApiKey>> AuthManager::list_api_keys() const {
+    std::shared_lock<std::shared_mutex> lock(auth_mutex_);
+
+    std::vector<ApiKey> keys;
+    keys.reserve(api_keys_.size());
+    for (const auto& entry : api_keys_) {
+        keys.push_back(entry.second);
+    }
+    return keys;
+}
+
+Result<std::vector<ApiKey>> AuthManager::list_api_keys_for_user(const std::string& user_id) const {
+    std::shared_lock<std::shared_mutex> lock(auth_mutex_);
+
+    std::vector<ApiKey> keys;
+    for (const auto& entry : api_keys_) {
+        if (entry.second.user_id == user_id) {
+            keys.push_back(entry.second);
+        }
+    }
+    return keys;
 }
 
 Result<bool> AuthManager::has_permission(const std::string& user_id, 

@@ -55,6 +55,11 @@ bool SecurityAuditLogger::log_audit_event(const AuditEvent& event) {
     try {
         // Write to file
         write_event_to_file(event);
+        // Track recent events in memory for quick retrieval
+        recent_events_.push_back(event);
+        if (recent_events_.size() > max_recent_events_) {
+            recent_events_.pop_front();
+        }
         
         // Log to application logger as well
         std::string event_type_str = audit_event_type_to_string(event.event_type);
@@ -158,6 +163,17 @@ std::string SecurityAuditLogger::get_user_for_session(const std::string& session
         return it->second;
     }
     return "";
+}
+
+std::vector<AuditEvent> SecurityAuditLogger::get_recent_events(size_t limit) const {
+    std::lock_guard<std::mutex> lock(audit_mutex_);
+    std::vector<AuditEvent> events;
+    const size_t count = std::min(limit, recent_events_.size());
+    events.reserve(count);
+    auto start = recent_events_.end();
+    std::advance(start, -static_cast<long>(count));
+    events.insert(events.end(), start, recent_events_.end());
+    return events;
 }
 
 AuditEvent SecurityAuditLogger::create_audit_event(AuditEventType event_type,

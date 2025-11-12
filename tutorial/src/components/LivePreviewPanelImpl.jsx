@@ -97,9 +97,9 @@ const LivePreviewPanel = () => {
             
             // Format results for display
             const formattedResults = (operationResult.results || []).map((result, idx) => ({
-              id: result.vectorId || `vec-result-${idx+1}`,
-              similarity: result.similarityScore || 0.8,
-              metadata: result.metadata || { category: "example" }
+              id: result.vector?.id || result.vectorId || `vec-result-${idx+1}`,
+              similarity: result.score || result.similarity || result.similarityScore || 0.8,
+              metadata: (result.vector && result.vector.metadata) || { category: "example" }
             }));
             
             setResults(formattedResults);

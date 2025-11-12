@@ -588,36 +588,81 @@ crow::response RestApiImpl::handle_similarity_search_request(const crow::request
         if (body_json.contains("includeVectorData")) {
             search_params.include_vector_data = body_json["includeVectorData"];
         }
+        if (!search_params.include_vector_data && body_json.contains("includeValues")) {
+            search_params.include_vector_data = body_json["includeValues"];
+        }
         
         // Perform similarity search using the service
         auto result = search_service_->similarity_search(database_id, query_vector, search_params);
         
         if (result.has_value()) {
             auto search_results = result.value();
-            
-            json response = json::array();
+
+            json response;
+            response["count"] = search_results.size();
+            json results_array = json::array();
             for (const auto& search_result : search_results) {
                 json result_obj;
                 result_obj["vectorId"] = search_result.vector_id;
-                result_obj["similarityScore"] = search_result.similarity_score;
-                
+                result_obj["score"] = search_result.similarity_score;
+
                 if (search_params.include_vector_data || search_params.include_metadata) {
                     json vector_obj;
                     vector_obj["id"] = search_result.vector_data.id;
-                    
-                    // Add values as an array
-                    json values_array = json::array();
-                    for (auto val : search_result.vector_data.values) {
-                        values_array.push_back(val);
+
+                    if (search_params.include_vector_data) {
+                        json values_array = json::array();
+                        for (auto val : search_result.vector_data.values) {
+                            values_array.push_back(val);
+                        }
+                        vector_obj["values"] = values_array;
                     }
-                    vector_obj["values"] = values_array;
-                    
+
+                    if (search_params.include_metadata) {
+                        json metadata_obj;
+                        const auto& metadata = search_result.vector_data.metadata;
+                        metadata_obj["source"] = metadata.source;
+                        metadata_obj["owner"] = metadata.owner;
+                        metadata_obj["category"] = metadata.category;
+                        metadata_obj["status"] = metadata.status;
+                        metadata_obj["createdAt"] = metadata.created_at;
+                        metadata_obj["updatedAt"] = metadata.updated_at;
+                        metadata_obj["score"] = metadata.score;
+
+                        if (!metadata.tags.empty()) {
+                            json tags_array = json::array();
+                            for (const auto& tag : metadata.tags) {
+                                tags_array.push_back(tag);
+                            }
+                            metadata_obj["tags"] = tags_array;
+                        }
+
+                        if (!metadata.permissions.empty()) {
+                            json permissions_array = json::array();
+                            for (const auto& permission : metadata.permissions) {
+                                permissions_array.push_back(permission);
+                            }
+                            metadata_obj["permissions"] = permissions_array;
+                        }
+
+                        if (!metadata.custom.empty()) {
+                            json custom_obj;
+                            for (const auto& [key, value] : metadata.custom) {
+                                custom_obj[key] = value;
+                            }
+                            metadata_obj["custom"] = custom_obj;
+                        }
+
+                        vector_obj["metadata"] = metadata_obj;
+                    }
+
                     result_obj["vector"] = vector_obj;
                 }
-                
-                response.push_back(result_obj);
+
+                results_array.push_back(result_obj);
             }
-            
+
+            response["results"] = results_array;
             return crow::response(200, response.dump());
         } else {
             json response;
@@ -658,36 +703,81 @@ crow::response RestApiImpl::handle_advanced_search_request(const crow::request& 
         if (body_json.contains("includeVectorData")) {
             search_params.include_vector_data = body_json["includeVectorData"];
         }
+        if (!search_params.include_vector_data && body_json.contains("includeValues")) {
+            search_params.include_vector_data = body_json["includeValues"];
+        }
         
         // Perform advanced similarity search using the service
         auto result = search_service_->similarity_search(database_id, query_vector, search_params);
         
         if (result.has_value()) {
             auto search_results = result.value();
-            
-            json response = json::array();
+
+            json response;
+            response["count"] = search_results.size();
+            json results_array = json::array();
             for (const auto& search_result : search_results) {
                 json result_obj;
                 result_obj["vectorId"] = search_result.vector_id;
-                result_obj["similarityScore"] = search_result.similarity_score;
-                
+                result_obj["score"] = search_result.similarity_score;
+
                 if (search_params.include_vector_data || search_params.include_metadata) {
                     json vector_obj;
                     vector_obj["id"] = search_result.vector_data.id;
-                    
-                    // Add values as an array
-                    json values_array = json::array();
-                    for (auto val : search_result.vector_data.values) {
-                        values_array.push_back(val);
+
+                    if (search_params.include_vector_data) {
+                        json values_array = json::array();
+                        for (auto val : search_result.vector_data.values) {
+                            values_array.push_back(val);
+                        }
+                        vector_obj["values"] = values_array;
                     }
-                    vector_obj["values"] = values_array;
-                    
+
+                    if (search_params.include_metadata) {
+                        json metadata_obj;
+                        const auto& metadata = search_result.vector_data.metadata;
+                        metadata_obj["source"] = metadata.source;
+                        metadata_obj["owner"] = metadata.owner;
+                        metadata_obj["category"] = metadata.category;
+                        metadata_obj["status"] = metadata.status;
+                        metadata_obj["createdAt"] = metadata.created_at;
+                        metadata_obj["updatedAt"] = metadata.updated_at;
+                        metadata_obj["score"] = metadata.score;
+
+                        if (!metadata.tags.empty()) {
+                            json tags_array = json::array();
+                            for (const auto& tag : metadata.tags) {
+                                tags_array.push_back(tag);
+                            }
+                            metadata_obj["tags"] = tags_array;
+                        }
+
+                        if (!metadata.permissions.empty()) {
+                            json permissions_array = json::array();
+                            for (const auto& permission : metadata.permissions) {
+                                permissions_array.push_back(permission);
+                            }
+                            metadata_obj["permissions"] = permissions_array;
+                        }
+
+                        if (!metadata.custom.empty()) {
+                            json custom_obj;
+                            for (const auto& [key, value] : metadata.custom) {
+                                custom_obj[key] = value;
+                            }
+                            metadata_obj["custom"] = custom_obj;
+                        }
+
+                        vector_obj["metadata"] = metadata_obj;
+                    }
+
                     result_obj["vector"] = vector_obj;
                 }
-                
-                response.push_back(result_obj);
+
+                results_array.push_back(result_obj);
             }
-            
+
+            response["results"] = results_array;
             return crow::response(200, response.dump());
         } else {
             json response;

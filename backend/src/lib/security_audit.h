@@ -8,6 +8,7 @@
 #include <sstream>
 #include <chrono>
 #include <unordered_map>
+#include <deque>
 
 #include "logging.h"
 #include "auth.h"
@@ -77,6 +78,8 @@ private:
     
     // Map to track session information
     std::unordered_map<std::string, std::string> session_to_user_map_; // session_id -> user_id
+    mutable std::deque<AuditEvent> recent_events_;
+    size_t max_recent_events_ = 500;
 
 public:
     explicit SecurityAuditLogger(const std::string& log_file = "./logs/security_audit.log");
@@ -118,6 +121,7 @@ public:
     void track_session(const std::string& session_id, const std::string& user_id);
     void remove_session(const std::string& session_id);
     std::string get_user_for_session(const std::string& session_id) const;
+    std::vector<AuditEvent> get_recent_events(size_t limit = 100) const;
     
     // Event creation helpers
     AuditEvent create_audit_event(AuditEventType event_type,
