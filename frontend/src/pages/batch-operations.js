@@ -1,5 +1,5 @@
+import React, { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
-import { useState, useRef } from 'react';
 import { vectorApi, databaseApi } from '../lib/api';
 
 export default function BatchOperations() {
@@ -12,13 +12,12 @@ export default function BatchOperations() {
   const [results, setResults] = useState(null);
   const [fileContent, setFileContent] = useState('');
   const [downloadFormat, setDownloadFormat] = useState('json');
-  
   const fileInputRef = useRef(null);
 
   // Fetch databases on component mount
-  useState(() => {
+  useEffect(() => {
     fetchDatabases();
-  });
+  }, []);
 
   const fetchDatabases = async () => {
     try {

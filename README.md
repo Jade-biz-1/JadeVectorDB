@@ -99,6 +99,18 @@ We believe in building great software together! 🚀
 
 - C++20 compatible compiler (GCC 11+, Clang 14+)
 - CMake 3.20+
+ 
+## Default Users for Local Development
+
+JadeVectorDB automatically creates default users (`admin`, `dev`, `test`) with appropriate roles and permissions when deployed in local, development, or test environments. These users are intended for rapid development and testing only:
+
+- `admin`: Full administrative permissions, status `active`.
+- `dev`: Development permissions, status `active`.
+- `test`: Limited/test permissions, status `active`.
+
+**Production Restriction:** These default users are NOT created or enabled in production deployments. In production, they are set to `inactive` or removed entirely for security.
+
+**Rationale:** This feature streamlines local development and testing, while ensuring robust security in production environments.
 - Dependencies: Eigen, FlatBuffers, Apache Arrow, gRPC, Google Test
 
 ### Building
