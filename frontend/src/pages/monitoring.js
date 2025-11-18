@@ -4,49 +4,90 @@ import { monitoringApi, databaseApi } from '../lib/api';
 
 export default function MonitoringDashboard() {
   const [systemStatus, setSystemStatus] = useState(null);
+  const [databases, setDatabases] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  // Mock data for demonstration
   const [metrics, setMetrics] = useState({
-    totalDatabases: 3,
-    totalVectors: 63900,
-    qps: 1250,
-    avgQueryTime: 2.5,
-    storageUsed: 85.4,
-    uptime: '7 days, 3 hours, 15 minutes'
+    totalDatabases: 0,
+    totalVectors: 0,
+    qps: 0,
+    avgQueryTime: 0,
+    storageUsed: 0,
+    uptime: '0 minutes'
   });
 
   const fetchSystemStatus = async () => {
     setLoading(true);
     try {
-      // In real implementation, this would call the API to get system status
-      // const response = await fetch('/api/status');
-      // const data = await response.json();
-      // setSystemStatus(data);
-      
-      // Mock status data
+      // Fetch real system status from backend
+      const response = await monitoringApi.systemStatus();
+
+      // Set system status
       setSystemStatus({
-        status: 'operational',
-        checks: {
+        status: response.status || 'operational',
+        checks: response.checks || {
           database: 'ok',
           storage: 'ok',
           network: 'ok',
           memory: 'ok',
           cpu: 'ok'
         },
-        timestamp: new Date().toISOString()
+        timestamp: response.timestamp || new Date().toISOString()
       });
+
+      // Extract metrics from response
+      if (response.metrics) {
+        setMetrics({
+          totalDatabases: response.metrics.totalDatabases || 0,
+          totalVectors: response.metrics.totalVectors || 0,
+          qps: response.metrics.queriesPerSecond || 0,
+          avgQueryTime: response.metrics.avgQueryLatencyMs || 0,
+          storageUsed: response.metrics.storageUtilizationPercent || 0,
+          uptime: response.metrics.uptime || '0 minutes'
+        });
+      }
     } catch (error) {
       console.error('Error fetching system status:', error);
+      // Fallback to basic status
+      setSystemStatus({
+        status: 'unknown',
+        checks: {},
+        timestamp: new Date().toISOString()
+      });
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchDatabases = async () => {
+    try {
+      const response = await databaseApi.listDatabases();
+      const databasesData = response.databases || [];
+
+      // Transform database data for display
+      const formattedDbs = databasesData.map(db => ({
+        id: db.databaseId || db.id,
+        name: db.name,
+        status: db.status || 'online',
+        vectors: db.stats?.vectorCount || 0,
+        indexes: db.stats?.indexCount || 0,
+        storage: db.stats?.storageSize || '0 GB'
+      }));
+
+      setDatabases(formattedDbs);
+    } catch (error) {
+      console.error('Error fetching databases:', error);
+      setDatabases([]);
+    }
+  };
+
   useEffect(() => {
     fetchSystemStatus();
+    fetchDatabases();
     // Refresh status every 30 seconds
-    const interval = setInterval(fetchSystemStatus, 30000);
+    const interval = setInterval(() => {
+      fetchSystemStatus();
+      fetchDatabases();
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -206,11 +247,12 @@ export default function MonitoringDashboard() {
               </p>
             </div>
             <ul className="divide-y divide-gray-200">
-              {[
-                { id: 'db1', name: 'Documents', status: 'online', vectors: 12500, indexes: 3, storage: '12.4 GB' },
-                { id: 'db2', name: 'Images', status: 'online', vectors: 8900, indexes: 2, storage: '8.7 GB' },
-                { id: 'db3', name: 'Products', status: 'warning', vectors: 42500, indexes: 5, storage: '45.2 GB' }
-              ].map((db) => (
+              {databases.length === 0 && (
+                <li className="px-4 py-4 sm:px-6 text-center text-gray-500">
+                  No databases found or unable to fetch database information.
+                </li>
+              )}
+              {databases.map((db) => (
                 <li key={db.id}>
                   <div className="px-4 py-4 sm:px-6">
                     <div className="flex items-center justify-between">

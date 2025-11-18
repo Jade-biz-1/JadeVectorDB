@@ -5,6 +5,7 @@ Command-line interface for JadeVectorDB
 import argparse
 import sys
 import json
+import os
 from typing import Dict, List
 from .client import JadeVectorDB, Vector, JadeVectorDBError
 from .curl_generator import CurlCommandGenerator
@@ -208,7 +209,7 @@ def get_health(args: argparse.Namespace):
         curl_cmd = generator.get_health()
         print(curl_cmd)
         return
-        
+
     client = JadeVectorDB(args.url, args.api_key)
     try:
         health = client.get_health()
@@ -217,11 +218,81 @@ def get_health(args: argparse.Namespace):
         print(f"Error getting health: {e}")
         sys.exit(1)
 
+def delete_vector(args: argparse.Namespace):
+    """Delete a vector from the database"""
+    if args.curl_only:
+        # Generate cURL command instead of executing
+        generator = CurlCommandGenerator(args.url, args.api_key)
+        curl_cmd = generator.delete_vector(
+            database_id=args.database_id,
+            vector_id=args.vector_id
+        )
+        print(curl_cmd)
+        return
+
+    client = JadeVectorDB(args.url, args.api_key)
+    try:
+        success = client.delete_vector(
+            database_id=args.database_id,
+            vector_id=args.vector_id
+        )
+
+        if success:
+            print(f"Successfully deleted vector with ID: {args.vector_id}")
+        else:
+            print("Failed to delete vector")
+    except JadeVectorDBError as e:
+        print(f"Error deleting vector: {e}")
+        sys.exit(1)
+
+def get_database(args: argparse.Namespace):
+    """Get information about a specific database"""
+    if args.curl_only:
+        # Generate cURL command instead of executing
+        generator = CurlCommandGenerator(args.url, args.api_key)
+        curl_cmd = generator.get_database(database_id=args.database_id)
+        print(curl_cmd)
+        return
+
+    client = JadeVectorDB(args.url, args.api_key)
+    try:
+        db_info = client.get_database(database_id=args.database_id)
+        print(json.dumps(db_info, indent=2))
+    except JadeVectorDBError as e:
+        print(f"Error getting database: {e}")
+        sys.exit(1)
+
+def delete_database(args: argparse.Namespace):
+    """Delete a database"""
+    if args.curl_only:
+        # Generate cURL command instead of executing
+        generator = CurlCommandGenerator(args.url, args.api_key)
+        curl_cmd = generator.delete_database(database_id=args.database_id)
+        print(curl_cmd)
+        return
+
+    client = JadeVectorDB(args.url, args.api_key)
+    try:
+        success = client.delete_database(database_id=args.database_id)
+
+        if success:
+            print(f"Successfully deleted database with ID: {args.database_id}")
+        else:
+            print("Failed to delete database")
+    except JadeVectorDBError as e:
+        print(f"Error deleting database: {e}")
+        sys.exit(1)
+
 def setup_parser():
     """Set up the argument parser"""
     parser = argparse.ArgumentParser(description="JadeVectorDB CLI")
-    parser.add_argument("--url", required=True, help="JadeVectorDB API URL (e.g., http://localhost:8080)")
-    parser.add_argument("--api-key", help="API key for authentication")
+
+    # Get default values from environment variables
+    default_url = os.environ.get('JADEVECTORDB_URL', 'http://localhost:8080')
+    default_api_key = os.environ.get('JADEVECTORDB_API_KEY')
+
+    parser.add_argument("--url", default=default_url, help=f"JadeVectorDB API URL (default: {default_url}, can be set via JADEVECTORDB_URL env var)")
+    parser.add_argument("--api-key", default=default_api_key, help="API key for authentication (can be set via JADEVECTORDB_API_KEY env var)")
     parser.add_argument("--curl-only", action="store_true", help="Generate cURL commands instead of executing")
     
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -267,7 +338,23 @@ def setup_parser():
     # Health subcommand
     health_parser = subparsers.add_parser("health", help="Get system health")
     health_parser.set_defaults(func=get_health)
-    
+
+    # Delete vector subcommand
+    delete_parser = subparsers.add_parser("delete", help="Delete a vector")
+    delete_parser.add_argument("--database-id", required=True, help="Database ID")
+    delete_parser.add_argument("--vector-id", required=True, help="Vector ID")
+    delete_parser.set_defaults(func=delete_vector)
+
+    # Get database subcommand
+    get_db_parser = subparsers.add_parser("get-db", help="Get database information")
+    get_db_parser.add_argument("--database-id", required=True, help="Database ID")
+    get_db_parser.set_defaults(func=get_database)
+
+    # Delete database subcommand
+    delete_db_parser = subparsers.add_parser("delete-db", help="Delete a database")
+    delete_db_parser.add_argument("--database-id", required=True, help="Database ID")
+    delete_db_parser.set_defaults(func=delete_database)
+
     return parser
 
 def main():
