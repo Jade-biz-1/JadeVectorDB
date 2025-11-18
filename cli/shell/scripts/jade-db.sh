@@ -6,9 +6,10 @@
 set -e
 
 # Default configuration
-DEFAULT_URL="http://localhost:8080"
-API_KEY=""
-DATABASE_ID=""
+# Support environment variables
+DEFAULT_URL="${JADEVECTORDB_URL:-http://localhost:8080}"
+API_KEY="${JADEVECTORDB_API_KEY:-}"
+DATABASE_ID="${JADEVECTORDB_DATABASE_ID:-}"
 VECTOR_ID=""
 QUERY_VECTOR=""
 TOP_K=10
@@ -19,24 +20,29 @@ usage() {
     echo "Usage: $0 [OPTIONS] COMMAND [ARGS...]"
     echo ""
     echo "Options:"
-    echo "  --url URL          JadeVectorDB API URL (default: $DEFAULT_URL)"
-    echo "  --api-key KEY      API key for authentication"
-    echo "  --curl-only        Generate cURL commands instead of executing"
+    echo "  --url URL            JadeVectorDB API URL (default: $DEFAULT_URL)"
+    echo "                       Can also be set via JADEVECTORDB_URL environment variable"
+    echo "  --api-key KEY        API key for authentication"
+    echo "                       Can also be set via JADEVECTORDB_API_KEY environment variable"
+    echo "  --database-id ID     Database ID (required for vector operations)"
+    echo "                       Can also be set via JADEVECTORDB_DATABASE_ID environment variable"
+    echo "  --curl-only          Generate cURL commands instead of executing"
     echo ""
     echo "Commands:"
     echo "  create-db NAME [DESCRIPTION] [DIMENSION] [INDEX_TYPE]    Create a new database"
     echo "  list-dbs                                                 List all databases"
     echo "  get-db ID                                                Get database info"
-    echo "  store ID VALUES [METADATA]                               Store a vector"
-    echo "  retrieve ID                                              Retrieve a vector"
-    echo "  delete ID                                                Delete a vector"
-    echo "  search QUERY_VECTOR [TOP_K] [THRESHOLD]                  Search for similar vectors"
+    echo "  delete-db ID                                             Delete a database"
+    echo "  store ID VALUES [METADATA]                               Store a vector (requires --database-id)"
+    echo "  retrieve ID                                              Retrieve a vector (requires --database-id)"
+    echo "  delete ID                                                Delete a vector (requires --database-id)"
+    echo "  search QUERY_VECTOR [TOP_K] [THRESHOLD]                  Search for similar vectors (requires --database-id)"
     echo "  status                                                   Get system status"
     echo "  health                                                   Get system health"
     echo ""
     echo "Examples:"
     echo "  $0 --url http://localhost:8080 list-dbs"
-    echo "  $0 --api-key mykey123 store myvector '[0.1, 0.2, 0.3]' '{\"category\":\"test\"}'"
+    echo "  $0 --database-id mydb --api-key mykey123 store myvector '[0.1, 0.2, 0.3]' '{\"category\":\"test\"}'"
     echo "  $0 --curl-only --url http://localhost:8080 list-dbs"
     echo ""
     exit 1
@@ -95,6 +101,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --api-key)
             API_KEY="$2"
+            shift 2
+            ;;
+        --database-id)
+            DATABASE_ID="$2"
             shift 2
             ;;
         --curl-only)
@@ -181,7 +191,7 @@ EOF
             echo "Error: Database ID is required"
             usage
         fi
-        
+
         DB_ID="$2"
         if [ "$CURL_ONLY" = true ]; then
             echo "# cURL command for getting database: $DB_ID"
@@ -193,6 +203,26 @@ EOF
             echo "  \"$BASE_URL/v1/databases/$DB_ID\""
         else
             result=$(api_call "GET" "/v1/databases/$DB_ID" "")
+            echo "$result"
+        fi
+        ;;
+    delete-db)
+        if [ -z "$2" ]; then
+            echo "Error: Database ID is required"
+            usage
+        fi
+
+        DB_ID="$2"
+        if [ "$CURL_ONLY" = true ]; then
+            echo "# cURL command for deleting database: $DB_ID"
+            echo "curl -X DELETE \\"
+            echo "  -H \"Content-Type: application/json\" \\"
+            if [ -n "$API_KEY" ]; then
+                echo "  -H \"Authorization: Bearer $API_KEY\" \\"
+            fi
+            echo "  \"$BASE_URL/v1/databases/$DB_ID\""
+        else
+            result=$(api_call "DELETE" "/v1/databases/$DB_ID" "")
             echo "$result"
         fi
         ;;
