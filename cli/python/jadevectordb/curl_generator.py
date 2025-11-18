@@ -55,6 +55,20 @@ class CurlCommandGenerator:
         return f"""curl -X GET {self.base_url}/v1/databases \\
   -H 'Content-Type: application/json' \\
   {auth_header}"""
+
+    def get_database(self, database_id: str) -> str:
+        """Generate cURL command for getting a database"""
+        auth_header = self._build_auth_header()
+        return f"""curl -X GET {self.base_url}/v1/databases/{database_id} \\
+  -H 'Content-Type: application/json' \\
+  {auth_header}"""
+
+    def delete_database(self, database_id: str) -> str:
+        """Generate cURL command for deleting a database"""
+        auth_header = self._build_auth_header()
+        return f"""curl -X DELETE {self.base_url}/v1/databases/{database_id} \\
+  -H 'Content-Type: application/json' \\
+  {auth_header}"""
     
     def store_vector(self, database_id: str, vector_id: str, values: list, 
                     metadata: Optional[Dict] = None) -> str:

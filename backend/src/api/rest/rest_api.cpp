@@ -3270,9 +3270,1118 @@ void RestApiImpl::handle_batch_get_vectors() {
 
 // Stub implementation for missing method
 crow::response RestApiImpl::handle_batch_get_vectors_request(const crow::request& req, const std::string& database_id) {
-    crow::json::wvalue response;
-    response["error"] = "Not implemented";
-    return crow::response(501, response);
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+
+        // Validate database exists
+        auto db_exists_result = db_service_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+
+        // Parse request body to get vector IDs
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        // Check for vector_ids or vectorIds field
+        if (!body_json.has("vector_ids") && !body_json.has("vectorIds") && !body_json.has("ids")) {
+            return crow::response(400, "{\"error\":\"Missing vector_ids, vectorIds, or ids field in request body\"}");
+        }
+
+        // Get the vector IDs array
+        auto ids_json = body_json.has("vector_ids") ? body_json["vector_ids"] :
+                        (body_json.has("vectorIds") ? body_json["vectorIds"] : body_json["ids"]);
+
+        if (ids_json.t() != crow::json::type::List) {
+            return crow::response(400, "{\"error\":\"vector_ids must be an array\"}");
+        }
+
+        // Retrieve all vectors
+        crow::json::wvalue response;
+        crow::json::wvalue vectors_array;
+        int idx = 0;
+
+        for (size_t i = 0; i < ids_json.size(); i++) {
+            std::string vector_id = ids_json[i].s();
+
+            // Retrieve the vector using the service
+            auto result = vector_storage_service_->retrieve_vector(database_id, vector_id);
+
+            if (result.has_value()) {
+                auto vector = result.value();
+
+                crow::json::wvalue vector_obj;
+                vector_obj["id"] = vector.id;
+
+                // Add values as an array
+                crow::json::wvalue values_array;
+                int val_idx = 0;
+                for (auto val : vector.values) {
+                    values_array[val_idx++] = val;
+                }
+                vector_obj["values"] = std::move(values_array);
+
+                // Add metadata if present
+                if (!vector.metadata.source.empty() || !vector.metadata.tags.empty() || !vector.metadata.custom.empty()) {
+                    crow::json::wvalue metadata_obj;
+                    metadata_obj["source"] = vector.metadata.source;
+                    metadata_obj["created_at"] = vector.metadata.created_at;
+                    metadata_obj["updated_at"] = vector.metadata.updated_at;
+                    metadata_obj["owner"] = vector.metadata.owner;
+                    metadata_obj["category"] = vector.metadata.category;
+                    metadata_obj["score"] = vector.metadata.score;
+                    metadata_obj["status"] = vector.metadata.status;
+                    int tag_idx = 0;
+                    for (const auto& tag : vector.metadata.tags) {
+                        metadata_obj["tags"][tag_idx++] = tag;
+                    }
+                    vector_obj["metadata"] = std::move(metadata_obj);
+                }
+
+                vectors_array[idx++] = std::move(vector_obj);
+            } else {
+                // Vector not found, but we continue with other vectors
+                // Optionally, we could add an error entry
+                LOG_WARN(logger_, "Vector not found: " << vector_id << " in database: " << database_id);
+            }
+        }
+
+        response["vectors"] = std::move(vectors_array);
+        response["count"] = idx;
+
+        crow::response resp(200, response);
+        resp.set_header("Content-Type", "application/json");
+
+        LOG_DEBUG(logger_, "Retrieved " << idx << " vectors from database: " << database_id);
+        return resp;
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in batch get vectors: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+// Authentication routes implementation
+void RestApiImpl::handle_authentication_routes() {
+    LOG_DEBUG(logger_, "Setting up authentication routes");
+
+    // Register endpoint: POST /v1/auth/register
+    app_->route_dynamic("/v1/auth/register")
+        ([this](const crow::request& req) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_register_request(req);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    // Login endpoint: POST /v1/auth/login
+    app_->route_dynamic("/v1/auth/login")
+        ([this](const crow::request& req) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_login_request(req);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    // Logout endpoint: POST /v1/auth/logout
+    app_->route_dynamic("/v1/auth/logout")
+        ([this](const crow::request& req) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_logout_request(req);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    // Forgot password endpoint: POST /v1/auth/forgot-password
+    app_->route_dynamic("/v1/auth/forgot-password")
+        ([this](const crow::request& req) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_forgot_password_request(req);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    // Reset password endpoint: POST /v1/auth/reset-password
+    app_->route_dynamic("/v1/auth/reset-password")
+        ([this](const crow::request& req) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_reset_password_request(req);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    LOG_INFO(logger_, "Authentication routes configured");
+}
+
+// User management routes implementation
+void RestApiImpl::handle_user_management_routes() {
+    LOG_DEBUG(logger_, "Setting up user management routes");
+
+    // List users: GET /v1/users
+    // Create user: POST /v1/users
+    app_->route_dynamic("/v1/users")
+        ([this](const crow::request& req) {
+            if (req.method == crow::HTTPMethod::GET) {
+                return handle_list_users_request(req);
+            } else if (req.method == crow::HTTPMethod::POST) {
+                return handle_create_user_request(req);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    // Update user: PUT /v1/users/{userId}
+    // Delete user: DELETE /v1/users/{userId}
+    // Get user: GET /v1/users/{userId}
+    app_->route_dynamic("/v1/users/<string>")
+        ([this](const crow::request& req, std::string user_id) {
+            if (req.method == crow::HTTPMethod::PUT) {
+                return handle_update_user_request(req, user_id);
+            } else if (req.method == crow::HTTPMethod::DELETE) {
+                return handle_delete_user_request(req, user_id);
+            } else if (req.method == crow::HTTPMethod::GET) {
+                // Return user info (stub)
+                crow::json::wvalue response;
+                response["userId"] = user_id;
+                response["status"] = "Not implemented - user get endpoint";
+                return crow::response(501, response);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    // Activate/deactivate user: POST /v1/users/{userId}/activate | /deactivate
+    app_->route_dynamic("/v1/users/<string>/activate")
+        ([this](const crow::request& req, std::string user_id) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_user_status_request(req, user_id, true);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    app_->route_dynamic("/v1/users/<string>/deactivate")
+        ([this](const crow::request& req, std::string user_id) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_user_status_request(req, user_id, false);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    LOG_INFO(logger_, "User management routes configured");
+}
+
+// API Key routes implementation
+void RestApiImpl::handle_api_key_routes() {
+    LOG_DEBUG(logger_, "Setting up API key management routes");
+
+    // List API keys: GET /v1/api-keys
+    // Create API key: POST /v1/api-keys
+    app_->route_dynamic("/v1/api-keys")
+        ([this](const crow::request& req) {
+            if (req.method == crow::HTTPMethod::GET) {
+                return handle_list_api_keys_request(req);
+            } else if (req.method == crow::HTTPMethod::POST) {
+                return handle_create_api_key_request(req);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    // Revoke API key: DELETE /v1/api-keys/{keyId}
+    app_->route_dynamic("/v1/api-keys/<string>")
+        ([this](const crow::request& req, std::string key_id) {
+            if (req.method == crow::HTTPMethod::DELETE) {
+                return handle_revoke_api_key_request(req, key_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    LOG_INFO(logger_, "API key management routes configured");
+}
+
+// Security routes implementation
+void RestApiImpl::handle_security_routes() {
+    LOG_DEBUG(logger_, "Setting up security audit routes");
+
+    app_->route_dynamic("/v1/security/audit-logs")
+        ([this](const crow::request& req) {
+            if (req.method == crow::HTTPMethod::GET) {
+                return handle_list_audit_logs_request(req);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    LOG_INFO(logger_, "Security routes configured");
+}
+
+// Alert routes implementation
+void RestApiImpl::handle_alert_routes() {
+    LOG_DEBUG(logger_, "Setting up alert management routes");
+
+    app_->route_dynamic("/v1/alerts")
+        ([this](const crow::request& req) {
+            if (req.method == crow::HTTPMethod::GET) {
+                return handle_list_alerts_request(req);
+            } else if (req.method == crow::HTTPMethod::POST) {
+                return handle_create_alert_request(req);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    app_->route_dynamic("/v1/alerts/<string>/acknowledge")
+        ([this](const crow::request& req, std::string alert_id) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_acknowledge_alert_request(req, alert_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    LOG_INFO(logger_, "Alert routes configured");
+}
+
+// Cluster routes implementation
+void RestApiImpl::handle_cluster_routes() {
+    LOG_DEBUG(logger_, "Setting up cluster management routes");
+
+    app_->route_dynamic("/v1/cluster/nodes")
+        ([this](const crow::request& req) {
+            if (req.method == crow::HTTPMethod::GET) {
+                return handle_list_cluster_nodes_request(req);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    app_->route_dynamic("/v1/cluster/nodes/<string>")
+        ([this](const crow::request& req, std::string node_id) {
+            if (req.method == crow::HTTPMethod::GET) {
+                return handle_cluster_node_status_request(req, node_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    LOG_INFO(logger_, "Cluster routes configured");
+}
+
+// Performance routes implementation
+void RestApiImpl::handle_performance_routes() {
+    LOG_DEBUG(logger_, "Setting up performance monitoring routes");
+
+    app_->route_dynamic("/v1/performance/metrics")
+        ([this](const crow::request& req) {
+            if (req.method == crow::HTTPMethod::GET) {
+                return handle_performance_metrics_request(req);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    LOG_INFO(logger_, "Performance routes configured");
+}
+
+// Authentication handler implementations
+crow::response RestApiImpl::handle_register_request(const crow::request& req) {
+    try {
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        if (!body_json.has("username") || !body_json.has("password")) {
+            return crow::response(400, "{\"error\":\"Missing username or password\"}");
+        }
+
+        std::string username = body_json["username"].s();
+        std::string password = body_json["password"].s();
+        std::string email = body_json.has("email") ? body_json["email"].s() : "";
+
+        // Get roles (default to "user" role if not specified)
+        std::vector<std::string> roles = {"user"};
+        if (body_json.has("roles") && body_json["roles"].t() == crow::json::type::List) {
+            roles.clear();
+            auto roles_array = body_json["roles"];
+            for (size_t i = 0; i < roles_array.size(); i++) {
+                roles.push_back(roles_array[i].s());
+            }
+        }
+
+        // Register user with AuthenticationService
+        auto register_result = authentication_service_->register_user(username, password, roles);
+
+        if (!register_result.has_value()) {
+            crow::json::wvalue error_response;
+            error_response["error"] = ErrorHandler::format_error(register_result.error());
+            return crow::response(400, error_response);
+        }
+
+        std::string user_id = register_result.value();
+
+        // Also create user in AuthManager for permission management
+        if (auth_manager_) {
+            auto auth_result = auth_manager_->create_user(username, email, roles);
+            if (!auth_result.has_value()) {
+                LOG_WARN(logger_, "Failed to create user in AuthManager: " << ErrorHandler::format_error(auth_result.error()));
+            }
+        }
+
+        // Log successful registration
+        if (security_audit_logger_) {
+            security_audit_logger_->log_event(
+                SecurityEventType::USER_REGISTERED,
+                user_id,
+                req.get_header_value("X-Forwarded-For"),
+                true,
+                "User registered: " + username
+            );
+        }
+
+        crow::json::wvalue response;
+        response["success"] = true;
+        response["userId"] = user_id;
+        response["username"] = username;
+        response["message"] = "User registered successfully";
+
+        return crow::response(201, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in register: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_login_request(const crow::request& req) {
+    try {
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        if (!body_json.has("username") || !body_json.has("password")) {
+            return crow::response(400, "{\"error\":\"Missing username or password\"}");
+        }
+
+        std::string username = body_json["username"].s();
+        std::string password = body_json["password"].s();
+
+        // Get client IP and user agent
+        std::string ip_address = req.get_header_value("X-Forwarded-For");
+        if (ip_address.empty()) {
+            ip_address = req.get_header_value("X-Real-IP");
+        }
+        std::string user_agent = req.get_header_value("User-Agent");
+
+        // Authenticate with AuthenticationService
+        auto auth_result = authentication_service_->authenticate(username, password, ip_address, user_agent);
+
+        if (!auth_result.has_value()) {
+            // Log failed login
+            if (security_audit_logger_) {
+                security_audit_logger_->log_event(
+                    SecurityEventType::LOGIN_FAILED,
+                    username,
+                    ip_address,
+                    false,
+                    "Failed login attempt"
+                );
+            }
+
+            crow::json::wvalue error_response;
+            error_response["error"] = "Invalid username or password";
+            return crow::response(401, error_response);
+        }
+
+        auto token = auth_result.value();
+
+        // Create session if supported
+        if (authentication_service_) {
+            auto session_result = authentication_service_->create_session(
+                token.user_id,
+                token.token_id,
+                ip_address
+            );
+            // Session creation is optional, log but don't fail
+            if (!session_result.has_value()) {
+                LOG_WARN(logger_, "Failed to create session: " << ErrorHandler::format_error(session_result.error()));
+            }
+        }
+
+        // Log successful login
+        if (security_audit_logger_) {
+            security_audit_logger_->log_event(
+                SecurityEventType::LOGIN_SUCCESS,
+                token.user_id,
+                ip_address,
+                true,
+                "User logged in: " + username
+            );
+        }
+
+        crow::json::wvalue response;
+        response["success"] = true;
+        response["userId"] = token.user_id;
+        response["username"] = username;
+        response["token"] = token.token_value;
+        response["expiresAt"] = std::chrono::duration_cast<std::chrono::seconds>(
+            token.expires_at.time_since_epoch()
+        ).count();
+        response["message"] = "Login successful";
+
+        return crow::response(200, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in login: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_logout_request(const crow::request& req) {
+    try {
+        // Extract token from Authorization header
+        std::string token;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                token = auth_header.substr(7);
+            }
+        }
+
+        if (token.empty()) {
+            return crow::response(400, "{\"error\":\"Missing authorization token\"}");
+        }
+
+        // Logout (revoke token and end session)
+        auto logout_result = authentication_service_->logout(token);
+
+        if (!logout_result.has_value()) {
+            crow::json::wvalue error_response;
+            error_response["error"] = ErrorHandler::format_error(logout_result.error());
+            return crow::response(400, error_response);
+        }
+
+        // Log logout
+        if (security_audit_logger_) {
+            auto validate_result = authentication_service_->validate_token(token);
+            std::string user_id = validate_result.has_value() ? validate_result.value() : "unknown";
+
+            security_audit_logger_->log_event(
+                SecurityEventType::LOGOUT,
+                user_id,
+                req.get_header_value("X-Forwarded-For"),
+                true,
+                "User logged out"
+            );
+        }
+
+        crow::json::wvalue response;
+        response["success"] = true;
+        response["message"] = "Logout successful";
+
+        return crow::response(200, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in logout: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_forgot_password_request(const crow::request& req) {
+    try {
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        if (!body_json.has("email") && !body_json.has("username")) {
+            return crow::response(400, "{\"error\":\"Missing email or username\"}");
+        }
+
+        std::string identifier = body_json.has("email") ? body_json["email"].s() : body_json["username"].s();
+
+        // Get user by username or email
+        auto user_result = authentication_service_->get_user_by_username(identifier);
+
+        if (!user_result.has_value()) {
+            // Don't reveal whether user exists for security
+            crow::json::wvalue response;
+            response["success"] = true;
+            response["message"] = "If the account exists, a password reset link has been sent";
+            return crow::response(200, response);
+        }
+
+        auto user = user_result.value();
+
+        // Generate password reset token
+        std::string reset_token = generate_secure_token();
+        auto expires_at = std::chrono::system_clock::now() + std::chrono::hours(1);  // 1 hour expiry
+
+        // Store reset token
+        {
+            std::lock_guard<std::mutex> lock(password_reset_mutex_);
+            password_reset_tokens_[reset_token] = {
+                reset_token,
+                user.user_id,
+                expires_at
+            };
+        }
+
+        // Log password reset request
+        if (security_audit_logger_) {
+            security_audit_logger_->log_event(
+                SecurityEventType::PASSWORD_RESET_REQUESTED,
+                user.user_id,
+                req.get_header_value("X-Forwarded-For"),
+                true,
+                "Password reset requested for: " + identifier
+            );
+        }
+
+        // In production, send email with reset token
+        // For now, include it in response (remove in production!)
+        crow::json::wvalue response;
+        response["success"] = true;
+        response["message"] = "Password reset link has been sent";
+        response["resetToken"] = reset_token;  // Remove this in production!
+        response["note"] = "In production, this would be sent via email";
+
+        return crow::response(200, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in forgot password: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_reset_password_request(const crow::request& req) {
+    try {
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        if (!body_json.has("token") || !body_json.has("new_password")) {
+            return crow::response(400, "{\"error\":\"Missing token or new_password\"}");
+        }
+
+        std::string token = body_json["token"].s();
+        std::string new_password = body_json["new_password"].s();
+
+        // Validate reset token
+        std::string user_id;
+        {
+            std::lock_guard<std::mutex> lock(password_reset_mutex_);
+            auto it = password_reset_tokens_.find(token);
+            if (it == password_reset_tokens_.end()) {
+                return crow::response(400, "{\"error\":\"Invalid or expired reset token\"}");
+            }
+
+            auto& reset_token = it->second;
+
+            // Check if expired
+            if (std::chrono::system_clock::now() > reset_token.expires_at) {
+                password_reset_tokens_.erase(it);
+                return crow::response(400, "{\"error\":\"Reset token has expired\"}");
+            }
+
+            user_id = reset_token.user_id;
+
+            // Remove token after use (one-time use)
+            password_reset_tokens_.erase(it);
+        }
+
+        // Reset password using AuthenticationService
+        auto reset_result = authentication_service_->reset_password(user_id, new_password);
+
+        if (!reset_result.has_value()) {
+            crow::json::wvalue error_response;
+            error_response["error"] = ErrorHandler::format_error(reset_result.error());
+            return crow::response(400, error_response);
+        }
+
+        // Log password reset
+        if (security_audit_logger_) {
+            security_audit_logger_->log_event(
+                SecurityEventType::PASSWORD_CHANGED,
+                user_id,
+                req.get_header_value("X-Forwarded-For"),
+                true,
+                "Password reset completed"
+            );
+        }
+
+        crow::json::wvalue response;
+        response["success"] = true;
+        response["message"] = "Password reset successful";
+
+        return crow::response(200, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in reset password: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+// User management handler implementations
+crow::response RestApiImpl::handle_create_user_request(const crow::request& req) {
+    try {
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        crow::json::wvalue response;
+        response["message"] = "Create user endpoint - implementation pending";
+        return crow::response(501, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in create user: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_list_users_request(const crow::request& req) {
+    try {
+        // Authenticate request
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            }
+        }
+
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"Unauthorized\"}");
+        }
+
+        // List users from AuthManager
+        crow::json::wvalue response;
+
+        if (auth_manager_) {
+            auto users_result = auth_manager_->list_users();
+            if (users_result.has_value()) {
+                auto users = users_result.value();
+                crow::json::wvalue users_array;
+                int idx = 0;
+                for (const auto& user : users) {
+                    auto serialized = serialize_user(user);
+                    users_array[idx++] = std::move(serialized);
+                }
+                response["users"] = std::move(users_array);
+                response["count"] = idx;
+            } else {
+                response["users"] = crow::json::wvalue::list();
+                response["count"] = 0;
+            }
+        } else {
+            response["users"] = crow::json::wvalue::list();
+            response["count"] = 0;
+        }
+
+        response["success"] = true;
+
+        return crow::response(200, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in list users: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_update_user_request(const crow::request& req, const std::string& user_id) {
+    try {
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        crow::json::wvalue response;
+        response["message"] = "Update user endpoint - implementation pending";
+        response["userId"] = user_id;
+        return crow::response(501, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in update user: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_delete_user_request(const crow::request& req, const std::string& user_id) {
+    try {
+        crow::json::wvalue response;
+        response["message"] = "Delete user endpoint - implementation pending";
+        response["userId"] = user_id;
+        return crow::response(501, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in delete user: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_user_status_request(const crow::request& req, const std::string& user_id, bool activate) {
+    try {
+        // Authenticate request
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            }
+        }
+
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"Unauthorized\"}");
+        }
+
+        // Update user status
+        Result<void> status_result;
+        if (auth_manager_) {
+            if (activate) {
+                status_result = auth_manager_->activate_user(user_id);
+            } else {
+                status_result = auth_manager_->deactivate_user(user_id);
+            }
+        } else if (authentication_service_) {
+            status_result = authentication_service_->set_user_active_status(user_id, activate);
+        } else {
+            return crow::response(500, "{\"error\":\"Authentication services not available\"}");
+        }
+
+        if (!status_result.has_value()) {
+            crow::json::wvalue error_response;
+            error_response["error"] = ErrorHandler::format_error(status_result.error());
+            return crow::response(400, error_response);
+        }
+
+        // Log status change
+        if (security_audit_logger_) {
+            security_audit_logger_->log_event(
+                activate ? SecurityEventType::USER_ACTIVATED : SecurityEventType::USER_DEACTIVATED,
+                user_id,
+                req.get_header_value("X-Forwarded-For"),
+                true,
+                activate ? "User activated" : "User deactivated"
+            );
+        }
+
+        crow::json::wvalue response;
+        response["success"] = true;
+        response["userId"] = user_id;
+        response["active"] = activate;
+        response["message"] = activate ? "User activated successfully" : "User deactivated successfully";
+
+        return crow::response(200, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in user status: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+// API Key management handler implementations
+crow::response RestApiImpl::handle_list_api_keys_request(const crow::request& req) {
+    try {
+        // Authenticate request
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            }
+        }
+
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"Unauthorized\"}");
+        }
+
+        // List API keys
+        crow::json::wvalue response;
+
+        if (auth_manager_) {
+            auto keys_result = auth_manager_->list_api_keys();
+            if (keys_result.has_value()) {
+                auto keys = keys_result.value();
+                crow::json::wvalue keys_array;
+                int idx = 0;
+                for (const auto& key : keys) {
+                    auto serialized = serialize_api_key(key);
+                    keys_array[idx++] = std::move(serialized);
+                }
+                response["apiKeys"] = std::move(keys_array);
+                response["count"] = idx;
+            } else {
+                response["apiKeys"] = crow::json::wvalue::list();
+                response["count"] = 0;
+            }
+        } else {
+            response["apiKeys"] = crow::json::wvalue::list();
+            response["count"] = 0;
+        }
+
+        response["success"] = true;
+
+        return crow::response(200, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in list API keys: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_create_api_key_request(const crow::request& req) {
+    try {
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        // Authenticate request
+        std::string token;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                token = auth_header.substr(7);
+            }
+        }
+
+        auto auth_result = authenticate_request(token);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"Unauthorized\"}");
+        }
+
+        if (!body_json.has("userId")) {
+            return crow::response(400, "{\"error\":\"Missing userId\"}");
+        }
+
+        std::string user_id = body_json["userId"].s();
+        std::string description = body_json.has("description") ? body_json["description"].s() : "";
+
+        // Parse permissions
+        std::vector<std::string> permissions;
+        if (body_json.has("permissions") && body_json["permissions"].t() == crow::json::type::List) {
+            auto perms_array = body_json["permissions"];
+            for (size_t i = 0; i < perms_array.size(); i++) {
+                permissions.push_back(perms_array[i].s());
+            }
+        }
+
+        // Generate API key
+        std::string api_key;
+        if (auth_manager_) {
+            auto key_result = auth_manager_->generate_api_key(user_id, permissions, description);
+            if (!key_result.has_value()) {
+                crow::json::wvalue error_response;
+                error_response["error"] = ErrorHandler::format_error(key_result.error());
+                return crow::response(400, error_response);
+            }
+            api_key = key_result.value();
+        } else if (authentication_service_) {
+            auto key_result = authentication_service_->generate_api_key(user_id);
+            if (!key_result.has_value()) {
+                crow::json::wvalue error_response;
+                error_response["error"] = ErrorHandler::format_error(key_result.error());
+                return crow::response(400, error_response);
+            }
+            api_key = key_result.value();
+        } else {
+            return crow::response(500, "{\"error\":\"Authentication services not available\"}");
+        }
+
+        // Log API key creation
+        if (security_audit_logger_) {
+            security_audit_logger_->log_event(
+                SecurityEventType::API_KEY_CREATED,
+                user_id,
+                req.get_header_value("X-Forwarded-For"),
+                true,
+                "API key created: " + description
+            );
+        }
+
+        crow::json::wvalue response;
+        response["success"] = true;
+        response["userId"] = user_id;
+        response["apiKey"] = api_key;
+        response["description"] = description;
+        response["message"] = "API key created successfully";
+        response["note"] = "Store this API key securely, it will not be shown again";
+
+        return crow::response(201, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in create API key: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_revoke_api_key_request(const crow::request& req, const std::string& key_id) {
+    try {
+        // Authenticate request
+        std::string token;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                token = auth_header.substr(7);
+            }
+        }
+
+        auto auth_result = authenticate_request(token);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"Unauthorized\"}");
+        }
+
+        // Revoke API key
+        Result<void> revoke_result;
+        if (auth_manager_) {
+            revoke_result = auth_manager_->revoke_api_key(key_id);
+        } else if (authentication_service_) {
+            revoke_result = authentication_service_->revoke_api_key(key_id);
+        } else {
+            return crow::response(500, "{\"error\":\"Authentication services not available\"}");
+        }
+
+        if (!revoke_result.has_value()) {
+            crow::json::wvalue error_response;
+            error_response["error"] = ErrorHandler::format_error(revoke_result.error());
+            return crow::response(400, error_response);
+        }
+
+        // Log API key revocation
+        if (security_audit_logger_) {
+            security_audit_logger_->log_event(
+                SecurityEventType::API_KEY_REVOKED,
+                "system",
+                req.get_header_value("X-Forwarded-For"),
+                true,
+                "API key revoked: " + key_id
+            );
+        }
+
+        crow::json::wvalue response;
+        response["success"] = true;
+        response["keyId"] = key_id;
+        response["message"] = "API key revoked successfully";
+
+        return crow::response(200, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in revoke API key: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+// Security audit handler implementations
+crow::response RestApiImpl::handle_list_audit_logs_request(const crow::request& req) {
+    try {
+        crow::json::wvalue response;
+        response["message"] = "List audit logs endpoint - implementation pending";
+        response["logs"] = crow::json::wvalue::list();
+        return crow::response(501, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in list audit logs: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+// Alert handler implementations
+crow::response RestApiImpl::handle_list_alerts_request(const crow::request& req) {
+    try {
+        crow::json::wvalue response;
+        response["message"] = "List alerts endpoint - implementation pending";
+        response["alerts"] = crow::json::wvalue::list();
+        return crow::response(501, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in list alerts: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_create_alert_request(const crow::request& req) {
+    try {
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        crow::json::wvalue response;
+        response["message"] = "Create alert endpoint - implementation pending";
+        return crow::response(501, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in create alert: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_acknowledge_alert_request(const crow::request& req, const std::string& alert_id) {
+    try {
+        crow::json::wvalue response;
+        response["message"] = "Acknowledge alert endpoint - implementation pending";
+        response["alertId"] = alert_id;
+        return crow::response(501, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in acknowledge alert: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+// Cluster handler implementations
+crow::response RestApiImpl::handle_list_cluster_nodes_request(const crow::request& req) {
+    try {
+        crow::json::wvalue response;
+        response["message"] = "List cluster nodes endpoint - implementation pending";
+        response["nodes"] = crow::json::wvalue::list();
+        return crow::response(501, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in list cluster nodes: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_cluster_node_status_request(const crow::request& req, const std::string& node_id) {
+    try {
+        crow::json::wvalue response;
+        response["message"] = "Cluster node status endpoint - implementation pending";
+        response["nodeId"] = node_id;
+        return crow::response(501, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in cluster node status: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+// Performance handler implementations
+crow::response RestApiImpl::handle_performance_metrics_request(const crow::request& req) {
+    try {
+        crow::json::wvalue response;
+        response["message"] = "Performance metrics endpoint - implementation pending";
+        response["metrics"] = crow::json::wvalue::object();
+        return crow::response(501, response);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in performance metrics: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
 }
 
 } // namespace jadevectordb

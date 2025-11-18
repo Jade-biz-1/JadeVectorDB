@@ -175,41 +175,331 @@ The server will start on port 8080 by default.
 
 # CLI Tools
 
-JadeVectorDB provides three command-line interface implementations to suit different environments and user preferences:
+JadeVectorDB provides **production-ready** command-line interfaces with complete functionality for all database operations. All CLIs support environment variables, authentication, and generate equivalent cURL commands for debugging.
 
-### 1. Python CLI (`/cli/python/`)
-Full-featured Python-based CLI ideal for data science environments.
+## Quick Start
 
-```bash
-pip install -e cli/python
-jade-db --url http://localhost:8080 --api-key mykey123 create-db --name my_database
-```
-
-### 2. Shell CLI (`/cli/shell/`)
-Lightweight bash-based CLI perfect for system administration and automation.
+### Python CLI (Recommended)
+Full-featured Python-based CLI ideal for data science and development environments.
 
 ```bash
-bash cli/shell/scripts/jade-db.sh --url http://localhost:8080 --api-key mykey123 create-db my_database
+# Install
+cd cli/python
+pip install -e .
+
+# Set environment variables (optional)
+export JADEVECTORDB_URL="http://localhost:8080"
+export JADEVECTORDB_API_KEY="your-api-key"
+
+# Use the CLI
+jade-db create-db --name my_database --dimension 128
+jade-db list-dbs
+jade-db store --database-id my_database --vector-id vec1 --values "[0.1, 0.2, 0.3]"
+jade-db search --database-id my_database --query-vector "[0.15, 0.25, 0.35]" --top-k 5
 ```
 
-### 3. JavaScript CLI (`/cli/js/`)
-Node.js-based CLI designed for web development environments.
+### Shell CLI
+Lightweight bash-based CLI perfect for system administration, automation, and CI/CD pipelines.
+
+```bash
+# Set environment variables (optional)
+export JADEVECTORDB_URL="http://localhost:8080"
+export JADEVECTORDB_API_KEY="your-api-key"
+export JADEVECTORDB_DATABASE_ID="my_database"
+
+# Use the CLI
+bash cli/shell/scripts/jade-db.sh create-db my_database "My test database" 128 HNSW
+bash cli/shell/scripts/jade-db.sh list-dbs
+bash cli/shell/scripts/jade-db.sh --database-id my_database store vec1 "[0.1, 0.2, 0.3]"
+bash cli/shell/scripts/jade-db.sh --database-id my_database search "[0.15, 0.25, 0.35]" 5
+```
+
+### JavaScript CLI
+Node.js-based CLI designed for web development environments and Node.js workflows.
 
 ```bash
 cd cli/js
 npm install
-node bin/jade-db.js --url http://localhost:8080 --api-key mykey123 database create --name my_database
+node bin/jade-db.js --url http://localhost:8080 database create --name my_database
 ```
 
-All implementations provide the same core functionality:
-- Database management (create, list, get, delete)
-- Vector operations (store, retrieve, delete)
-- Search operations (similarity search with filters)
-- System operations (health and status checks)
+## Complete Command Reference
 
-For detailed documentation, see [CLI Documentation](docs/cli-documentation.md).
-For examples, see [CLI Examples](examples/cli/README.md).
-For tutorials, see [CLI Tutorials](tutorials/cli/README.md).
+### Environment Variables
+
+All CLIs support the following environment variables to simplify usage:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `JADEVECTORDB_URL` | API server URL | `http://localhost:8080` |
+| `JADEVECTORDB_API_KEY` | Authentication API key | (none) |
+| `JADEVECTORDB_DATABASE_ID` | Default database ID (Shell CLI only) | (none) |
+
+### Database Management Commands
+
+#### Create Database
+```bash
+# Python
+jade-db create-db --name mydb --description "My database" --dimension 128 --index-type HNSW
+
+# Shell
+bash jade-db.sh create-db mydb "My database" 128 HNSW
+```
+
+#### List Databases
+```bash
+# Python
+jade-db list-dbs
+
+# Shell
+bash jade-db.sh list-dbs
+```
+
+#### Get Database Information
+```bash
+# Python
+jade-db get-db --database-id mydb
+
+# Shell
+bash jade-db.sh get-db mydb
+```
+
+#### Delete Database
+```bash
+# Python
+jade-db delete-db --database-id mydb
+
+# Shell
+bash jade-db.sh delete-db mydb
+```
+
+### Vector Operations
+
+#### Store Vector
+```bash
+# Python
+jade-db store \
+  --database-id mydb \
+  --vector-id vec1 \
+  --values "[0.1, 0.2, 0.3]" \
+  --metadata '{"category": "test", "source": "api"}'
+
+# Shell
+bash jade-db.sh --database-id mydb store vec1 "[0.1, 0.2, 0.3]" '{"category":"test"}'
+```
+
+#### Retrieve Vector
+```bash
+# Python
+jade-db retrieve --database-id mydb --vector-id vec1
+
+# Shell
+bash jade-db.sh --database-id mydb retrieve vec1
+```
+
+#### Delete Vector
+```bash
+# Python
+jade-db delete --database-id mydb --vector-id vec1
+
+# Shell
+bash jade-db.sh --database-id mydb delete vec1
+```
+
+### Search Operations
+
+#### Similarity Search
+```bash
+# Python
+jade-db search \
+  --database-id mydb \
+  --query-vector "[0.15, 0.25, 0.35]" \
+  --top-k 10 \
+  --threshold 0.7
+
+# Shell
+bash jade-db.sh --database-id mydb search "[0.15, 0.25, 0.35]" 10 0.7
+```
+
+### System Operations
+
+#### Health Check
+```bash
+# Python
+jade-db health
+
+# Shell
+bash jade-db.sh health
+```
+
+#### System Status
+```bash
+# Python
+jade-db status
+
+# Shell
+bash jade-db.sh status
+```
+
+## Advanced Features
+
+### cURL Command Generation
+
+All CLIs can generate equivalent cURL commands for debugging and documentation:
+
+```bash
+# Python
+jade-db --curl-only create-db --name mydb --dimension 128
+
+# Shell
+bash jade-db.sh --curl-only create-db mydb
+```
+
+Output:
+```bash
+curl -X POST http://localhost:8080/v1/databases \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer your-api-key' \
+  -d '{
+    "name": "mydb",
+    "vectorDimension": 128,
+    "indexType": "HNSW"
+  }'
+```
+
+### Batch Operations (Python Client Library)
+
+The Python client library supports batch operations for high-performance workflows:
+
+```python
+from jadevectordb import JadeVectorDB, Vector
+
+client = JadeVectorDB("http://localhost:8080", api_key="your-key")
+
+# Batch store vectors
+vectors = [
+    Vector(id="vec1", values=[0.1, 0.2, 0.3], metadata={"type": "A"}),
+    Vector(id="vec2", values=[0.4, 0.5, 0.6], metadata={"type": "B"}),
+    Vector(id="vec3", values=[0.7, 0.8, 0.9], metadata={"type": "A"})
+]
+
+client.batch_store_vectors("mydb", vectors)
+```
+
+## Authentication
+
+All CLIs support authentication via API keys:
+
+```bash
+# Using command-line flag
+jade-db --api-key your-api-key list-dbs
+
+# Using environment variable (recommended)
+export JADEVECTORDB_API_KEY="your-api-key"
+jade-db list-dbs
+```
+
+To generate an API key, use the authentication endpoints:
+
+```bash
+# Register a user
+curl -X POST http://localhost:8080/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username": "myuser", "password": "mypassword", "email": "user@example.com"}'
+
+# Login to get a token
+curl -X POST http://localhost:8080/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username": "myuser", "password": "mypassword"}'
+
+# Create an API key
+curl -X POST http://localhost:8080/v1/api-keys \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <token-from-login>' \
+  -d '{"userId": "user-id", "description": "CLI access"}'
+```
+
+## CLI Implementation Status
+
+| Feature | Python CLI | Shell CLI | JavaScript CLI |
+|---------|-----------|-----------|----------------|
+| Database Creation | ✅ | ✅ | ✅ |
+| Database Listing | ✅ | ✅ | ✅ |
+| Database Info | ✅ | ✅ | ✅ |
+| Database Deletion | ✅ | ✅ | ⚠️ Partial |
+| Vector Storage | ✅ | ✅ | ✅ |
+| Vector Retrieval | ✅ | ✅ | ✅ |
+| Vector Deletion | ✅ | ✅ | ✅ |
+| Similarity Search | ✅ | ✅ | ✅ |
+| Batch Operations | ✅ | ❌ | ❌ |
+| Environment Variables | ✅ | ✅ | ⚠️ Partial |
+| cURL Generation | ✅ | ✅ | ❌ |
+| API Key Authentication | ✅ | ✅ | ✅ |
+| Health/Status Checks | ✅ | ✅ | ✅ |
+
+**Legend:** ✅ Fully Implemented | ⚠️ Partially Implemented | ❌ Not Implemented
+
+## Recent Improvements (Latest Release)
+
+### Python CLI
+- ✅ Added `delete` command for vector deletion
+- ✅ Added `get-db` command for database information retrieval
+- ✅ Added `delete-db` command for database deletion
+- ✅ Implemented environment variable support (`JADEVECTORDB_URL`, `JADEVECTORDB_API_KEY`)
+- ✅ Enhanced client library with `delete_database()` method
+- ✅ Added cURL command generators for all new operations
+
+### Shell CLI
+- ✅ **Fixed critical bug**: `--database-id` flag now properly parsed
+- ✅ Added `delete-db` command for database deletion
+- ✅ Implemented environment variable support (URL, API_KEY, DATABASE_ID)
+- ✅ Updated usage documentation with environment variable examples
+- ✅ Improved error messages for missing parameters
+
+### Backend Integration
+- ✅ All CLI commands now call fully implemented backend services
+- ✅ Complete authentication system with JWT tokens
+- ✅ API key management endpoints operational
+- ✅ Batch get vectors endpoint implemented
+- ✅ Comprehensive security audit logging
+
+## Troubleshooting
+
+### Common Issues
+
+**Issue**: `Connection refused` error
+```bash
+# Check if the server is running
+curl http://localhost:8080/health
+
+# Start the server if needed
+cd backend/build && ./jadevectordb
+```
+
+**Issue**: `Authentication required` error
+```bash
+# Set API key via environment variable
+export JADEVECTORDB_API_KEY="your-api-key"
+
+# Or use the --api-key flag
+jade-db --api-key your-api-key list-dbs
+```
+
+**Issue**: Python CLI `ModuleNotFoundError`
+```bash
+# Install in development mode
+cd cli/python
+pip install -e .
+```
+
+## Documentation
+
+For detailed documentation:
+- [CLI Documentation](docs/cli-documentation.md) - Complete CLI reference
+- [CLI Examples](examples/cli/README.md) - Real-world usage examples
+- [CLI Tutorials](tutorials/cli/README.md) - Step-by-step guides
+- [API Documentation](docs/api_documentation.md) - REST API reference
+- [Backend Service Verification](BACKEND_SERVICE_VERIFICATION.md) - Implementation details
 
 ## Development Tools
 
