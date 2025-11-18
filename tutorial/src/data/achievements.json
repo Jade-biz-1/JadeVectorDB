@@ -1,0 +1,353 @@
+{
+  "version": "1.0",
+  "achievements": [
+    {
+      "id": "first_steps",
+      "name": "First Steps",
+      "description": "Complete the Getting Started module",
+      "icon": "🎯",
+      "category": "progression",
+      "tier": "bronze",
+      "points": 10,
+      "condition": {
+        "type": "module_complete",
+        "module": "module1"
+      }
+    },
+    {
+      "id": "vector_master",
+      "name": "Vector Master",
+      "description": "Complete the Vector Manipulation module",
+      "icon": "🔢",
+      "category": "progression",
+      "tier": "bronze",
+      "points": 10,
+      "condition": {
+        "type": "module_complete",
+        "module": "module2"
+      }
+    },
+    {
+      "id": "search_specialist",
+      "name": "Search Specialist",
+      "description": "Complete the Advanced Search module",
+      "icon": "🔍",
+      "category": "progression",
+      "tier": "bronze",
+      "points": 10,
+      "condition": {
+        "type": "module_complete",
+        "module": "module3"
+      }
+    },
+    {
+      "id": "filter_expert",
+      "name": "Filter Expert",
+      "description": "Complete the Metadata Filtering module",
+      "icon": "🎛️",
+      "category": "progression",
+      "tier": "bronze",
+      "points": 10,
+      "condition": {
+        "type": "module_complete",
+        "module": "module4"
+      }
+    },
+    {
+      "id": "index_guru",
+      "name": "Index Guru",
+      "description": "Complete the Index Management module",
+      "icon": "⚡",
+      "category": "progression",
+      "tier": "bronze",
+      "points": 10,
+      "condition": {
+        "type": "module_complete",
+        "module": "module5"
+      }
+    },
+    {
+      "id": "advanced_achiever",
+      "name": "Advanced Achiever",
+      "description": "Complete the Advanced Features module",
+      "icon": "🚀",
+      "category": "progression",
+      "tier": "bronze",
+      "points": 10,
+      "condition": {
+        "type": "module_complete",
+        "module": "module6"
+      }
+    },
+    {
+      "id": "perfect_score_m1",
+      "name": "Flawless Fundamentals",
+      "description": "Score 100% on Getting Started assessment",
+      "icon": "💯",
+      "category": "mastery",
+      "tier": "silver",
+      "points": 25,
+      "condition": {
+        "type": "perfect_score",
+        "module": "module1"
+      }
+    },
+    {
+      "id": "perfect_score_m2",
+      "name": "Vector Virtuoso",
+      "description": "Score 100% on Vector Manipulation assessment",
+      "icon": "💯",
+      "category": "mastery",
+      "tier": "silver",
+      "points": 25,
+      "condition": {
+        "type": "perfect_score",
+        "module": "module2"
+      }
+    },
+    {
+      "id": "perfect_score_m3",
+      "name": "Search Savant",
+      "description": "Score 100% on Advanced Search assessment",
+      "icon": "💯",
+      "category": "mastery",
+      "tier": "silver",
+      "points": 25,
+      "condition": {
+        "type": "perfect_score",
+        "module": "module3"
+      }
+    },
+    {
+      "id": "speed_demon",
+      "name": "Speed Demon",
+      "description": "Complete any module assessment in under 5 minutes",
+      "icon": "⚡",
+      "category": "speed",
+      "tier": "silver",
+      "points": 20,
+      "condition": {
+        "type": "speed_completion",
+        "maxTime": 300000
+      }
+    },
+    {
+      "id": "first_try",
+      "name": "First Try Success",
+      "description": "Pass an assessment on your first attempt",
+      "icon": "🎯",
+      "category": "skill",
+      "tier": "bronze",
+      "points": 15,
+      "condition": {
+        "type": "first_attempt_pass",
+        "module": "any"
+      }
+    },
+    {
+      "id": "persistent",
+      "name": "Persistent Learner",
+      "description": "Retry an assessment 3 times to pass",
+      "icon": "💪",
+      "category": "dedication",
+      "tier": "bronze",
+      "points": 15,
+      "condition": {
+        "type": "retry_success",
+        "minAttempts": 3
+      }
+    },
+    {
+      "id": "completionist",
+      "name": "Completionist",
+      "description": "Complete all 6 tutorial modules",
+      "icon": "🏆",
+      "category": "milestone",
+      "tier": "gold",
+      "points": 50,
+      "condition": {
+        "type": "all_modules_complete",
+        "count": 6
+      }
+    },
+    {
+      "id": "straight_a_student",
+      "name": "Straight-A Student",
+      "description": "Pass all assessments on first try",
+      "icon": "🌟",
+      "category": "mastery",
+      "tier": "gold",
+      "points": 75,
+      "condition": {
+        "type": "all_first_attempt",
+        "count": 6
+      }
+    },
+    {
+      "id": "perfectionist",
+      "name": "Perfectionist",
+      "description": "Score 100% on all assessments",
+      "icon": "💎",
+      "category": "mastery",
+      "tier": "platinum",
+      "points": 100,
+      "condition": {
+        "type": "all_perfect_scores",
+        "count": 6
+      }
+    },
+    {
+      "id": "production_ready",
+      "name": "Production Ready",
+      "description": "Achieve Expert level on readiness assessment",
+      "icon": "✅",
+      "category": "milestone",
+      "tier": "gold",
+      "points": 75,
+      "condition": {
+        "type": "readiness_level",
+        "minLevel": "expert"
+      }
+    },
+    {
+      "id": "certified_master",
+      "name": "Certified Master",
+      "description": "Achieve Master level on readiness assessment",
+      "icon": "👑",
+      "category": "milestone",
+      "tier": "platinum",
+      "points": 100,
+      "condition": {
+        "type": "readiness_level",
+        "level": "master"
+      }
+    },
+    {
+      "id": "early_bird",
+      "name": "Early Bird",
+      "description": "Complete your first module before noon",
+      "icon": "🌅",
+      "category": "special",
+      "tier": "bronze",
+      "points": 10,
+      "condition": {
+        "type": "time_of_day",
+        "maxHour": 12
+      }
+    },
+    {
+      "id": "night_owl",
+      "name": "Night Owl",
+      "description": "Complete a module after midnight",
+      "icon": "🦉",
+      "category": "special",
+      "tier": "bronze",
+      "points": 10,
+      "condition": {
+        "type": "time_of_day",
+        "minHour": 0,
+        "maxHour": 5
+      }
+    },
+    {
+      "id": "knowledge_seeker",
+      "name": "Knowledge Seeker",
+      "description": "View hints on 10 different questions",
+      "icon": "💡",
+      "category": "learning",
+      "tier": "bronze",
+      "points": 10,
+      "condition": {
+        "type": "hints_viewed",
+        "count": 10
+      }
+    },
+    {
+      "id": "comeback_kid",
+      "name": "Comeback Kid",
+      "description": "Improve your score by 30% on retry",
+      "icon": "📈",
+      "category": "improvement",
+      "tier": "silver",
+      "points": 20,
+      "condition": {
+        "type": "score_improvement",
+        "minImprovement": 30
+      }
+    },
+    {
+      "id": "streak_master",
+      "name": "Streak Master",
+      "description": "Complete modules on 3 consecutive days",
+      "icon": "🔥",
+      "category": "dedication",
+      "tier": "silver",
+      "points": 25,
+      "condition": {
+        "type": "daily_streak",
+        "days": 3
+      }
+    },
+    {
+      "id": "fast_learner",
+      "name": "Fast Learner",
+      "description": "Complete all 6 modules in one day",
+      "icon": "⚡",
+      "category": "speed",
+      "tier": "gold",
+      "points": 50,
+      "condition": {
+        "type": "same_day_completion",
+        "count": 6
+      }
+    },
+    {
+      "id": "helping_hand",
+      "name": "Helping Hand",
+      "description": "Share your certificate on social media",
+      "icon": "🤝",
+      "category": "community",
+      "tier": "bronze",
+      "points": 10,
+      "condition": {
+        "type": "certificate_shared"
+      }
+    }
+  ],
+
+  "tiers": {
+    "bronze": {
+      "name": "Bronze",
+      "color": "#CD7F32",
+      "gradient": ["#CD7F32", "#B8860B"]
+    },
+    "silver": {
+      "name": "Silver",
+      "color": "#C0C0C0",
+      "gradient": ["#C0C0C0", "#A9A9A9"]
+    },
+    "gold": {
+      "name": "Gold",
+      "color": "#FFD700",
+      "gradient": ["#FFD700", "#FFA500"]
+    },
+    "platinum": {
+      "name": "Platinum",
+      "color": "#E5E4E2",
+      "gradient": ["#E5E4E2", "#B9F2FF"]
+    }
+  },
+
+  "categories": {
+    "progression": "Module Completion",
+    "mastery": "Perfect Scores",
+    "milestone": "Major Achievements",
+    "skill": "Skill-Based",
+    "speed": "Speed Achievements",
+    "dedication": "Persistence",
+    "improvement": "Progress",
+    "learning": "Learning Process",
+    "special": "Special Events",
+    "community": "Community"
+  }
+}

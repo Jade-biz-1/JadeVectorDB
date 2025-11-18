@@ -1,0 +1,186 @@
+{
+  "moduleId": "module1",
+  "moduleName": "Getting Started with JadeVectorDB",
+  "version": "1.0",
+  "passingScore": 70,
+  "timeLimit": null,
+  "questions": [
+    {
+      "id": "m1_q1",
+      "type": "multiple-choice",
+      "question": "What is the primary purpose of a vector database like JadeVectorDB?",
+      "points": 10,
+      "difficulty": "easy",
+      "options": [
+        "Store and search high-dimensional vector embeddings efficiently",
+        "Replace traditional relational databases for all use cases",
+        "Perform complex SQL joins on tabular data",
+        "Store only numeric values in arrays"
+      ],
+      "correctAnswer": 0,
+      "explanation": "Vector databases are specifically designed to store, manage, and search high-dimensional vectors efficiently. They excel at similarity search and semantic understanding, which traditional databases struggle with.",
+      "hints": [
+        "Think about what makes vector databases different from traditional databases",
+        "Consider the word 'vector' in the name and what it implies",
+        "Review the introduction section about vector database capabilities"
+      ]
+    },
+    {
+      "id": "m1_q2",
+      "type": "multiple-choice",
+      "question": "Which similarity metrics does JadeVectorDB support?",
+      "points": 10,
+      "difficulty": "easy",
+      "multipleAnswers": true,
+      "options": [
+        "Cosine similarity",
+        "Euclidean distance",
+        "Dot product",
+        "Levenshtein distance"
+      ],
+      "correctAnswer": [0, 1, 2],
+      "explanation": "JadeVectorDB supports cosine similarity, Euclidean distance, and dot product for vector similarity calculations. Levenshtein distance is used for string comparison, not vector similarity.",
+      "hints": [
+        "This question may have multiple correct answers",
+        "Review the similarity metrics section",
+        "Think about metrics used specifically for numerical vectors"
+      ]
+    },
+    {
+      "id": "m1_q3",
+      "type": "true-false",
+      "question": "All vectors within a single JadeVectorDB database must have the same dimension.",
+      "points": 10,
+      "difficulty": "easy",
+      "correctAnswer": true,
+      "explanation": "All vectors in a database must have the same dimension to enable meaningful similarity comparisons. The dimension is set when creating the database and cannot be changed.",
+      "hints": [
+        "Think about how similarity calculations work between vectors",
+        "Review the database creation section"
+      ]
+    },
+    {
+      "id": "m1_q4",
+      "type": "code-challenge",
+      "question": "Complete the code to create a new database called 'product_embeddings' with 384 dimensions using HNSW indexing.",
+      "points": 15,
+      "difficulty": "medium",
+      "codeTemplate": "const db = await client.createDatabase({\n  // Complete the configuration\n  name: '',\n  vectorDimension: 0,\n  indexType: ''\n});",
+      "correctAnswer": {
+        "name": "product_embeddings",
+        "vectorDimension": 384,
+        "indexType": "HNSW"
+      },
+      "testCases": [
+        {
+          "description": "Database name should be 'product_embeddings'",
+          "validate": "config.name === 'product_embeddings'"
+        },
+        {
+          "description": "Vector dimension should be 384",
+          "validate": "config.vectorDimension === 384"
+        },
+        {
+          "description": "Index type should be HNSW",
+          "validate": "config.indexType === 'HNSW'"
+        }
+      ],
+      "explanation": "When creating a database, you need to specify a unique name, the vector dimension (which should match your embedding model's output), and an index type for efficient searching.",
+      "hints": [
+        "The database name is given in the question",
+        "Check the question for the exact dimension and index type needed",
+        "Review the database creation example in the tutorial"
+      ]
+    },
+    {
+      "id": "m1_q5",
+      "type": "multiple-choice",
+      "question": "What are the required components when storing a vector in JadeVectorDB?",
+      "points": 10,
+      "difficulty": "medium",
+      "multipleAnswers": true,
+      "options": [
+        "Vector ID",
+        "Vector values (numerical array)",
+        "Metadata (optional but recommended)",
+        "Creation timestamp"
+      ],
+      "correctAnswer": [0, 1],
+      "explanation": "The required components are the vector ID (unique identifier) and the vector values (numerical array matching the database dimension). Metadata is optional but highly recommended for filtering. Creation timestamp is typically auto-generated.",
+      "hints": [
+        "This question may have multiple correct answers",
+        "Think about the minimum information needed to store a vector",
+        "Review the vector storage section"
+      ]
+    },
+    {
+      "id": "m1_q6",
+      "type": "code-challenge",
+      "question": "Complete the code to store a vector with id 'doc-001', values [0.1, 0.5, -0.3], and metadata containing title 'My Document'.",
+      "points": 15,
+      "difficulty": "medium",
+      "codeTemplate": "const result = await client.storeVector({\n  // Complete the vector object\n  id: '',\n  values: [],\n  metadata: {}\n});",
+      "correctAnswer": {
+        "id": "doc-001",
+        "values": [0.1, 0.5, -0.3],
+        "metadata": {
+          "title": "My Document"
+        }
+      },
+      "testCases": [
+        {
+          "description": "Vector ID should be 'doc-001'",
+          "validate": "vector.id === 'doc-001'"
+        },
+        {
+          "description": "Values should match [0.1, 0.5, -0.3]",
+          "validate": "JSON.stringify(vector.values) === JSON.stringify([0.1, 0.5, -0.3])"
+        },
+        {
+          "description": "Metadata should contain title 'My Document'",
+          "validate": "vector.metadata.title === 'My Document'"
+        }
+      ],
+      "explanation": "When storing a vector, you provide an ID, the numerical values array, and optional metadata. The metadata can include any JSON-serializable data for filtering and context.",
+      "hints": [
+        "The vector ID, values, and metadata title are all provided in the question",
+        "Vector values should be an array of numbers",
+        "Metadata is a JavaScript object with key-value pairs"
+      ]
+    },
+    {
+      "id": "m1_q7",
+      "type": "multiple-choice",
+      "question": "What is K in K-nearest neighbor (KNN) search?",
+      "points": 10,
+      "difficulty": "easy",
+      "options": [
+        "The number of similar vectors to return",
+        "The vector dimension size",
+        "The database version number",
+        "The similarity threshold value"
+      ],
+      "correctAnswer": 0,
+      "explanation": "In KNN search, K represents the number of nearest (most similar) vectors to return from the database. For example, K=5 returns the 5 most similar vectors to your query.",
+      "hints": [
+        "Think about what 'nearest neighbor' means",
+        "Review the search section of the tutorial",
+        "Consider what you would want as output from a similarity search"
+      ]
+    },
+    {
+      "id": "m1_q8",
+      "type": "true-false",
+      "question": "Lower cosine similarity values indicate more similar vectors.",
+      "points": 10,
+      "difficulty": "medium",
+      "correctAnswer": false,
+      "explanation": "This is false. For cosine similarity, higher values (closer to 1) indicate more similar vectors, while lower values (closer to -1) indicate less similar or opposite vectors. A value of 0 indicates orthogonal (perpendicular) vectors.",
+      "hints": [
+        "Think about the range of cosine similarity values",
+        "Remember that cosine similarity measures the angle between vectors",
+        "Review the similarity metrics section"
+      ]
+    }
+  ]
+}

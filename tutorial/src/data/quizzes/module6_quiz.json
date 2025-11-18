@@ -1,0 +1,171 @@
+{
+  "moduleId": "module6",
+  "moduleName": "Advanced Features",
+  "version": "1.0",
+  "passingScore": 70,
+  "timeLimit": null,
+  "questions": [
+    {
+      "id": "m6_q1",
+      "type": "multiple-choice",
+      "question": "What is the benefit of using distributed deployment for JadeVectorDB?",
+      "points": 10,
+      "difficulty": "easy",
+      "multipleAnswers": true,
+      "options": [
+        "Horizontal scalability for handling more data",
+        "High availability and fault tolerance",
+        "Improved search performance through parallelization",
+        "Reduced storage costs"
+      ],
+      "correctAnswer": [0, 1, 2],
+      "explanation": "Distributed deployment provides horizontal scalability, high availability, and improved performance through parallel processing. It doesn't necessarily reduce storage costs as data is often replicated for fault tolerance.",
+      "hints": [
+        "Multiple answers may be correct",
+        "Think about benefits of distributed systems",
+        "Review the distributed deployment section"
+      ]
+    },
+    {
+      "id": "m6_q2",
+      "type": "true-false",
+      "question": "Sharding distributes vectors across multiple nodes based on a partitioning strategy.",
+      "points": 10,
+      "difficulty": "easy",
+      "correctAnswer": true,
+      "explanation": "Sharding is the process of partitioning data across multiple nodes. JadeVectorDB supports hash-based, range-based, and vector-based sharding strategies to distribute vectors evenly.",
+      "hints": [
+        "Think about how distributed databases partition data",
+        "Review the sharding section",
+        "Consider what enables horizontal scaling"
+      ]
+    },
+    {
+      "id": "m6_q3",
+      "type": "multiple-choice",
+      "question": "What is the purpose of replication in JadeVectorDB?",
+      "points": 10,
+      "difficulty": "medium",
+      "options": [
+        "To provide fault tolerance and high availability",
+        "To improve write performance",
+        "To reduce storage requirements",
+        "To enable vector compression"
+      ],
+      "correctAnswer": 0,
+      "explanation": "Replication creates copies of data across multiple nodes to ensure availability if a node fails. While it can improve read performance through load distribution, it actually increases storage requirements.",
+      "hints": [
+        "Think about redundancy and failure recovery",
+        "Consider what happens when a node fails",
+        "Review the replication section"
+      ]
+    },
+    {
+      "id": "m6_q4",
+      "type": "code-challenge",
+      "question": "Complete the code to enable monitoring with Prometheus metrics.",
+      "points": 15,
+      "difficulty": "medium",
+      "codeTemplate": "const db = await client.createDatabase({\n  name: 'my-db',\n  vectorDimension: 768,\n  // Enable monitoring\n  monitoring: {\n    enabled: false,\n    metricsPort: 0\n  }\n});",
+      "correctAnswer": {
+        "monitoring": {
+          "enabled": true,
+          "metricsPort": 9090
+        }
+      },
+      "testCases": [
+        {
+          "description": "Monitoring should be enabled",
+          "validate": "config.monitoring.enabled === true"
+        },
+        {
+          "description": "Metrics port should be set",
+          "validate": "config.monitoring.metricsPort > 0"
+        }
+      ],
+      "explanation": "Enable monitoring to collect performance metrics that can be scraped by Prometheus. The standard Prometheus port is 9090, though any available port can be used.",
+      "hints": [
+        "Set enabled to true to turn on monitoring",
+        "Use a common Prometheus port like 9090",
+        "Review the monitoring configuration section"
+      ]
+    },
+    {
+      "id": "m6_q5",
+      "type": "multiple-choice",
+      "question": "Which metrics are important to monitor in a production vector database?",
+      "points": 10,
+      "difficulty": "medium",
+      "multipleAnswers": true,
+      "options": [
+        "Search latency (query response time)",
+        "Vector count and database size",
+        "Index build time",
+        "Cache hit rate",
+        "API error rate"
+      ],
+      "correctAnswer": [0, 1, 3, 4],
+      "explanation": "Key production metrics include search latency, database size, cache hit rate, and error rates. Index build time is important during setup but not typically monitored in production runtime.",
+      "hints": [
+        "Multiple answers may be correct",
+        "Think about operational concerns in production",
+        "Review the monitoring best practices section"
+      ]
+    },
+    {
+      "id": "m6_q6",
+      "type": "true-false",
+      "question": "Vector compression reduces storage size while maintaining search accuracy.",
+      "points": 10,
+      "difficulty": "medium",
+      "correctAnswer": false,
+      "explanation": "Vector compression (quantization) reduces storage size but typically involves some loss in search accuracy. Product quantization and scalar quantization are common techniques that trade accuracy for space efficiency.",
+      "hints": [
+        "Think about compression trade-offs",
+        "Consider if lossless compression is possible for vectors",
+        "Review the compression section"
+      ]
+    },
+    {
+      "id": "m6_q7",
+      "type": "multiple-choice",
+      "question": "What is the purpose of API key rotation in JadeVectorDB?",
+      "points": 10,
+      "difficulty": "medium",
+      "options": [
+        "To improve security by periodically changing credentials",
+        "To improve search performance",
+        "To reduce database size",
+        "To enable distributed deployment"
+      ],
+      "correctAnswer": 0,
+      "explanation": "API key rotation is a security best practice that involves periodically changing API keys to limit the impact of potential key compromise. This reduces security risks without affecting functionality.",
+      "hints": [
+        "Think about security best practices",
+        "Consider what happens if a key is compromised",
+        "Review the security section"
+      ]
+    },
+    {
+      "id": "m6_q8",
+      "type": "multiple-choice",
+      "question": "Which backup strategies are recommended for JadeVectorDB?",
+      "points": 10,
+      "difficulty": "hard",
+      "multipleAnswers": true,
+      "options": [
+        "Regular full database snapshots",
+        "Incremental backups of changes",
+        "Point-in-time recovery capabilities",
+        "Backup only the index, not the vectors"
+      ],
+      "correctAnswer": [0, 1, 2],
+      "explanation": "Recommended backup strategies include full snapshots, incremental backups, and point-in-time recovery. Backing up only the index without vectors would be incomplete and prevent full restoration.",
+      "hints": [
+        "Multiple answers may be correct",
+        "Think about comprehensive backup strategies",
+        "Review the backup and recovery section"
+      ]
+    }
+  ]
+}
