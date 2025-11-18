@@ -10,6 +10,7 @@ export default function VectorManagement() {
   const [editVector, setEditVector] = useState(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [pagination, setPagination] = useState({ limit: 50, offset: 0, total: 0 });
 
   useEffect(() => {
     fetchDatabases();
@@ -24,17 +25,32 @@ export default function VectorManagement() {
     }
   };
 
-  const fetchVectors = async () => {
+  const fetchVectors = async (limit = pagination.limit, offset = pagination.offset) => {
     if (!selectedDatabase) return;
     setLoading(true);
     try {
-      // You may want to implement pagination here
-      // For now, assume API endpoint exists: GET /databases/:id/vectors
-      // This is a placeholder, update as per backend
-      // const response = await vectorApi.listVectors(selectedDatabase);
-      // setVectors(response.vectors || []);
+      const response = await vectorApi.listVectors(selectedDatabase, limit, offset);
+      const vectorsData = response.vectors || [];
+
+      // Transform vectors to include ID and format values for display
+      const formattedVectors = vectorsData.map(v => ({
+        id: v.vectorId || v.id,
+        values: Array.isArray(v.values) ? v.values : [],
+        metadata: v.metadata || {},
+        valuesString: Array.isArray(v.values) ? v.values.join(', ') : '',
+        metadataString: JSON.stringify(v.metadata || {})
+      }));
+
+      setVectors(formattedVectors);
+      setPagination({
+        limit,
+        offset,
+        total: response.total || vectorsData.length
+      });
     } catch (error) {
+      console.error('Error fetching vectors:', error);
       alert('Error fetching vectors: ' + error.message);
+      setVectors([]);
     }
     setLoading(false);
   };
@@ -56,7 +72,11 @@ export default function VectorManagement() {
   };
 
   const handleEditVector = (vector) => {
-    setEditVector(vector);
+    setEditVector({
+      id: vector.id,
+      values: vector.valuesString,
+      metadata: vector.metadataString
+    });
     setEditModalOpen(true);
   };
 
@@ -78,6 +98,8 @@ export default function VectorManagement() {
 
   const handleDeleteVector = async (vectorId) => {
     if (!selectedDatabase) return;
+    if (!confirm('Are you sure you want to delete this vector?')) return;
+
     setLoading(true);
     try {
       await vectorApi.deleteVector(selectedDatabase, vectorId);
@@ -86,6 +108,18 @@ export default function VectorManagement() {
       alert('Error deleting vector: ' + error.message);
     }
     setLoading(false);
+  };
+
+  const handleNextPage = () => {
+    const newOffset = pagination.offset + pagination.limit;
+    if (newOffset < pagination.total) {
+      fetchVectors(pagination.limit, newOffset);
+    }
+  };
+
+  const handlePrevPage = () => {
+    const newOffset = Math.max(0, pagination.offset - pagination.limit);
+    fetchVectors(pagination.limit, newOffset);
   };
 
   return (
@@ -113,16 +147,80 @@ export default function VectorManagement() {
         </form>
         <div>
           <h2 className="text-lg font-semibold mb-2">Vectors</h2>
-          <ul className="divide-y">
-            {vectors.map(vector => (
-              <li key={vector.id} className="py-2 flex justify-between items-center">
-                <span>{vector.values.join(', ')}</span>
-                <span>{JSON.stringify(vector.metadata)}</span>
-                <button onClick={() => handleEditVector(vector)} className="text-yellow-600 mr-2">Edit</button>
-                <button onClick={() => handleDeleteVector(vector.id)} className="text-red-600">Delete</button>
-              </li>
-            ))}
-          </ul>
+          {loading && <p className="text-gray-500">Loading vectors...</p>}
+          {!loading && vectors.length === 0 && selectedDatabase && (
+            <p className="text-gray-500">No vectors found in this database.</p>
+          )}
+          {!loading && vectors.length > 0 && (
+            <>
+              <div className="bg-white shadow overflow-hidden sm:rounded-md mb-4">
+                <ul className="divide-y divide-gray-200">
+                  {vectors.map(vector => (
+                    <li key={vector.id} className="px-4 py-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            ID: {vector.id}
+                          </p>
+                          <p className="text-sm text-gray-500 truncate">
+                            Values: [{vector.valuesString.substring(0, 100)}{vector.valuesString.length > 100 ? '...' : ''}]
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            Metadata: {vector.metadataString}
+                          </p>
+                        </div>
+                        <div className="ml-4 flex-shrink-0 flex space-x-2">
+                          <button
+                            onClick={() => handleEditVector(vector)}
+                            className="inline-flex items-center px-3 py-1 border border-yellow-300 text-sm font-medium rounded-md text-yellow-700 bg-yellow-100 hover:bg-yellow-200"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteVector(vector.id)}
+                            className="inline-flex items-center px-3 py-1 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Pagination Controls */}
+              <div className="flex items-center justify-between bg-white px-4 py-3 sm:px-6 rounded-md shadow">
+                <div className="flex-1 flex justify-between items-center">
+                  <div>
+                    <p className="text-sm text-gray-700">
+                      Showing <span className="font-medium">{pagination.offset + 1}</span> to{' '}
+                      <span className="font-medium">
+                        {Math.min(pagination.offset + pagination.limit, pagination.total)}
+                      </span>{' '}
+                      of <span className="font-medium">{pagination.total}</span> vectors
+                    </p>
+                  </div>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={handlePrevPage}
+                      disabled={pagination.offset === 0}
+                      className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={handleNextPage}
+                      disabled={pagination.offset + pagination.limit >= pagination.total}
+                      className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
         {editModalOpen && (
           <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
