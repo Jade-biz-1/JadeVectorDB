@@ -5,110 +5,188 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Input } from '../components/ui/input';
 import { Select } from '../components/ui/select';
 import { Alert, AlertTitle, AlertDescription } from '../components/ui/alert';
+import { authApi, apiKeyApi } from '../lib/api';
 
 export default function AuthManagement() {
   const [activeTab, setActiveTab] = useState('apikey'); // 'apikey' or 'auth'
-  const [apiKeys, setApiKeys] = useState([
-    { id: 'key1', name: 'Production Key', createdAt: new Date('2023-01-15'), lastUsed: new Date('2023-10-18'), permissions: ['read', 'write'] },
-    { id: 'key2', name: 'Development Key', createdAt: new Date('2023-05-22'), lastUsed: new Date('2023-10-19'), permissions: ['read'] },
-  ]);
+  const [apiKeys, setApiKeys] = useState([]);
   const [newKeyName, setNewKeyName] = useState('');
   const [newKeyPermissions, setNewKeyPermissions] = useState(['read']);
   const [showApiKey, setShowApiKey] = useState(null);
   const [generatedApiKey, setGeneratedApiKey] = useState('');
-  const [authStatus, setAuthStatus] = useState(false); // Simulated auth status
+  const [authStatus, setAuthStatus] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // Load auth status from localStorage
+  // Load auth status from localStorage and fetch API keys
   useEffect(() => {
     const storedAuth = localStorage.getItem('jadevectordb_authenticated');
-    if (storedAuth === 'true') {
+    const storedApiKey = localStorage.getItem('jadevectordb_api_key');
+    if (storedAuth === 'true' && storedApiKey) {
       setAuthStatus(true);
+      fetchApiKeys();
     }
   }, []);
 
-  const handleLogin = (e) => {
-    e.preventDefault();
-    // In a real application, this would authenticate with a backend service
-    // For now, we'll simulate authentication
-    if (username && password) {
-      localStorage.setItem('jadevectordb_authenticated', 'true');
-      setAuthStatus(true);
-      alert(`Successfully logged in as ${username}`);
-    } else {
-      alert('Please enter username and password');
+  const fetchApiKeys = async () => {
+    try {
+      const response = await apiKeyApi.listKeys();
+      const keysData = response.apiKeys || [];
+
+      // Transform API key data
+      const formattedKeys = keysData.map(k => ({
+        id: k.keyId || k.id,
+        name: k.name || 'Unnamed Key',
+        createdAt: new Date(k.createdAt || Date.now()),
+        lastUsed: k.lastUsed ? new Date(k.lastUsed) : null,
+        permissions: k.permissions || ['read']
+      }));
+
+      setApiKeys(formattedKeys);
+    } catch (error) {
+      console.error('Error fetching API keys:', error);
+      setApiKeys([]);
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('jadevectordb_authenticated');
-    localStorage.removeItem('jadevectordb_api_key');
-    setAuthStatus(false);
-    setUsername('');
-    setPassword('');
-    alert('Logged out successfully');
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const response = await authApi.login(username, password);
+
+      // Store authentication token/API key
+      if (response.token) {
+        localStorage.setItem('jadevectordb_api_key', response.token);
+        localStorage.setItem('jadevectordb_authenticated', 'true');
+        localStorage.setItem('jadevectordb_username', username);
+        setAuthStatus(true);
+        fetchApiKeys();
+        alert(`Successfully logged in as ${username}`);
+      } else {
+        alert('Login failed: No token received');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      alert(`Login failed: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleRegister = (e) => {
+  const handleLogout = async () => {
+    setLoading(true);
+
+    try {
+      await authApi.logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Continue with logout even if API call fails
+    } finally {
+      // Clear local storage
+      localStorage.removeItem('jadevectordb_authenticated');
+      localStorage.removeItem('jadevectordb_api_key');
+      localStorage.removeItem('jadevectordb_username');
+      setAuthStatus(false);
+      setUsername('');
+      setPassword('');
+      setApiKeys([]);
+      setLoading(false);
+      alert('Logged out successfully');
+    }
+  };
+
+  const handleRegister = async (e) => {
     e.preventDefault();
     if (password !== confirmPassword) {
       alert('Passwords do not match');
       return;
     }
-    // In a real application, this would register with a backend service
-    // For now, we'll just show a success message
-    alert(`User ${username} registered successfully`);
-    setUsername('');
-    setPassword('');
-    setConfirmPassword('');
+
+    setLoading(true);
+
+    try {
+      const response = await authApi.register(username, password);
+
+      alert(`User ${username} registered successfully! You can now log in.`);
+      setUsername('');
+      setPassword('');
+      setConfirmPassword('');
+    } catch (error) {
+      console.error('Registration error:', error);
+      alert(`Registration failed: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleCreateApiKey = (e) => {
+  const handleCreateApiKey = async (e) => {
     e.preventDefault();
     if (!newKeyName) {
       alert('Please enter a name for the API key');
       return;
     }
 
-    // Generate a mock API key
-    const newApiKey = `jdb_${Math.random().toString(36).substr(2, 16)}`;
-    setGeneratedApiKey(newApiKey);
-    
-    // Add to the list of keys
-    const newKey = {
-      id: `key${apiKeys.length + 1}`,
-      name: newKeyName,
-      createdAt: new Date(),
-      lastUsed: null,
-      permissions: [...newKeyPermissions]
-    };
-    setApiKeys([newKey, ...apiKeys]);
-    
-    // Clear form
-    setNewKeyName('');
-    setNewKeyPermissions(['read']);
-    
-    // Save to localStorage
-    localStorage.setItem('jadevectordb_api_key', newApiKey);
-    
-    // Show the API key to the user
-    setShowApiKey(newKey.id);
+    setLoading(true);
+
+    try {
+      const keyData = {
+        name: newKeyName,
+        permissions: newKeyPermissions
+      };
+
+      const response = await apiKeyApi.createKey(keyData);
+
+      // The backend should return the generated API key
+      const newApiKey = response.apiKey || response.key;
+      setGeneratedApiKey(newApiKey);
+
+      // Refresh the API keys list
+      await fetchApiKeys();
+
+      // Clear form
+      setNewKeyName('');
+      setNewKeyPermissions(['read']);
+
+      // Optionally save to localStorage if this is the first/primary key
+      if (!localStorage.getItem('jadevectordb_api_key')) {
+        localStorage.setItem('jadevectordb_api_key', newApiKey);
+      }
+    } catch (error) {
+      console.error('Error creating API key:', error);
+      alert(`Error creating API key: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDeleteApiKey = (keyId) => {
-    if (window.confirm('Are you sure you want to delete this API key? This action cannot be undone.')) {
-      setApiKeys(apiKeys.filter(key => key.id !== keyId));
+  const handleDeleteApiKey = async (keyId) => {
+    if (!window.confirm('Are you sure you want to delete this API key? This action cannot be undone.')) {
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      await apiKeyApi.revokeKey(keyId);
+
+      // Refresh the API keys list
+      await fetchApiKeys();
+
       if (showApiKey === keyId) {
         setShowApiKey(null);
         setGeneratedApiKey('');
       }
-      // If this was the active key, remove it from localStorage
-      const activeKey = localStorage.getItem('jadevectordb_api_key');
-      if (activeKey && keyId === 'active') {  // Simplified check
-        localStorage.removeItem('jadevectordb_api_key');
-      }
+
+      alert('API key revoked successfully');
+    } catch (error) {
+      console.error('Error revoking API key:', error);
+      alert(`Error revoking API key: ${error.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 

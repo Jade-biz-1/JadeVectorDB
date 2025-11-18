@@ -104,6 +104,15 @@ export const vectorApi = {
     return handleResponse(response);
   },
 
+  // List vectors in a database with pagination
+  listVectors: async (databaseId, limit = 50, offset = 0) => {
+    const response = await fetch(`${API_BASE_URL}/databases/${databaseId}/vectors?limit=${limit}&offset=${offset}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
   // Get a vector by ID
   getVector: async (databaseId, vectorId) => {
     const response = await fetch(`${API_BASE_URL}/databases/${databaseId}/vectors/${vectorId}`, {
@@ -263,6 +272,58 @@ export const lifecycleApi = {
     const response = await fetch(`${API_BASE_URL}/databases/${databaseId}/lifecycle/status`, {
       method: 'GET',
       headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};
+
+// API Service for Authentication
+export const authApi = {
+  // Register new user
+  register: async (username, password, roles = ['user']) => {
+    const response = await fetch(`${API_BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: DEFAULT_HEADERS,
+      body: JSON.stringify({ username, password, roles }),
+    });
+    return handleResponse(response);
+  },
+
+  // Login
+  login: async (username, password) => {
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: DEFAULT_HEADERS,
+      body: JSON.stringify({ username, password }),
+    });
+    return handleResponse(response);
+  },
+
+  // Logout
+  logout: async () => {
+    const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  // Forgot password
+  forgotPassword: async (username, email) => {
+    const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+      method: 'POST',
+      headers: DEFAULT_HEADERS,
+      body: JSON.stringify({ username, email }),
+    });
+    return handleResponse(response);
+  },
+
+  // Reset password
+  resetPassword: async (token, newPassword) => {
+    const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+      method: 'POST',
+      headers: DEFAULT_HEADERS,
+      body: JSON.stringify({ token, newPassword }),
     });
     return handleResponse(response);
   },

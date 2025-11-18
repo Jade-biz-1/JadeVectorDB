@@ -61,6 +61,67 @@ export default function DatabaseManagement() {
     fetchDatabases();
   }, []);
 
+  // Edit database handler
+  const handleEditDatabase = (database) => {
+    setEditDatabase({
+      id: database.id,
+      name: database.name,
+      description: database.description,
+      vectorDimension: database.vectorDimension,
+      indexType: database.indexType || 'FLAT'
+    });
+    setEditModalOpen(true);
+  };
+
+  // Delete database handler
+  const handleDeleteDatabase = (database) => {
+    setDeleteDatabase(database);
+    setDeleteModalOpen(true);
+  };
+
+  // Update database handler
+  const handleUpdateDatabase = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const updateData = {
+        name: editDatabase.name,
+        description: editDatabase.description,
+        vectorDimension: parseInt(editDatabase.vectorDimension),
+        indexType: editDatabase.indexType
+      };
+
+      await databaseApi.updateDatabase(editDatabase.id, updateData);
+      setEditModalOpen(false);
+      fetchDatabases(); // Refresh the list
+      alert('Database updated successfully!');
+    } catch (error) {
+      console.error('Error updating database:', error);
+      alert(`Error updating database: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Confirm delete database handler
+  const confirmDeleteDatabase = async () => {
+    setLoading(true);
+
+    try {
+      await databaseApi.deleteDatabase(deleteDatabase.id);
+      setDeleteModalOpen(false);
+      setDeleteDatabase(null);
+      fetchDatabases(); // Refresh the list
+      alert('Database deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting database:', error);
+      alert(`Error deleting database: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Head>
