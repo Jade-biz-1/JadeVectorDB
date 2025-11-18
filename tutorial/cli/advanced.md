@@ -130,8 +130,8 @@ To avoid repeatedly typing your URL and API key, you can use environment variabl
 
 ### For Python CLI
 ```bash
-export JADE_DB_URL=http://localhost:8080
-export JADE_DB_API_KEY=mykey123
+export JADEVECTORDB_URL=http://localhost:8080
+export JADEVECTORDB_API_KEY=mykey123
 
 # Now you can run commands without specifying URL and key
 jade-db create-db --name env_db --dimension 4
