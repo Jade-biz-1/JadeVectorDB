@@ -1,3 +1,27 @@
+/*
+ * ===========================================================================
+ * DEPRECATION NOTICE - DO NOT USE THIS FILE FOR NEW DEVELOPMENT
+ * ===========================================================================
+ *
+ * This file (rest_api_simple.cpp) is DEPRECATED as of 2025-11-18.
+ *
+ * REASON: This simplified API implementation lacks critical production features:
+ *   - No authentication system (JWT, login, register)
+ *   - No user management (CRUD, roles, permissions)
+ *   - No API key management
+ *   - No security audit logging
+ *   - No monitoring endpoints (alerts, cluster, performance)
+ *
+ * REPLACEMENT: Use rest_api.cpp instead
+ *   rest_api.cpp has all endpoints from this file PLUS comprehensive
+ *   authentication, security, and monitoring features.
+ *
+ * MIGRATION: See REST_API_SIMPLE_DEPRECATED.md for migration guide
+ *
+ * This file will remain for reference but should not be used in production.
+ * ===========================================================================
+ */
+
 #include "rest_api.h"
 #include "lib/logging.h"
 #include "lib/config.h"

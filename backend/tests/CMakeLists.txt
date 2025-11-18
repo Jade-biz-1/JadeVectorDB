@@ -141,3 +141,59 @@ target_link_libraries(test_alert_service
 )
 
 add_test(NAME AlertServiceTest COMMAND test_alert_service)
+
+# Create test executable for authentication service
+add_executable(test_authentication_service
+    unit/test_authentication_service.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/authentication_service.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/security_audit_logger.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/error_handling.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/logging.cpp
+)
+
+target_link_libraries(test_authentication_service
+    GTest::gtest
+    GTest::gtest_main
+    Threads::Threads
+    ${CMAKE_DL_LIBS}
+)
+
+add_test(NAME AuthenticationServiceTest COMMAND test_authentication_service)
+
+# Create test executable for auth manager
+add_executable(test_auth_manager
+    unit/test_auth_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/auth.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/zero_trust.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/error_handling.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/logging.cpp
+)
+
+target_link_libraries(test_auth_manager
+    GTest::gtest
+    GTest::gtest_main
+    Threads::Threads
+    ${CMAKE_DL_LIBS}
+)
+
+add_test(NAME AuthManagerTest COMMAND test_auth_manager)
+
+# Create test executable for API key lifecycle
+add_executable(test_api_key_lifecycle
+    unit/test_api_key_lifecycle.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/authentication_service.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/security_audit_logger.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/auth.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/zero_trust.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/error_handling.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/logging.cpp
+)
+
+target_link_libraries(test_api_key_lifecycle
+    GTest::gtest
+    GTest::gtest_main
+    Threads::Threads
+    ${CMAKE_DL_LIBS}
+)
+
+add_test(NAME ApiKeyLifecycleTest COMMAND test_api_key_lifecycle)
