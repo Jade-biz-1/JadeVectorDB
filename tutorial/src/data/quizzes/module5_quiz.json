@@ -1,0 +1,169 @@
+{
+  "moduleId": "module5",
+  "moduleName": "Index Management",
+  "version": "1.0",
+  "passingScore": 70,
+  "timeLimit": null,
+  "questions": [
+    {
+      "id": "m5_q1",
+      "type": "multiple-choice",
+      "question": "What is the primary purpose of vector indexing?",
+      "points": 10,
+      "difficulty": "easy",
+      "options": [
+        "To speed up similarity search operations",
+        "To compress vector data",
+        "To encrypt vector values",
+        "To validate vector dimensions"
+      ],
+      "correctAnswer": 0,
+      "explanation": "Vector indexing creates data structures that enable fast approximate nearest neighbor search. Without indexing, finding similar vectors would require comparing against every vector in the database (linear scan).",
+      "hints": [
+        "Think about search performance",
+        "Consider the alternative to indexing",
+        "Review the indexing introduction section"
+      ]
+    },
+    {
+      "id": "m5_q2",
+      "type": "multiple-choice",
+      "question": "Which indexing algorithms does JadeVectorDB support?",
+      "points": 10,
+      "difficulty": "medium",
+      "multipleAnswers": true,
+      "options": [
+        "HNSW (Hierarchical Navigable Small World)",
+        "IVF (Inverted File Index)",
+        "LSH (Locality Sensitive Hashing)",
+        "B-Tree"
+      ],
+      "correctAnswer": [0, 1, 2],
+      "explanation": "JadeVectorDB supports HNSW, IVF, and LSH indexing algorithms. B-Tree is used for traditional database indexing but is not suitable for high-dimensional vector similarity search.",
+      "hints": [
+        "Multiple answers may be correct",
+        "Think about vector-specific indexing methods",
+        "Review the supported algorithms section"
+      ]
+    },
+    {
+      "id": "m5_q3",
+      "type": "true-false",
+      "question": "HNSW provides faster search than IVF but uses more memory.",
+      "points": 10,
+      "difficulty": "medium",
+      "correctAnswer": true,
+      "explanation": "HNSW typically provides the fastest search performance but requires more memory due to its graph-based structure. IVF uses less memory but may be slightly slower for queries.",
+      "hints": [
+        "Think about the trade-offs between algorithms",
+        "Review the algorithm comparison section",
+        "Consider space vs time complexity"
+      ]
+    },
+    {
+      "id": "m5_q4",
+      "type": "code-challenge",
+      "question": "Complete the HNSW index configuration with M=32 and efConstruction=400.",
+      "points": 15,
+      "difficulty": "medium",
+      "codeTemplate": "const db = await client.createDatabase({\n  name: 'my-db',\n  vectorDimension: 768,\n  indexType: 'HNSW',\n  indexParameters: {\n    // Complete the HNSW parameters\n    M: 0,\n    efConstruction: 0\n  }\n});",
+      "correctAnswer": {
+        "M": 32,
+        "efConstruction": 400
+      },
+      "testCases": [
+        {
+          "description": "M should be 32",
+          "validate": "params.indexParameters.M === 32"
+        },
+        {
+          "description": "efConstruction should be 400",
+          "validate": "params.indexParameters.efConstruction === 400"
+        }
+      ],
+      "explanation": "HNSW parameters include M (number of connections per layer) and efConstruction (size of dynamic candidate list during construction). Higher values improve accuracy but increase build time and memory usage.",
+      "hints": [
+        "The parameter values are given in the question",
+        "M and efConstruction are the key HNSW parameters",
+        "Review the HNSW configuration examples"
+      ]
+    },
+    {
+      "id": "m5_q5",
+      "type": "multiple-choice",
+      "question": "What does the efSearch parameter control in HNSW?",
+      "points": 10,
+      "difficulty": "hard",
+      "options": [
+        "The size of the candidate list during search (affects accuracy/speed trade-off)",
+        "The number of results to return",
+        "The maximum vector dimension supported",
+        "The memory allocated for the index"
+      ],
+      "correctAnswer": 0,
+      "explanation": "efSearch controls the size of the dynamic candidate list during search queries. Higher values improve accuracy but make searches slower. It's a runtime parameter that can be adjusted per query.",
+      "hints": [
+        "Think about query-time parameters",
+        "Consider accuracy vs speed trade-offs",
+        "Review the HNSW search parameters section"
+      ]
+    },
+    {
+      "id": "m5_q6",
+      "type": "true-false",
+      "question": "You can change index parameters after the database has been created and populated.",
+      "points": 10,
+      "difficulty": "medium",
+      "correctAnswer": false,
+      "explanation": "Index parameters like M and efConstruction cannot be changed after database creation without rebuilding the index. However, search-time parameters like efSearch can be adjusted per query.",
+      "hints": [
+        "Think about the index building process",
+        "Consider what would need to happen to change these parameters",
+        "Review the index configuration section"
+      ]
+    },
+    {
+      "id": "m5_q7",
+      "type": "multiple-choice",
+      "question": "Which index type is best for extremely high-dimensional vectors (>1000 dimensions)?",
+      "points": 10,
+      "difficulty": "hard",
+      "options": [
+        "LSH (Locality Sensitive Hashing)",
+        "HNSW",
+        "IVF",
+        "No indexing (linear scan)"
+      ],
+      "correctAnswer": 0,
+      "explanation": "LSH is particularly effective for very high-dimensional spaces where other algorithms may struggle with the 'curse of dimensionality'. It uses hash functions to group similar vectors together.",
+      "hints": [
+        "Think about the curse of dimensionality",
+        "Consider which algorithm is dimension-agnostic",
+        "Review the LSH section"
+      ]
+    },
+    {
+      "id": "m5_q8",
+      "type": "code-challenge",
+      "question": "Complete the IVF index configuration with 100 clusters (nlist).",
+      "points": 15,
+      "difficulty": "medium",
+      "codeTemplate": "const db = await client.createDatabase({\n  name: 'my-db',\n  vectorDimension: 384,\n  indexType: 'IVF',\n  indexParameters: {\n    // Complete the IVF parameters\n    nlist: 0\n  }\n});",
+      "correctAnswer": {
+        "nlist": 100
+      },
+      "testCases": [
+        {
+          "description": "nlist should be 100",
+          "validate": "params.indexParameters.nlist === 100"
+        }
+      ],
+      "explanation": "The nlist parameter in IVF specifies the number of clusters (voronoi cells) to create. More clusters can improve accuracy but increase memory usage and index build time.",
+      "hints": [
+        "The nlist value is given in the question",
+        "nlist is the key IVF parameter for number of clusters",
+        "Review the IVF configuration examples"
+      ]
+    }
+  ]
+}

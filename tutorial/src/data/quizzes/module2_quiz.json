@@ -1,0 +1,170 @@
+{
+  "moduleId": "module2",
+  "moduleName": "Vector Manipulation",
+  "version": "1.0",
+  "passingScore": 70,
+  "timeLimit": null,
+  "questions": [
+    {
+      "id": "m2_q1",
+      "type": "multiple-choice",
+      "question": "Which CRUD operations are supported for vectors in JadeVectorDB?",
+      "points": 10,
+      "difficulty": "easy",
+      "multipleAnswers": true,
+      "options": [
+        "Create (Store)",
+        "Read (Retrieve)",
+        "Update",
+        "Delete"
+      ],
+      "correctAnswer": [0, 1, 2, 3],
+      "explanation": "JadeVectorDB supports all CRUD operations: Create/Store for adding new vectors, Read/Retrieve for fetching vectors, Update for modifying existing vectors, and Delete for removing vectors.",
+      "hints": [
+        "All standard database operations should be available",
+        "CRUD stands for Create, Read, Update, Delete",
+        "Review the vector manipulation section"
+      ]
+    },
+    {
+      "id": "m2_q2",
+      "type": "code-challenge",
+      "question": "Complete the code to retrieve a vector by its ID 'user-123'.",
+      "points": 15,
+      "difficulty": "easy",
+      "codeTemplate": "const vector = await client.getVector({\n  // Complete the parameters\n  vectorId: ''\n});",
+      "correctAnswer": {
+        "vectorId": "user-123"
+      },
+      "testCases": [
+        {
+          "description": "Vector ID should be 'user-123'",
+          "validate": "params.vectorId === 'user-123'"
+        }
+      ],
+      "explanation": "To retrieve a vector by ID, use the getVector method with the vectorId parameter. This returns the complete vector including its values and metadata.",
+      "hints": [
+        "The vector ID is provided in the question",
+        "The parameter name is vectorId",
+        "Review the retrieve vector example"
+      ]
+    },
+    {
+      "id": "m2_q3",
+      "type": "true-false",
+      "question": "Batch operations are more efficient than individual operations when working with multiple vectors.",
+      "points": 10,
+      "difficulty": "easy",
+      "correctAnswer": true,
+      "explanation": "Batch operations are significantly more efficient because they reduce network overhead, enable database optimizations, and process multiple vectors in a single transaction.",
+      "hints": [
+        "Think about network and processing overhead",
+        "Consider how databases optimize bulk operations",
+        "Review the batch operations section"
+      ]
+    },
+    {
+      "id": "m2_q4",
+      "type": "code-challenge",
+      "question": "Complete the code to update a vector's metadata, adding a new tag 'verified'.",
+      "points": 15,
+      "difficulty": "medium",
+      "codeTemplate": "const result = await client.updateVector({\n  vectorId: 'doc-456',\n  // Add the metadata update\n  metadata: {\n  }\n});",
+      "correctAnswer": {
+        "vectorId": "doc-456",
+        "metadata": {
+          "tags": ["verified"]
+        }
+      },
+      "testCases": [
+        {
+          "description": "Metadata should include tags array with 'verified'",
+          "validate": "update.metadata.tags && update.metadata.tags.includes('verified')"
+        }
+      ],
+      "explanation": "When updating a vector, you can modify its metadata by providing new metadata fields. The update operation can modify metadata while keeping the vector values unchanged.",
+      "hints": [
+        "Metadata is an object that can contain arrays",
+        "Tags are typically stored as an array of strings",
+        "Review the update vector example"
+      ]
+    },
+    {
+      "id": "m2_q5",
+      "type": "multiple-choice",
+      "question": "What happens when you try to store a vector with a dimension that doesn't match the database configuration?",
+      "points": 10,
+      "difficulty": "medium",
+      "options": [
+        "The operation fails with a validation error",
+        "The vector is automatically padded with zeros",
+        "The vector is automatically truncated to fit",
+        "A new database is created automatically"
+      ],
+      "correctAnswer": 0,
+      "explanation": "JadeVectorDB validates that all vectors match the configured dimension. If the dimension doesn't match, the operation fails with a validation error to maintain data integrity.",
+      "hints": [
+        "Think about data integrity requirements",
+        "Remember that dimension must be consistent",
+        "Review the validation section"
+      ]
+    },
+    {
+      "id": "m2_q6",
+      "type": "code-challenge",
+      "question": "Complete the code to delete a vector with ID 'temp-001'.",
+      "points": 15,
+      "difficulty": "easy",
+      "codeTemplate": "const result = await client.deleteVector({\n  // Complete the parameters\n  vectorId: ''\n});",
+      "correctAnswer": {
+        "vectorId": "temp-001"
+      },
+      "testCases": [
+        {
+          "description": "Vector ID should be 'temp-001'",
+          "validate": "params.vectorId === 'temp-001'"
+        }
+      ],
+      "explanation": "To delete a vector, use the deleteVector method with the vectorId parameter. This permanently removes the vector and its metadata from the database.",
+      "hints": [
+        "The vector ID is provided in the question",
+        "Use the deleteVector method",
+        "Review the delete vector example"
+      ]
+    },
+    {
+      "id": "m2_q7",
+      "type": "multiple-choice",
+      "question": "When performing batch vector storage, what is the recommended batch size for optimal performance?",
+      "points": 10,
+      "difficulty": "medium",
+      "options": [
+        "10-50 vectors per batch",
+        "100-1000 vectors per batch",
+        "10,000+ vectors per batch",
+        "It doesn't matter, use any size"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The recommended batch size is 100-1000 vectors per batch. This balances network efficiency with memory usage. Smaller batches waste network overhead, while very large batches may exceed memory limits or timeout constraints.",
+      "hints": [
+        "Consider both network efficiency and memory constraints",
+        "Review the batch operations best practices",
+        "Think about what's practical for most use cases"
+      ]
+    },
+    {
+      "id": "m2_q8",
+      "type": "true-false",
+      "question": "You can change a vector's dimension after it has been stored in the database.",
+      "points": 10,
+      "difficulty": "easy",
+      "correctAnswer": false,
+      "explanation": "You cannot change a vector's dimension after storage. All vectors in a database must have the same dimension as configured during database creation. To use a different dimension, you need to create a new database.",
+      "hints": [
+        "Think about the database dimension constraint",
+        "Review the database configuration section",
+        "Consider why consistent dimensions are important"
+      ]
+    }
+  ]
+}
