@@ -88,18 +88,34 @@ class JadeVectorDB:
     def get_database(self, database_id: str) -> Dict:
         """
         Get information about a specific database
-        
+
         :param database_id: ID of the database to retrieve
         :return: Database information
         """
         url = f"{self.base_url}/v1/databases/{database_id}"
-        
+
         response = self.session.get(url)
-        
+
         if response.status_code == 200:
             return response.json()
         else:
             raise JadeVectorDBError(f"Failed to get database: {response.text}")
+
+    def delete_database(self, database_id: str) -> bool:
+        """
+        Delete a database
+
+        :param database_id: ID of the database to delete
+        :return: True if successful
+        """
+        url = f"{self.base_url}/v1/databases/{database_id}"
+
+        response = self.session.delete(url)
+
+        if response.status_code == 200:
+            return True
+        else:
+            raise JadeVectorDBError(f"Failed to delete database: {response.text}")
     
     def list_databases(self) -> List[Dict]:
         """
