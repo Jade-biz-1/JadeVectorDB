@@ -132,9 +132,19 @@ All implementations accept these common parameters:
 
 ### Environment Variables
 
-The JavaScript CLI supports these environment variables:
-- `JADE_DB_URL` - Sets the default API URL
-- `JADE_DB_API_KEY` - Sets the default API key
+All CLIs support these environment variables:
+- `JADEVECTORDB_URL` - Sets the default API URL (default: http://localhost:8080)
+- `JADEVECTORDB_API_KEY` - Sets the default API key
+
+**Shell CLI only**:
+- `JADEVECTORDB_DATABASE_ID` - Sets the default database ID for vector operations
+
+**Example usage**:
+```bash
+export JADEVECTORDB_URL="http://localhost:8080"
+export JADEVECTORDB_API_KEY="your-api-key"
+jade-db list-dbs  # No need to specify --url or --api-key
+```
 
 ### API Endpoints
 
@@ -187,12 +197,43 @@ To contribute to any CLI implementation:
 3. Update examples and documentation as needed
 4. Ensure all implementations provide consistent functionality
 
+## Tutorial Examples
+
+JadeVectorDB provides ready-to-run executable tutorial scripts in `/tutorial/cli/examples/`:
+
+### Quick Start (quick-start.sh)
+- **Duration**: 2 minutes
+- **Level**: Beginner
+- Covers: Database creation, vector storage, retrieval, and search
+- **Run**: `cd tutorial/cli/examples && ./quick-start.sh`
+
+### Batch Import (batch-import.py)
+- **Duration**: 5 minutes
+- **Level**: Intermediate
+- Covers: High-performance batch operations (1,000 vectors)
+- **Run**: `cd tutorial/cli/examples && ./batch-import.py`
+
+### Workflow Demo (workflow-demo.sh)
+- **Duration**: 5-10 minutes
+- **Level**: Intermediate
+- Covers: Multi-database management, cross-database operations
+- **Run**: `cd tutorial/cli/examples && ./workflow-demo.sh`
+
+### Product Search Demo (product-search-demo.sh)
+- **Duration**: 10 minutes
+- **Level**: Advanced
+- Covers: Real-world e-commerce recommendation system
+- **Run**: `cd tutorial/cli/examples && ./product-search-demo.sh`
+
+See `/tutorial/cli/examples/README.md` for detailed information on each example.
+
 ## Getting Help
 
 For help with any CLI implementation:
 - Use the `--help` flag for command-specific help
 - Check the examples in the `/examples/cli/` directory
-- Look at the tutorials in the `/tutorials/cli/` directory
+- Try the tutorial scripts in `/tutorial/cli/examples/` directory
+- Review the tutorials in `/tutorial/cli/` directory (basics.md, advanced.md)
 - Refer to the API documentation for endpoint details
 
 ## Troubleshooting

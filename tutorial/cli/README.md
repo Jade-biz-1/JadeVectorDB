@@ -26,6 +26,16 @@ Continue here after completing the basics tutorial to learn about:
 
 [Start the Advanced Tutorial](./advanced.md)
 
+### 3. Executable Examples
+Ready to run? Try our hands-on executable examples:
+
+- Quick Start - 2-minute beginner-friendly introduction
+- Batch Import - Import 1,000 vectors with performance metrics
+- Workflow Demo - Complete multi-database workflow
+- Product Search - Real-world recommendation system
+
+[Explore Executable Examples](./examples/README.md)
+
 ## Prerequisites
 
 Before starting these tutorials, you'll need:
