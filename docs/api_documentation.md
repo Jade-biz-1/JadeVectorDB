@@ -6,12 +6,238 @@ The JadeVectorDB API provides programmatic access to vector database operations 
 
 ## Authentication
 
-All API requests require an API key to be included in the Authorization header:
+All API requests require authentication using either a JWT token or an API key in the Authorization header:
 
 ```
-Authorization: Bearer {api-key}
+Authorization: Bearer {jwt-token}
 # or
-Authorization: ApiKey {api-key}
+Authorization: Bearer {api-key}
+```
+
+### Authentication Endpoints
+
+#### POST /v1/auth/register
+- **Description**: Register a new user account
+- **Authentication**: Not required
+- **Request Body**:
+```json
+{
+  "username": "string",
+  "password": "string",
+  "email": "string (optional)",
+  "roles": ["string"] (optional, defaults to ["user"])
+}
+```
+- **Response** (201 Created):
+```json
+{
+  "success": true,
+  "userId": "string",
+  "username": "string",
+  "message": "User registered successfully"
+}
+```
+
+#### POST /v1/auth/login
+- **Description**: Authenticate user and receive JWT token
+- **Authentication**: Not required
+- **Request Body**:
+```json
+{
+  "username": "string",
+  "password": "string"
+}
+```
+- **Response** (200 OK):
+```json
+{
+  "success": true,
+  "userId": "string",
+  "username": "string",
+  "token": "string (JWT token)",
+  "expiresAt": "integer (Unix timestamp)",
+  "message": "Login successful"
+}
+```
+
+#### POST /v1/auth/logout
+- **Description**: Revoke current JWT token and end session
+- **Authentication**: Required (Bearer token)
+- **Response** (200 OK):
+```json
+{
+  "success": true,
+  "message": "Logout successful"
+}
+```
+
+#### POST /v1/auth/forgot-password
+- **Description**: Request password reset token
+- **Authentication**: Not required
+- **Request Body**:
+```json
+{
+  "email": "string (or username)"
+}
+```
+- **Response** (200 OK):
+```json
+{
+  "success": true,
+  "message": "If the account exists, a password reset link has been sent"
+}
+```
+
+#### POST /v1/auth/reset-password
+- **Description**: Reset password using reset token
+- **Authentication**: Not required
+- **Request Body**:
+```json
+{
+  "token": "string (reset token)",
+  "newPassword": "string"
+}
+```
+- **Response** (200 OK):
+```json
+{
+  "success": true,
+  "message": "Password reset successfully"
+}
+```
+
+### User Management Endpoints
+
+#### GET /v1/users
+- **Description**: List all users (admin only)
+- **Authentication**: Required (admin role)
+- **Response** (200 OK):
+```json
+{
+  "success": true,
+  "users": [
+    {
+      "userId": "string",
+      "username": "string",
+      "email": "string",
+      "roles": ["string"],
+      "status": "active|inactive",
+      "createdAt": "timestamp",
+      "lastLogin": "timestamp"
+    }
+  ],
+  "count": "integer"
+}
+```
+
+#### POST /v1/users
+- **Description**: Create new user (admin only)
+- **Authentication**: Required (admin role)
+- **Request Body**:
+```json
+{
+  "username": "string",
+  "password": "string",
+  "email": "string",
+  "roles": ["string"]
+}
+```
+- **Response** (201 Created):
+```json
+{
+  "success": true,
+  "userId": "string",
+  "username": "string",
+  "message": "User created successfully"
+}
+```
+
+#### PUT /v1/users/{userId}
+- **Description**: Update user details
+- **Authentication**: Required (admin or own account)
+- **Request Body**:
+```json
+{
+  "email": "string (optional)",
+  "roles": ["string"] (optional, admin only),
+  "status": "string (optional, admin only)"
+}
+```
+- **Response** (200 OK):
+```json
+{
+  "success": true,
+  "message": "User updated successfully"
+}
+```
+
+#### DELETE /v1/users/{userId}
+- **Description**: Delete user account
+- **Authentication**: Required (admin only)
+- **Response** (200 OK):
+```json
+{
+  "success": true,
+  "message": "User deleted successfully"
+}
+```
+
+### API Key Management Endpoints
+
+#### GET /v1/apikeys
+- **Description**: List all API keys for authenticated user
+- **Authentication**: Required (Bearer token)
+- **Response** (200 OK):
+```json
+{
+  "success": true,
+  "apiKeys": [
+    {
+      "keyId": "string",
+      "name": "string",
+      "description": "string",
+      "permissions": ["string"],
+      "createdAt": "timestamp",
+      "lastUsed": "timestamp",
+      "status": "active|revoked"
+    }
+  ],
+  "count": "integer"
+}
+```
+
+#### POST /v1/apikeys
+- **Description**: Create new API key
+- **Authentication**: Required (Bearer token)
+- **Request Body**:
+```json
+{
+  "userId": "string",
+  "description": "string (optional)",
+  "permissions": ["string"] (optional)
+}
+```
+- **Response** (201 Created):
+```json
+{
+  "success": true,
+  "apiKey": "string (the actual key - save this!)",
+  "keyId": "string",
+  "message": "API key created successfully"
+}
+```
+
+**Note**: The API key is only returned once during creation. Store it securely.
+
+#### DELETE /v1/apikeys/{keyId}
+- **Description**: Revoke an API key
+- **Authentication**: Required (Bearer token or admin)
+- **Response** (200 OK):
+```json
+{
+  "success": true,
+  "message": "API key revoked successfully"
+}
 ```
 
 ## API Endpoints
