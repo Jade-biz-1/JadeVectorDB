@@ -146,54 +146,103 @@ Perform similarity search with the specified algorithm and parameters.
 **Request Body:**
 ```json
 {
-  "queryVector": [0.1, 0.2, 0.3, ...],
-  "topK": 10,
-  "threshold": 0.7,
-  "includeMetadata": true,
-  "includeVectorData": false,
-  "filters": {
-    // Filter conditions here
-  }
+  "queryVector": [0.1, 0.2, 0.3, ...],   // Array of floats representing the query vector
+  "topK": 10,                             // Number of most similar vectors to return (default: 10)
+  "threshold": 0.7,                       // Minimum similarity score threshold (default: 0.0)
+  "includeMetadata": true,                // Include vector metadata in results (default: false)
+  "includeVectorData": false              // Include vector values in results (default: false)
 }
 ```
 
-**Response:**
+**Response (200 OK):**
 ```json
-[
-  {
-    "vectorId": "string",
-    "similarityScore": float,
-    "vector": {  // Included if includeVectorData is true
-      "id": "string",
-      "values": [float],
-      "metadata": {}
+{
+  "results": [
+    {
+      "vectorId": "string",              // ID of the matching vector
+      "similarityScore": 0.95,           // Similarity score (0.0 to 1.0 for cosine similarity)
+      "vector": {                        // Included based on request parameters
+        "id": "string",                  // Vector ID
+        "values": [0.1, 0.2, ...],       // Vector values (only if includeVectorData is true)
+        "metadata": {                    // Vector metadata (only if includeMetadata is true)
+          "category": "string",
+          "tags": ["tag1", "tag2"],
+          "owner": "string",
+          "custom_field": "value"
+        }
+      }
     }
-  }
-]
+  ],
+  "count": 10                            // Number of results returned
+}
 ```
+
+**Notes:**
+- Results are ordered by similarity score (highest first)
+- The `vector` object structure depends on `includeMetadata` and `includeVectorData` parameters
+- Similarity scores range from 0.0 (least similar) to 1.0 (most similar) for cosine similarity
+- For euclidean distance, lower scores indicate higher similarity
 
 ### POST /v1/databases/{databaseId}/search/advanced
 
-Perform similarity search with advanced filtering capabilities.
+Perform similarity search with advanced metadata filtering capabilities.
 
 **Request Body:**
 ```json
 {
-  "queryVector": [0.1, 0.2, 0.3, ...],
-  "topK": 10,
-  "threshold": 0.7,
-  "filters": {
-    "combination": "AND",  // "AND" or "OR"
+  "queryVector": [0.1, 0.2, 0.3, ...],   // Array of floats representing the query vector
+  "topK": 10,                             // Number of most similar vectors to return (default: 10)
+  "threshold": 0.7,                       // Minimum similarity score threshold (default: 0.0)
+  "includeMetadata": true,                // Include vector metadata in results (default: false)
+  "includeVectorData": false,             // Include vector values in results (default: false)
+  "filters": {                            // Optional metadata filters
+    "combination": "AND",                 // Combine conditions with "AND" or "OR" (default: "AND")
     "conditions": [
       {
-        "field": "metadata.category",
-        "op": "EQUALS",
-        "value": "technology"
+        "field": "metadata.category",    // Metadata field to filter on
+        "op": "EQUALS",                   // Filter operator (EQUALS, NOT_EQUALS, GREATER_THAN, etc.)
+        "value": "technology"             // Value to match
+      },
+      {
+        "field": "metadata.score",
+        "op": "GREATER_THAN",
+        "value": "0.7"
       }
     ]
   }
 }
 ```
+
+**Response (200 OK):**
+```json
+{
+  "results": [
+    {
+      "vectorId": "string",              // ID of the matching vector
+      "similarityScore": 0.95,           // Similarity score (0.0 to 1.0 for cosine similarity)
+      "vector": {                        // Included based on request parameters
+        "id": "string",                  // Vector ID
+        "values": [0.1, 0.2, ...],       // Vector values (only if includeVectorData is true)
+        "metadata": {                    // Vector metadata (only if includeMetadata is true)
+          "category": "technology",      // Matches filter condition
+          "score": 0.85,                 // Matches filter condition
+          "tags": ["ai", "ml"],
+          "owner": "user123"
+        }
+      }
+    }
+  ],
+  "count": 10,                           // Number of results returned
+  "filtersApplied": true                 // Indicates whether filters were applied
+}
+```
+
+**Notes:**
+- Results are first filtered by metadata conditions, then ranked by similarity score
+- Filters are applied before similarity search for better performance
+- Multiple conditions can be combined with AND/OR logic
+- Filter values are always strings and are type-coerced when comparing
+- Available operators: EQUALS, NOT_EQUALS, GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL, IN, NOT_IN
 
 ## Best Practices
 
