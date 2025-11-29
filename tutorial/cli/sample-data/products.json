@@ -1,0 +1,82 @@
+[
+  {
+    "id": "laptop_001",
+    "name": "UltraBook Pro 15",
+    "category": "laptop",
+    "brand": "TechCorp",
+    "price": 1299.99,
+    "in_stock": true,
+    "tags": ["premium", "portable", "business"],
+    "embedding": [0.85, 0.12, 0.22, 0.78, 0.65, 0.43, 0.91, 0.33]
+  },
+  {
+    "id": "laptop_002",
+    "name": "PowerBook Air 13",
+    "category": "laptop",
+    "brand": "TechCorp",
+    "price": 999.99,
+    "in_stock": true,
+    "tags": ["affordable", "lightweight", "student"],
+    "embedding": [0.82, 0.15, 0.25, 0.75, 0.62, 0.41, 0.88, 0.31]
+  },
+  {
+    "id": "phone_001",
+    "name": "SmartPhone X Pro",
+    "category": "phone",
+    "brand": "MobilePlus",
+    "price": 899.99,
+    "in_stock": false,
+    "tags": ["flagship", "camera", "5G"],
+    "embedding": [0.15, 0.87, 0.92, 0.21, 0.48, 0.76, 0.33, 0.81]
+  },
+  {
+    "id": "phone_002",
+    "name": "SmartPhone Lite",
+    "category": "phone",
+    "brand": "MobilePlus",
+    "price": 449.99,
+    "in_stock": true,
+    "tags": ["budget", "reliable", "long-battery"],
+    "embedding": [0.18, 0.83, 0.88, 0.25, 0.45, 0.72, 0.35, 0.78]
+  },
+  {
+    "id": "tablet_001",
+    "name": "Tablet Pro 12",
+    "category": "tablet",
+    "brand": "TechCorp",
+    "price": 749.99,
+    "in_stock": true,
+    "tags": ["pro", "stylus", "creative"],
+    "embedding": [0.62, 0.55, 0.48, 0.72, 0.81, 0.59, 0.67, 0.54]
+  },
+  {
+    "id": "tablet_002",
+    "name": "Tablet Mini 8",
+    "category": "tablet",
+    "brand": "TechCorp",
+    "price": 349.99,
+    "in_stock": true,
+    "tags": ["compact", "reading", "entertainment"],
+    "embedding": [0.58, 0.52, 0.45, 0.68, 0.77, 0.56, 0.63, 0.51]
+  },
+  {
+    "id": "watch_001",
+    "name": "SmartWatch Elite",
+    "category": "wearable",
+    "brand": "MobilePlus",
+    "price": 399.99,
+    "in_stock": true,
+    "tags": ["fitness", "health", "notifications"],
+    "embedding": [0.32, 0.68, 0.73, 0.41, 0.55, 0.82, 0.29, 0.71]
+  },
+  {
+    "id": "headphones_001",
+    "name": "AudioMax Pro",
+    "category": "audio",
+    "brand": "SoundTech",
+    "price": 279.99,
+    "in_stock": true,
+    "tags": ["noise-canceling", "wireless", "premium"],
+    "embedding": [0.45, 0.38, 0.51, 0.62, 0.43, 0.71, 0.58, 0.39]
+  }
+]

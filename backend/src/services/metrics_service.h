@@ -2,6 +2,8 @@
 #define JADEVECTORDB_METRICS_SERVICE_H
 
 #include "lib/metrics.h"
+#include "lib/error_handling.h"
+#include "lib/logging.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -11,26 +13,22 @@
 
 namespace jadevectordb {
 
-// Type of metric
-enum class MetricType {
-    COUNTER,      // Monotonically increasing value
-    GAUGE,        // Instantaneous value that can go up or down
-    HISTOGRAM,    // Distribution of observations
-    SUMMARY       // Percentile summaries
-};
+// Note: MetricType enum and Metric class are defined in lib/metrics.h
+// We use those definitions here to avoid duplication
 
-// Represents a metric
-struct Metric {
+// Simple metric record for service-level tracking
+struct MetricRecord {
     std::string name;
     std::string description;
     MetricType type;
-    std::unordered_map<std::string, std::string> labels;  // Key-value pairs for metric dimensions
+    std::map<std::string, std::string> labels;
     double value;
     std::chrono::system_clock::time_point timestamp;
-    
-    Metric() : type(MetricType::GAUGE), value(0.0) {}
-    Metric(const std::string& n, const std::string& desc, MetricType t)
-        : name(n), description(desc), type(t), value(0.0), 
+
+    MetricRecord() : type(MetricType::GAUGE), value(0.0),
+                     timestamp(std::chrono::system_clock::now()) {}
+    MetricRecord(const std::string& n, const std::string& desc, MetricType t)
+        : name(n), description(desc), type(t), value(0.0),
           timestamp(std::chrono::system_clock::now()) {}
 };
 
@@ -60,10 +58,10 @@ class MetricsService {
 private:
     std::shared_ptr<logging::Logger> logger_;
     MetricsConfig config_;
-    std::vector<Metric> metrics_history_;         // Time-series history of metrics
-    std::unordered_map<std::string, Metric> current_metrics_;  // Current values by name
+    std::vector<MetricRecord> metrics_history_;         // Time-series history of metrics
+    std::unordered_map<std::string, MetricRecord> current_metrics_;  // Current values by name
     std::mutex metrics_mutex_;
-    
+
     std::chrono::system_clock::time_point service_start_time_;
     
 public:
@@ -97,20 +95,20 @@ public:
     Result<double> get_metric_value(const std::string& name) const;
     
     // Get current metric with all details
-    Result<Metric> get_metric(const std::string& name) const;
+    Result<MetricRecord> get_metric(const std::string& name) const;
     
     // Get all current metrics
-    Result<std::vector<Metric>> get_all_metrics() const;
+    Result<std::vector<MetricRecord>> get_all_metrics() const;
     
     // Get metrics by type
-    Result<std::vector<Metric>> get_metrics_by_type(MetricType type) const;
+    Result<std::vector<MetricRecord>> get_metrics_by_type(MetricType type) const;
     
     // Get metrics by label
-    Result<std::vector<Metric>> get_metrics_by_label(const std::string& label_key, 
+    Result<std::vector<MetricRecord>> get_metrics_by_label(const std::string& label_key, 
                                                    const std::string& label_value) const;
     
     // Get metrics by name pattern (supports simple wildcards)
-    Result<std::vector<Metric>> get_metrics_by_name_pattern(const std::string& pattern) const;
+    Result<std::vector<MetricRecord>> get_metrics_by_name_pattern(const std::string& pattern) const;
     
     // Export metrics in the configured format
     Result<std::string> export_metrics() const;
@@ -122,10 +120,10 @@ public:
     Result<std::string> export_json_format() const;
     
     // Get metrics history for the last N minutes
-    Result<std::vector<Metric>> get_metrics_history_minutes(int minutes) const;
+    Result<std::vector<MetricRecord>> get_metrics_history_minutes(int minutes) const;
     
     // Get metrics history for the last N hours
-    Result<std::vector<Metric>> get_metrics_history_hours(int hours) const;
+    Result<std::vector<MetricRecord>> get_metrics_history_hours(int hours) const;
     
     // Clean up old metrics based on retention policy
     Result<bool> cleanup_old_metrics();
@@ -168,10 +166,10 @@ private:
     void set_service_start_time();
     
     // Generate standard system metrics
-    Result<std::vector<Metric>> generate_system_metrics() const;
+    Result<std::vector<MetricRecord>> generate_system_metrics() const;
     
     // Generate standard application metrics
-    Result<std::vector<Metric>> generate_application_metrics() const;
+    Result<std::vector<MetricRecord>> generate_application_metrics() const;
 };
 
 } // namespace jadevectordb

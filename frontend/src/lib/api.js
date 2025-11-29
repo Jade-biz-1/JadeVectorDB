@@ -454,3 +454,216 @@ export const performanceApi = {
     return handleResponse(response);
   },
 };
+
+// API Service for Authentication (T219 - Authentication handlers)
+export const authApi = {
+  // Register a new user
+  register: async (username, password, email = '', roles = []) => {
+    const response = await fetch(`${API_BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: DEFAULT_HEADERS,
+      body: JSON.stringify({ username, password, email, roles }),
+    });
+    return handleResponse(response);
+  },
+
+  // Login with username and password
+  login: async (username, password) => {
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: DEFAULT_HEADERS,
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await handleResponse(response);
+    // Store the token in localStorage
+    if (data.token) {
+      localStorage.setItem('jadevectordb_auth_token', data.token);
+      localStorage.setItem('jadevectordb_user_id', data.user_id);
+      localStorage.setItem('jadevectordb_username', data.username);
+    }
+    return data;
+  },
+
+  // Logout
+  logout: async () => {
+    const token = localStorage.getItem('jadevectordb_auth_token');
+    if (!token) {
+      throw new Error('No auth token found');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+      method: 'POST',
+      headers: {
+        ...DEFAULT_HEADERS,
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    // Clear local storage regardless of response
+    localStorage.removeItem('jadevectordb_auth_token');
+    localStorage.removeItem('jadevectordb_user_id');
+    localStorage.removeItem('jadevectordb_username');
+    localStorage.removeItem('jadevectordb_api_key');
+
+    return handleResponse(response);
+  },
+
+  // Forgot password (request reset)
+  forgotPassword: async (username, email) => {
+    const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+      method: 'POST',
+      headers: DEFAULT_HEADERS,
+      body: JSON.stringify({ username, email }),
+    });
+    return handleResponse(response);
+  },
+
+  // Reset password with token
+  resetPassword: async (user_id, reset_token, new_password) => {
+    const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+      method: 'POST',
+      headers: DEFAULT_HEADERS,
+      body: JSON.stringify({ user_id, reset_token, new_password }),
+    });
+    return handleResponse(response);
+  },
+
+  // Check if user is authenticated
+  isAuthenticated: () => {
+    const token = localStorage.getItem('jadevectordb_auth_token');
+    return !!token;
+  },
+
+  // Get current user info from localStorage
+  getCurrentUser: () => {
+    return {
+      user_id: localStorage.getItem('jadevectordb_user_id'),
+      username: localStorage.getItem('jadevectordb_username'),
+      token: localStorage.getItem('jadevectordb_auth_token'),
+    };
+  },
+};
+
+// API Service for User Management (T220 - User management handlers)
+// Updated to match backend endpoints
+export const usersApi = {
+  // Create a new user (admin function)
+  createUser: async (username, password, email = '', roles = []) => {
+    const token = localStorage.getItem('jadevectordb_auth_token');
+    const response = await fetch(`${API_BASE_URL}/users`, {
+      method: 'POST',
+      headers: {
+        ...DEFAULT_HEADERS,
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ username, password, email, roles }),
+    });
+    return handleResponse(response);
+  },
+
+  // List all users
+  listUsers: async (limit = 100, offset = 0) => {
+    const token = localStorage.getItem('jadevectordb_auth_token');
+    const response = await fetch(`${API_BASE_URL}/users?limit=${limit}&offset=${offset}`, {
+      method: 'GET',
+      headers: {
+        ...DEFAULT_HEADERS,
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return handleResponse(response);
+  },
+
+  // Get user details
+  getUser: async (userId) => {
+    const token = localStorage.getItem('jadevectordb_auth_token');
+    const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+      method: 'GET',
+      headers: {
+        ...DEFAULT_HEADERS,
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return handleResponse(response);
+  },
+
+  // Update user
+  updateUser: async (userId, updateData) => {
+    const token = localStorage.getItem('jadevectordb_auth_token');
+    const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+      method: 'PUT',
+      headers: {
+        ...DEFAULT_HEADERS,
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(updateData),
+    });
+    return handleResponse(response);
+  },
+
+  // Delete user
+  deleteUser: async (userId) => {
+    const token = localStorage.getItem('jadevectordb_auth_token');
+    const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+      method: 'DELETE',
+      headers: {
+        ...DEFAULT_HEADERS,
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return handleResponse(response);
+  },
+};
+
+// API Service for API Key Management (T221 - API key management)
+// Updated to match backend endpoints
+export const apiKeysApi = {
+  // Create a new API key
+  createApiKey: async (user_id, permissions = [], description = '', validity_days = 30) => {
+    const token = localStorage.getItem('jadevectordb_auth_token');
+    const response = await fetch(`${API_BASE_URL}/api-keys`, {
+      method: 'POST',
+      headers: {
+        ...DEFAULT_HEADERS,
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ user_id, permissions, description, validity_days }),
+    });
+    const data = await handleResponse(response);
+    // Optionally store the API key
+    if (data.api_key) {
+      localStorage.setItem('jadevectordb_api_key', data.api_key);
+    }
+    return data;
+  },
+
+  // List API keys
+  listApiKeys: async (user_id = null) => {
+    const token = localStorage.getItem('jadevectordb_auth_token');
+    const url = user_id
+      ? `${API_BASE_URL}/api-keys?user_id=${user_id}`
+      : `${API_BASE_URL}/api-keys`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...DEFAULT_HEADERS,
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return handleResponse(response);
+  },
+
+  // Revoke an API key
+  revokeApiKey: async (key_id) => {
+    const token = localStorage.getItem('jadevectordb_auth_token');
+    const response = await fetch(`${API_BASE_URL}/api-keys/${key_id}`, {
+      method: 'DELETE',
+      headers: {
+        ...DEFAULT_HEADERS,
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return handleResponse(response);
+  },
+};

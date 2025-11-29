@@ -6,45 +6,184 @@
 #include <algorithm>
 #include <cstring>
 #include <memory>
-
-// For this implementation, I'll use the Botan cryptographic library in a real implementation
-// Since we don't have access to it during generation, I'll use placeholder implementations
-// that would use standard cryptographic algorithms
+#include <openssl/evp.h>
+#include <openssl/rand.h>
+#include <openssl/err.h>
 
 namespace jadevectordb {
 namespace encryption {
 
-// Placeholder implementations - in a real implementation, we would use a crypto library like Botan or OpenSSL
+// AES-256-GCM implementation using OpenSSL
 
 class AES256GCMEncryption : public IEncryptionAlgorithm {
+private:
+    static constexpr int GCM_IV_LENGTH = 12;  // 96 bits recommended for GCM
+    static constexpr int GCM_TAG_LENGTH = 16; // 128 bits
+
 public:
-    std::vector<uint8_t> encrypt(const std::vector<uint8_t>& plaintext, 
+    std::vector<uint8_t> encrypt(const std::vector<uint8_t>& plaintext,
                                 const EncryptionKey& key,
                                 const std::vector<uint8_t>& associated_data = {}) override {
-        // In a real implementation, this would perform actual AES-256-GCM encryption
-        // For now, return a placeholder that appends the key ID for demonstration
-        std::vector<uint8_t> result = plaintext;
-        
-        // Add authentication tag (in real implementation this would be actual authentication tag)
-        for (size_t i = 0; i < 16; ++i) {  // GCM tag is typically 16 bytes
-            result.push_back(0x00);  // Placeholder
+        // Validate key
+        if (key.key_data.size() != 32) {
+            throw std::runtime_error("Invalid key size for AES-256-GCM");
         }
-        
+
+        // Generate random IV (nonce)
+        std::vector<uint8_t> iv(GCM_IV_LENGTH);
+        if (RAND_bytes(iv.data(), GCM_IV_LENGTH) != 1) {
+            throw std::runtime_error("Failed to generate random IV");
+        }
+
+        // Create and initialize the context
+        EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+        if (!ctx) {
+            throw std::runtime_error("Failed to create cipher context");
+        }
+
+        // Initialize encryption operation
+        if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            throw std::runtime_error("Failed to initialize AES-256-GCM");
+        }
+
+        // Set IV length
+        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, GCM_IV_LENGTH, nullptr) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            throw std::runtime_error("Failed to set IV length");
+        }
+
+        // Initialize key and IV
+        if (EVP_EncryptInit_ex(ctx, nullptr, nullptr, key.key_data.data(), iv.data()) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            throw std::runtime_error("Failed to set key and IV");
+        }
+
+        // Provide any AAD data (authenticated but not encrypted)
+        if (!associated_data.empty()) {
+            int len;
+            if (EVP_EncryptUpdate(ctx, nullptr, &len, associated_data.data(), associated_data.size()) != 1) {
+                EVP_CIPHER_CTX_free(ctx);
+                throw std::runtime_error("Failed to set associated data");
+            }
+        }
+
+        // Encrypt plaintext
+        std::vector<uint8_t> ciphertext(plaintext.size());
+        int len = 0;
+        if (EVP_EncryptUpdate(ctx, ciphertext.data(), &len, plaintext.data(), plaintext.size()) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            throw std::runtime_error("Encryption failed");
+        }
+        int ciphertext_len = len;
+
+        // Finalize encryption
+        if (EVP_EncryptFinal_ex(ctx, ciphertext.data() + len, &len) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            throw std::runtime_error("Encryption finalization failed");
+        }
+        ciphertext_len += len;
+        ciphertext.resize(ciphertext_len);
+
+        // Get the authentication tag
+        std::vector<uint8_t> tag(GCM_TAG_LENGTH);
+        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, GCM_TAG_LENGTH, tag.data()) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            throw std::runtime_error("Failed to get authentication tag");
+        }
+
+        EVP_CIPHER_CTX_free(ctx);
+
+        // Build result: IV || ciphertext || tag
+        std::vector<uint8_t> result;
+        result.reserve(GCM_IV_LENGTH + ciphertext.size() + GCM_TAG_LENGTH);
+        result.insert(result.end(), iv.begin(), iv.end());
+        result.insert(result.end(), ciphertext.begin(), ciphertext.end());
+        result.insert(result.end(), tag.begin(), tag.end());
+
         return result;
     }
-    
+
     std::vector<uint8_t> decrypt(const std::vector<uint8_t>& ciphertext,
                                 const EncryptionKey& key,
                                 const std::vector<uint8_t>& associated_data = {}) override {
-        // In a real implementation, this would perform actual AES-256-GCM decryption
-        // For now, return the data part without the authentication tag
-        if (ciphertext.size() < 16) {
+        // Validate key
+        if (key.key_data.size() != 32) {
+            throw std::runtime_error("Invalid key size for AES-256-GCM");
+        }
+
+        // Validate ciphertext size (must have at least IV + tag)
+        if (ciphertext.size() < GCM_IV_LENGTH + GCM_TAG_LENGTH) {
             throw std::runtime_error("Ciphertext too small");
         }
-        
-        std::vector<uint8_t> result(ciphertext.begin(), 
-                                  ciphertext.end() - 16);  // Remove the tag
-        return result;
+
+        // Extract IV, ciphertext, and tag
+        std::vector<uint8_t> iv(ciphertext.begin(), ciphertext.begin() + GCM_IV_LENGTH);
+        size_t ct_len = ciphertext.size() - GCM_IV_LENGTH - GCM_TAG_LENGTH;
+        std::vector<uint8_t> ct(ciphertext.begin() + GCM_IV_LENGTH,
+                               ciphertext.begin() + GCM_IV_LENGTH + ct_len);
+        std::vector<uint8_t> tag(ciphertext.end() - GCM_TAG_LENGTH, ciphertext.end());
+
+        // Create and initialize the context
+        EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+        if (!ctx) {
+            throw std::runtime_error("Failed to create cipher context");
+        }
+
+        // Initialize decryption operation
+        if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            throw std::runtime_error("Failed to initialize AES-256-GCM");
+        }
+
+        // Set IV length
+        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, GCM_IV_LENGTH, nullptr) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            throw std::runtime_error("Failed to set IV length");
+        }
+
+        // Initialize key and IV
+        if (EVP_DecryptInit_ex(ctx, nullptr, nullptr, key.key_data.data(), iv.data()) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            throw std::runtime_error("Failed to set key and IV");
+        }
+
+        // Provide any AAD data
+        if (!associated_data.empty()) {
+            int len;
+            if (EVP_DecryptUpdate(ctx, nullptr, &len, associated_data.data(), associated_data.size()) != 1) {
+                EVP_CIPHER_CTX_free(ctx);
+                throw std::runtime_error("Failed to set associated data");
+            }
+        }
+
+        // Decrypt ciphertext
+        std::vector<uint8_t> plaintext(ct.size());
+        int len = 0;
+        if (EVP_DecryptUpdate(ctx, plaintext.data(), &len, ct.data(), ct.size()) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            throw std::runtime_error("Decryption failed");
+        }
+        int plaintext_len = len;
+
+        // Set expected tag value
+        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, GCM_TAG_LENGTH, tag.data()) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            throw std::runtime_error("Failed to set authentication tag");
+        }
+
+        // Finalize decryption and verify tag
+        int ret = EVP_DecryptFinal_ex(ctx, plaintext.data() + len, &len);
+        EVP_CIPHER_CTX_free(ctx);
+
+        if (ret <= 0) {
+            throw std::runtime_error("Decryption failed: authentication tag verification failed");
+        }
+
+        plaintext_len += len;
+        plaintext.resize(plaintext_len);
+
+        return plaintext;
     }
     
     EncryptionKey generate_key(const EncryptionConfig& config) override {
@@ -55,16 +194,14 @@ public:
         key.algorithm = EncryptionAlgorithm::AES_256_GCM;
         key.created_at = std::chrono::system_clock::now();
         key.expires_at = key.created_at + std::chrono::hours(8760); // 1 year
-        
-        // Generate random key material (256 bits = 32 bytes)
+
+        // Generate cryptographically secure random key material using OpenSSL
+        // AES-256 requires 256 bits = 32 bytes
         key.key_data.resize(32);
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<> dis(0, 255);
-        for (auto& byte : key.key_data) {
-            byte = static_cast<uint8_t>(dis(gen));
+        if (RAND_bytes(key.key_data.data(), 32) != 1) {
+            throw std::runtime_error("Failed to generate secure random key");
         }
-        
+
         key.is_active = true;
         return key;
     }
