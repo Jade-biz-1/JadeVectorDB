@@ -200,8 +200,27 @@ Result<MonitoringMetrics> MonitoringService::get_monitoring_metrics() const {
         metrics.cpu_usage_percent = get_cpu_usage();
         metrics.memory_usage_percent = get_memory_usage();
         metrics.disk_usage_percent = get_disk_usage();
-        metrics.active_connections = 0;  // TODO: Get from connection manager
-        metrics.avg_query_latency_ms = 0.0;  // TODO: Get from query metrics
+
+        // Get connection metrics from metrics service if available
+        if (metrics_service_) {
+            auto conn_result = metrics_service_->get_metric("connections.active");
+            if (conn_result.has_value()) {
+                metrics.active_connections = static_cast<size_t>(conn_result.value());
+            } else {
+                metrics.active_connections = 0;  // Default value if not available
+            }
+
+            auto latency_result = metrics_service_->get_metric("query.latency.avg");
+            if (latency_result.has_value()) {
+                metrics.avg_query_latency_ms = latency_result.value();
+            } else {
+                metrics.avg_query_latency_ms = 0.0;  // Default value if not available
+            }
+        } else {
+            metrics.active_connections = 0;
+            metrics.avg_query_latency_ms = 0.0;
+        }
+
         metrics.timestamp = std::chrono::system_clock::now();
 
         LOG_DEBUG(logger_, "Generated monitoring metrics struct");
@@ -230,19 +249,77 @@ Result<MonitoringAlert> MonitoringService::check_thresholds() const {
         alert.actual_value = 0.0;
         alert.timestamp = std::chrono::system_clock::now();
 
-        // Simple threshold checking based on current metrics
-        if (metrics.cpu_usage_percent > 90.0) {
+        // Use configuration thresholds for checking
+        if (metrics.cpu_usage_percent >= config_.system_thresholds.cpu_usage_critical) {
             alert.severity = "critical";
-            alert.message = "CPU usage critical: " + std::to_string(metrics.cpu_usage_percent) + "%";
+            alert.message = "CPU usage critical: " + std::to_string(metrics.cpu_usage_percent) + "% (threshold: " +
+                           std::to_string(config_.system_thresholds.cpu_usage_critical) + "%)";
             alert.metric_name = "cpu_usage";
-            alert.threshold_value = 90.0;
+            alert.threshold_value = config_.system_thresholds.cpu_usage_critical;
             alert.actual_value = metrics.cpu_usage_percent;
-        } else if (metrics.memory_usage_percent > 85.0) {
+        } else if (metrics.cpu_usage_percent >= config_.system_thresholds.cpu_usage_warning) {
             alert.severity = "warning";
-            alert.message = "Memory usage high: " + std::to_string(metrics.memory_usage_percent) + "%";
+            alert.message = "CPU usage high: " + std::to_string(metrics.cpu_usage_percent) + "% (threshold: " +
+                           std::to_string(config_.system_thresholds.cpu_usage_warning) + "%)";
+            alert.metric_name = "cpu_usage";
+            alert.threshold_value = config_.system_thresholds.cpu_usage_warning;
+            alert.actual_value = metrics.cpu_usage_percent;
+        } else if (metrics.memory_usage_percent >= config_.system_thresholds.memory_usage_critical) {
+            alert.severity = "critical";
+            alert.message = "Memory usage critical: " + std::to_string(metrics.memory_usage_percent) + "% (threshold: " +
+                           std::to_string(config_.system_thresholds.memory_usage_critical) + "%)";
             alert.metric_name = "memory_usage";
-            alert.threshold_value = 85.0;
+            alert.threshold_value = config_.system_thresholds.memory_usage_critical;
             alert.actual_value = metrics.memory_usage_percent;
+        } else if (metrics.memory_usage_percent >= config_.system_thresholds.memory_usage_warning) {
+            alert.severity = "warning";
+            alert.message = "Memory usage high: " + std::to_string(metrics.memory_usage_percent) + "% (threshold: " +
+                           std::to_string(config_.system_thresholds.memory_usage_warning) + "%)";
+            alert.metric_name = "memory_usage";
+            alert.threshold_value = config_.system_thresholds.memory_usage_warning;
+            alert.actual_value = metrics.memory_usage_percent;
+        } else if (metrics.disk_usage_percent >= config_.system_thresholds.disk_usage_critical) {
+            alert.severity = "critical";
+            alert.message = "Disk usage critical: " + std::to_string(metrics.disk_usage_percent) + "% (threshold: " +
+                           std::to_string(config_.system_thresholds.disk_usage_critical) + "%)";
+            alert.metric_name = "disk_usage";
+            alert.threshold_value = config_.system_thresholds.disk_usage_critical;
+            alert.actual_value = metrics.disk_usage_percent;
+        } else if (metrics.disk_usage_percent >= config_.system_thresholds.disk_usage_warning) {
+            alert.severity = "warning";
+            alert.message = "Disk usage high: " + std::to_string(metrics.disk_usage_percent) + "% (threshold: " +
+                           std::to_string(config_.system_thresholds.disk_usage_warning) + "%)";
+            alert.metric_name = "disk_usage";
+            alert.threshold_value = config_.system_thresholds.disk_usage_warning;
+            alert.actual_value = metrics.disk_usage_percent;
+        } else if (static_cast<double>(metrics.active_connections) >= config_.system_thresholds.connections_critical) {
+            alert.severity = "critical";
+            alert.message = "Active connections critical: " + std::to_string(metrics.active_connections) + " (threshold: " +
+                           std::to_string(config_.system_thresholds.connections_critical) + ")";
+            alert.metric_name = "active_connections";
+            alert.threshold_value = static_cast<double>(config_.system_thresholds.connections_critical);
+            alert.actual_value = static_cast<double>(metrics.active_connections);
+        } else if (static_cast<double>(metrics.active_connections) >= config_.system_thresholds.connections_warning) {
+            alert.severity = "warning";
+            alert.message = "Active connections high: " + std::to_string(metrics.active_connections) + " (threshold: " +
+                           std::to_string(config_.system_thresholds.connections_warning) + ")";
+            alert.metric_name = "active_connections";
+            alert.threshold_value = static_cast<double>(config_.system_thresholds.connections_warning);
+            alert.actual_value = static_cast<double>(metrics.active_connections);
+        } else if (metrics.avg_query_latency_ms >= config_.system_thresholds.query_latency_critical) {
+            alert.severity = "critical";
+            alert.message = "Query latency critical: " + std::to_string(metrics.avg_query_latency_ms) + "ms (threshold: " +
+                           std::to_string(config_.system_thresholds.query_latency_critical) + "ms)";
+            alert.metric_name = "query_latency";
+            alert.threshold_value = config_.system_thresholds.query_latency_critical;
+            alert.actual_value = metrics.avg_query_latency_ms;
+        } else if (metrics.avg_query_latency_ms >= config_.system_thresholds.query_latency_warning) {
+            alert.severity = "warning";
+            alert.message = "Query latency high: " + std::to_string(metrics.avg_query_latency_ms) + "ms (threshold: " +
+                           std::to_string(config_.system_thresholds.query_latency_warning) + "ms)";
+            alert.metric_name = "query_latency";
+            alert.threshold_value = config_.system_thresholds.query_latency_warning;
+            alert.actual_value = metrics.avg_query_latency_ms;
         }
 
         LOG_DEBUG(logger_, "Threshold check completed: " + alert.message);
@@ -567,22 +644,79 @@ void MonitoringService::collect_and_report_metrics() {
 }
 
 bool MonitoringService::validate_config(const MonitoringConfig& config) const {
-    // Simplified validation - detailed threshold structs not yet in MonitoringConfig
-    // TODO: Add system_thresholds, performance_thresholds, cluster_thresholds to MonitoringConfig
-
     LOG_DEBUG(logger_, "Validating monitoring configuration");
 
-    // For now, just return true - detailed validation will be added when threshold structs are defined
+    // Validate basic configuration values
+    if (config.health_check_interval_seconds <= 0) {
+        LOG_ERROR(logger_, "Invalid health check interval: " + std::to_string(config.health_check_interval_seconds));
+        return false;
+    }
+
+    if (config.metrics_collection_interval_seconds <= 0) {
+        LOG_ERROR(logger_, "Invalid metrics collection interval: " + std::to_string(config.metrics_collection_interval_seconds));
+        return false;
+    }
+
+    if (config.status_update_interval_seconds <= 0) {
+        LOG_ERROR(logger_, "Invalid status update interval: " + std::to_string(config.status_update_interval_seconds));
+        return false;
+    }
+
+    if (config.prometheus_port <= 0 || config.prometheus_port > 65535) {
+        LOG_ERROR(logger_, "Invalid Prometheus port: " + std::to_string(config.prometheus_port));
+        return false;
+    }
+
+    // Validate threshold values
+    if (config.system_thresholds.cpu_usage_critical < config.system_thresholds.cpu_usage_warning ||
+        config.system_thresholds.cpu_usage_warning < 0.0 || config.system_thresholds.cpu_usage_critical > 100.0) {
+        LOG_ERROR(logger_, "Invalid CPU usage thresholds");
+        return false;
+    }
+
+    if (config.system_thresholds.memory_usage_critical < config.system_thresholds.memory_usage_warning ||
+        config.system_thresholds.memory_usage_warning < 0.0 || config.system_thresholds.memory_usage_critical > 100.0) {
+        LOG_ERROR(logger_, "Invalid memory usage thresholds");
+        return false;
+    }
+
+    if (config.system_thresholds.disk_usage_critical < config.system_thresholds.disk_usage_warning ||
+        config.system_thresholds.disk_usage_warning < 0.0 || config.system_thresholds.disk_usage_critical > 100.0) {
+        LOG_ERROR(logger_, "Invalid disk usage thresholds");
+        return false;
+    }
+
+    if (config.system_thresholds.connections_critical < config.system_thresholds.connections_warning) {
+        LOG_ERROR(logger_, "Invalid connection thresholds");
+        return false;
+    }
+
+    if (config.system_thresholds.query_latency_critical < config.system_thresholds.query_latency_warning ||
+        config.system_thresholds.query_latency_warning < 0.0 || config.system_thresholds.query_latency_critical < 0.0) {
+        LOG_ERROR(logger_, "Invalid query latency thresholds");
+        return false;
+    }
+
+    LOG_DEBUG(logger_, "Monitoring configuration validation passed");
     return true;
 }
 
 void MonitoringService::initialize_default_thresholds() {
-    // Initialize default thresholds - these would typically be loaded from configuration
-    // For now, just log that we're using defaults
-    LOG_DEBUG(logger_, "Using default monitoring thresholds");
+    // Initialize default thresholds - these are now handled directly in the MonitoringConfig struct initialization
+    LOG_DEBUG(logger_, "Using default monitoring thresholds from MonitoringConfig");
 
-    // Note: The threshold fields (system_thresholds, performance_thresholds, cluster_thresholds)
-    // are not currently in MonitoringConfig struct. These can be added when needed.
+    // The thresholds are already initialized in the MonitoringConfig struct constructor
+    // We just need to log these values
+    LOG_INFO(logger_, "System thresholds - CPU: W=" + std::to_string(config_.system_thresholds.cpu_usage_warning) +
+                          "/C=" + std::to_string(config_.system_thresholds.cpu_usage_critical));
+    LOG_INFO(logger_, "System thresholds - Memory: W=" + std::to_string(config_.system_thresholds.memory_usage_warning) +
+                          "/C=" + std::to_string(config_.system_thresholds.memory_usage_critical));
+    LOG_INFO(logger_, "System thresholds - Disk: W=" + std::to_string(config_.system_thresholds.disk_usage_warning) +
+                          "/C=" + std::to_string(config_.system_thresholds.disk_usage_critical));
+    LOG_INFO(logger_, "System thresholds - Connections: W=" + std::to_string(config_.system_thresholds.connections_warning) +
+                          "/C=" + std::to_string(config_.system_thresholds.connections_critical));
+    LOG_INFO(logger_, "System thresholds - Latency: W=" + std::to_string(config_.system_thresholds.query_latency_warning) +
+                          "/C=" + std::to_string(config_.system_thresholds.query_latency_critical));
 }
 
 std::string MonitoringService::format_metric_name(const std::string& base_name) const {

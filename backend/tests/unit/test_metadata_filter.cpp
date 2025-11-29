@@ -577,12 +577,159 @@ int main(int argc, char **argv) {
     return RUN_ALL_TESTS();
 }
 // Additional test cases for enhanced coverage
-TEST_F(Metadata_filterTest, AdditionalTestCase1) {
-    // TODO: Add specific test case for metadata_filter
-    SUCCEED();
+TEST_F(MetadataFilterTest, FilterBySingleTag) {
+    // Create some vectors with metadata
+    Vector v1;
+    v1.id = "vector1";
+    v1.metadata.tags = {"tag1", "tag2"};
+
+    Vector v2;
+    v2.id = "vector2";
+    v2.metadata.tags = {"tag3", "tag4"};
+
+    Vector v3;
+    v3.id = "vector3";
+    v3.metadata.tags = {"tag1", "tag5"};
+
+    std::vector<Vector> vectors = {v1, v2, v3};
+
+    // Create filter condition for tag1
+    MetadataFilterCondition condition;
+    condition.field = "tags";
+    condition.operator_type = FilterOperator::CONTAINS_ANY;
+    condition.value = "tag1";
+
+    auto result = metadata_filter_->apply_filter(vectors, {condition});
+
+    EXPECT_EQ(result.size(), 2); // Should return v1 and v3
+    // Check if result contains the expected vector IDs
+    bool has_v1 = false, has_v3 = false;
+    for (const auto& vec : result) {
+        if (vec.id == "vector1") has_v1 = true;
+        if (vec.id == "vector3") has_v3 = true;
+    }
+    EXPECT_TRUE(has_v1);
+    EXPECT_TRUE(has_v3);
 }
 
-TEST_F(Metadata_filterTest, AdditionalTestCase2) {
-    // TODO: Add specific test case for metadata_filter
-    SUCCEED();
+TEST_F(MetadataFilterTest, FilterByMultipleConditions) {
+    // Create some vectors with metadata
+    Vector v1;
+    v1.id = "vector1";
+    v1.metadata.tags = {"tag1", "tag2"};
+    v1.metadata.category = "finance";
+
+    Vector v2;
+    v2.id = "vector2";
+    v2.metadata.tags = {"tag3", "tag4"};
+    v2.metadata.category = "technology";
+
+    Vector v3;
+    v3.id = "vector3";
+    v3.metadata.tags = {"tag1", "tag5"};
+    v3.metadata.category = "finance";
+
+    std::vector<Vector> vectors = {v1, v2, v3};
+
+    // Create filter conditions for tags and category
+    MetadataFilterCondition tag_condition;
+    tag_condition.field = "tags";
+    tag_condition.operator_type = FilterOperator::CONTAINS_ANY;
+    tag_condition.value = "tag1";
+
+    MetadataFilterCondition category_condition;
+    category_condition.field = "category";
+    category_condition.operator_type = FilterOperator::EQUALS;
+    category_condition.value = "finance";
+
+    auto result = metadata_filter_->apply_filter(vectors, {tag_condition, category_condition});
+
+    EXPECT_EQ(result.size(), 1); // Should return only v1
+    EXPECT_EQ(result[0].id, "vector1");
+}
+
+// Additional edge case tests for the metadata filter
+TEST_F(MetadataFilterTest, FilterWithEmptyValues) {
+    // Test filtering with empty values
+    Vector v1;
+    v1.id = "vector1";
+    v1.metadata.tags = {};
+
+    std::vector<Vector> vectors = {v1};
+
+    // Filter for a tag that doesn't exist
+    MetadataFilterCondition condition;
+    condition.field = "tags";
+    condition.operator_type = FilterOperator::CONTAINS_ANY;
+    condition.value = "nonexistent";
+
+    auto result = metadata_filter_->apply_filter(vectors, {condition});
+
+    EXPECT_EQ(result.size(), 0); // Should return no results
+}
+
+TEST_F(MetadataFilterTest, FilterWithNullValues) {
+    // Test filtering with null/empty vectors
+    std::vector<Vector> vectors;
+
+    // Try to filter an empty vector list
+    MetadataFilterCondition condition;
+    condition.field = "tags";
+    condition.operator_type = FilterOperator::CONTAINS_ANY;
+    condition.value = "any_tag";
+
+    auto result = metadata_filter_->apply_filter(vectors, {condition});
+
+    EXPECT_EQ(result.size(), 0); // Should return no results
+}
+
+TEST_F(MetadataFilterTest, FilterMultipleConditionsAllMatch) {
+    // Test filtering with multiple conditions where all must match
+    Vector v1;
+    v1.id = "vector1";
+    v1.metadata.tags = {"tag1", "tag2"};
+    v1.metadata.category = "finance";
+
+    Vector v2;
+    v2.id = "vector2";
+    v2.metadata.tags = {"tag1", "tag3"};
+    v2.metadata.category = "healthcare";  // Different category
+
+    std::vector<Vector> vectors = {v1, v2};
+
+    // Create multiple conditions that both vectors partially satisfy but only one satisfies both
+    MetadataFilterCondition tag_condition;
+    tag_condition.field = "tags";
+    tag_condition.operator_type = FilterOperator::CONTAINS_ANY;
+    tag_condition.value = "tag1";
+
+    MetadataFilterCondition category_condition;
+    category_condition.field = "category";
+    category_condition.operator_type = FilterOperator::EQUALS;
+    category_condition.value = "finance";
+
+    auto result = metadata_filter_->apply_filter(vectors, {tag_condition, category_condition});
+
+    EXPECT_EQ(result.size(), 1); // Should return only v1 (satisfies both conditions)
+    EXPECT_EQ(result[0].id, "vector1");
+}
+
+TEST_F(MetadataFilterTest, FilterWithMalformedMetadata) {
+    // Test filtering with vectors that have incomplete metadata
+    Vector v1;
+    v1.id = "vector1";
+    // Deliberately leaving metadata empty except for one field
+    v1.metadata.category = "finance";
+
+    std::vector<Vector> vectors = {v1};
+
+    // Filter for tags on a vector that has no tags
+    MetadataFilterCondition condition;
+    condition.field = "tags";
+    condition.operator_type = FilterOperator::CONTAINS_ANY;
+    condition.value = "any_tag";
+
+    auto result = metadata_filter_->apply_filter(vectors, {condition});
+
+    EXPECT_EQ(result.size(), 0); // Should return no results since vector has no tags
 }

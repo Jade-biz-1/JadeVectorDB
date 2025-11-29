@@ -86,6 +86,36 @@ struct MonitoringConfig {
     bool enable_alerts = true;                    // Whether to enable alerts
     std::vector<std::string> alert_channels;      // Where to send alerts ("log", "webhook", etc.)
 
+    // Threshold configurations
+    struct ThresholdConfig {
+        double cpu_usage_critical = 90.0;         // CPU usage percentage for critical alert
+        double cpu_usage_warning = 75.0;          // CPU usage percentage for warning
+        double memory_usage_critical = 90.0;      // Memory usage percentage for critical alert
+        double memory_usage_warning = 75.0;       // Memory usage percentage for warning
+        double disk_usage_critical = 95.0;        // Disk usage percentage for critical alert
+        double disk_usage_warning = 85.0;         // Disk usage percentage for warning
+        size_t connections_critical = 1000;       // Max connections for critical alert
+        size_t connections_warning = 800;         // Max connections for warning
+        double query_latency_critical = 1000.0;   // Query latency in ms for critical alert
+        double query_latency_warning = 500.0;     // Query latency in ms for warning
+    } system_thresholds;
+
+    struct PerformanceThresholds {
+        double index_build_time_critical = 300.0;  // Index build time in seconds for critical alert
+        double index_build_time_warning = 120.0;   // Index build time in seconds for warning
+        double query_throughput_critical = 100.0;  // Queries per second for critical alert (low)
+        double query_throughput_warning = 500.0;   // Queries per second for warning (low)
+    } performance_thresholds;
+
+    struct ClusterThresholds {
+        int node_failure_critical = 2;              // Number of failed nodes for critical alert
+        int node_failure_warning = 1;               // Number of failed nodes for warning
+        double replication_lag_critical = 10.0;     // Replication lag in seconds for critical
+        double replication_lag_warning = 5.0;       // Replication lag in seconds for warning
+        double cluster_latency_critical = 2000.0;   // Cluster latency in ms for critical
+        double cluster_latency_warning = 1000.0;    // Cluster latency in ms for warning
+    } cluster_thresholds;
+
     MonitoringConfig() = default;
 };
 

@@ -132,36 +132,40 @@ public:
 private:
     // Initialize hash function based on configuration
     void initialize_hash_function();
-    
+
     // Hash-based sharding implementation
     Result<ShardInfo> hash_based_sharding(const Vector& vector, const Database& database) const;
-    
+
     // Range-based sharding implementation
     Result<ShardInfo> range_based_sharding(const Vector& vector, const Database& database) const;
-    
+
     // Vector-based sharding implementation (based on vector content/similarity)
     Result<ShardInfo> vector_based_sharding(const Vector& vector, const Database& database) const;
-    
+
     // Calculate shard number using hash function
     int calculate_shard_number(const std::string& key, int total_shards) const;
-    
+
     // Generate shard ID
     std::string generate_shard_id(const std::string& database_id, int shard_number) const;
-    
+
     // Validate sharding configuration
     bool validate_config(const ShardingConfig& config) const;
-    
+
     // Create shards based on the selected strategy
     Result<bool> create_shards_by_strategy(const Database& database, ShardingStrategy strategy);
-    
+
     // Distribute shards evenly across available nodes
     Result<bool> distribute_shards_to_nodes();
-    
+
     // Check if a vector belongs to a specific range (for range-based sharding)
     bool vector_in_range(const Vector& vector, const std::pair<std::string, std::string>& range) const;
-    
+
     // Update range boundaries for range-based sharding
     void update_range_boundaries();
+
+    // Hash function implementations
+    uint64_t murmur_hash_64(const std::string& key) const;
+    uint64_t fnv_hash_64(const std::string& key) const;
 };
 
 } // namespace jadevectordb

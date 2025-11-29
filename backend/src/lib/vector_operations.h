@@ -135,10 +135,43 @@ namespace vector_ops {
             const std::vector<std::vector<float>>& vectors) override;
     };
 #endif
-    
+
+#ifdef OPENCL_AVAILABLE
+    /**
+     * @brief GPU implementation of vector operations using OpenCL
+     *
+     * This implementation offloads operations to the GPU using OpenCL kernels.
+     */
+    class OpenCLVectorOperations : public IVectorOperations {
+    private:
+        std::shared_ptr<hardware::IDevice> device_;
+
+    public:
+        explicit OpenCLVectorOperations(std::shared_ptr<hardware::IDevice> device);
+
+        float cosine_similarity(const std::vector<float>& a, const std::vector<float>& b) override;
+
+        float euclidean_distance(const std::vector<float>& a, const std::vector<float>& b) override;
+
+        float dot_product(const std::vector<float>& a, const std::vector<float>& b) override;
+
+        float l2_norm(const std::vector<float>& vec) override;
+
+        std::vector<float> normalize(const std::vector<float>& vec) override;
+
+        std::vector<float> batch_cosine_similarity(
+            const std::vector<float>& query,
+            const std::vector<std::vector<float>>& vectors) override;
+
+        std::vector<float> batch_euclidean_distance(
+            const std::vector<float>& query,
+            const std::vector<std::vector<float>>& vectors) override;
+    };
+#endif
+
     /**
      * @brief Factory for creating vector operation implementations
-     * 
+     *
      * This class provides a way to get the best available vector operations
      * implementation based on available hardware.
      */

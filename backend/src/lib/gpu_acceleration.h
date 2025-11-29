@@ -146,10 +146,55 @@ namespace hardware {
         void initialize();
     };
     #endif  // CUDA_AVAILABLE
-    
+
+#ifdef OPENCL_AVAILABLE
+#include <CL/cl.h>
+
+    /**
+     * @brief Implementation for OpenCL device (AMD/NVIDIA/Intel GPUs and CPUs)
+     *
+     * This implementation offloads operations to devices supporting OpenCL.
+     */
+    class OpenCLDevice : public IDevice {
+    private:
+        cl_device_id cl_device_id_;
+        cl_platform_id cl_platform_id_;
+        cl_context context_;
+        cl_command_queue queue_;
+        bool opencl_available_;
+        size_t memory_size_;
+        std::string device_name_;
+        std::string vendor_name_;
+
+    public:
+        OpenCLDevice(cl_device_id cl_dev_id, cl_platform_id platform_id);
+
+        DeviceType get_device_type() const override { return DeviceType::OPENCL; }
+
+        bool is_available() const override { return opencl_available_; }
+
+        std::string get_device_name() const override { return device_name_; }
+
+        size_t get_memory_size() const override { return memory_size_; }
+
+        void* allocate(size_t size) override;
+
+        void deallocate(void* ptr) override;
+
+        void copy_to_device(void* dst, const void* src, size_t size) override;
+
+        void copy_to_host(void* dst, const void* src, size_t size) override;
+
+        void synchronize() override;
+
+    private:
+        void initialize();
+    };
+#endif  // OPENCL_AVAILABLE
+
     /**
      * @brief Device manager to handle device selection and fallback
-     * 
+     *
      * This class manages available devices and provides the best available
      * device based on configuration and availability.
      */

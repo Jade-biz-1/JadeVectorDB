@@ -190,60 +190,154 @@ namespace serialization {
     
     // Batch serialization utilities
     std::vector<uint8_t> serialize_vector_batch(const std::vector<Vector>& vectors) {
-        // TODO: Implement batch serialization
-        // Placeholder implementation
-        return std::vector<uint8_t>();
+        flatbuffers::FlatBufferBuilder builder(1024);
+
+        // Serialize each vector individually and combine them
+        std::vector<flatbuffers::Offset<JadeVectorDB::Schema::Vector>> offsets;
+        for (const auto& vec : vectors) {
+            // Create metadata
+            auto metadata_fb = JadeVectorDB::Schema::CreateVectorMetadata(
+                builder,
+                builder.CreateString(vec.metadata.source),
+                0,  // created_at (timestamp as ulong)
+                0,  // updated_at (timestamp as ulong)
+                builder.CreateString(vec.metadata.owner),
+                builder.CreateString(vec.metadata.category),
+                vec.metadata.score,
+                builder.CreateString(vec.metadata.status),
+                builder.CreateVectorOfStrings(vec.metadata.tags)
+            );
+
+            // Create vector
+            auto vector_fb = JadeVectorDB::Schema::CreateVector(
+                builder,
+                builder.CreateString(vec.id),
+                builder.CreateVector(vec.values),
+                static_cast<uint32_t>(vec.values.size()),
+                metadata_fb,
+                1,  // version
+                false  // deleted
+            );
+
+            offsets.push_back(vector_fb);
+        }
+
+        // Create a vector of vectors
+        auto vectors_vector = builder.CreateVector(offsets);
+        auto batch = JadeVectorDB::Schema::CreateVectorBatch(builder, vectors_vector);
+        builder.Finish(batch);
+
+        return std::vector<uint8_t>(builder.GetBufferPointer(),
+                                    builder.GetBufferPointer() + builder.GetSize());
     }
-    
+
     std::vector<Vector> deserialize_vector_batch(const uint8_t* data, size_t size) {
-        // TODO: Implement batch deserialization
-        // Placeholder implementation
-        return std::vector<Vector>();
+        std::vector<Vector> result;
+
+        // Verify buffer
+        flatbuffers::Verifier verifier(data, size);
+        if (!JadeVectorDB::Schema::VerifyVectorBatchBuffer(verifier)) {
+            throw std::runtime_error("Invalid FlatBuffer data for vector batch");
+        }
+
+        // Get root
+        auto batch = JadeVectorDB::Schema::GetVectorBatch(data);
+
+        // Deserialize each vector
+        if (batch->vectors()) {
+            for (const auto* fb_vector : *batch->vectors()) {
+                if (fb_vector) {
+                    Vector vec;
+                    vec.id = fb_vector->id() ? fb_vector->id()->str() : "";
+
+                    // Copy values
+                    auto values_fb = fb_vector->values();
+                    if (values_fb) {
+                        vec.values.assign(values_fb->begin(), values_fb->end());
+                    }
+
+                    // Copy metadata
+                    auto metadata_fb = fb_vector->metadata();
+                    if (metadata_fb) {
+                        vec.metadata.source = metadata_fb->source() ? metadata_fb->source()->str() : "";
+                        vec.metadata.created_at = std::to_string(metadata_fb->created_at());
+                        vec.metadata.updated_at = std::to_string(metadata_fb->updated_at());
+                        vec.metadata.owner = metadata_fb->owner() ? metadata_fb->owner()->str() : "";
+                        vec.metadata.category = metadata_fb->category() ? metadata_fb->category()->str() : "";
+                        vec.metadata.score = metadata_fb->score();
+                        vec.metadata.status = metadata_fb->status() ? metadata_fb->status()->str() : "";
+
+                        auto tags_fb = metadata_fb->tags();
+                        if (tags_fb) {
+                            for (auto tag : *tags_fb) {
+                                vec.metadata.tags.push_back(tag->str());
+                            }
+                        }
+                    }
+
+                    result.push_back(vec);
+                }
+            }
+        }
+
+        return result;
     }
     
-    // Utility functions for working with FlatBuffers
-    template<typename T>
-    std::vector<uint8_t> serialize_generic(const T& obj) {
-        // TODO: Implement generic serialization
-        // Placeholder implementation
-        return std::vector<uint8_t>();
+    // Generic serialization functions
+    std::vector<uint8_t> serialize_generic_vector(const Vector& vec) {
+        return serialize_vector(vec);
     }
-    
-    template<typename T>
-    T deserialize_generic(const uint8_t* data, size_t size) {
-        // TODO: Implement generic deserialization
-        // Placeholder implementation
-        return T();
+
+    std::vector<uint8_t> serialize_generic_database(const Database& db) {
+        return serialize_database(db);
     }
-    
+
+    std::vector<uint8_t> serialize_generic_index(const Index& idx) {
+        return serialize_index(idx);
+    }
+
+    // Generic deserialization functions
+    Vector deserialize_generic_vector(const uint8_t* data, size_t size) {
+        return deserialize_vector(data, size);
+    }
+
+    Database deserialize_generic_database(const uint8_t* data, size_t size) {
+        return deserialize_database(data, size);
+    }
+
+    Index deserialize_generic_index(const uint8_t* data, size_t size) {
+        return deserialize_index(data, size);
+    }
+
     // Helper functions for creating FlatBuffer builders
-    std::unique_ptr<fb::FlatBufferBuilder> create_builder() {
-        return std::make_unique<fb::FlatBufferBuilder>(1024);
+    std::unique_ptr<flatbuffers::FlatBufferBuilder> create_builder() {
+        return std::make_unique<flatbuffers::FlatBufferBuilder>(1024);
     }
-    
+
     // Helper functions for verifying FlatBuffer data
     bool verify_vector_buffer(const uint8_t* data, size_t size) {
-        // TODO: Implement buffer verification
-        // Placeholder implementation
-        return true;
+        flatbuffers::Verifier verifier(data, size);
+        return JadeVectorDB::Schema::VerifyVectorBuffer(verifier);
     }
-    
+
     bool verify_database_buffer(const uint8_t* data, size_t size) {
-        // TODO: Implement buffer verification
-        // Placeholder implementation
-        return true;
+        flatbuffers::Verifier verifier(data, size);
+        return JadeVectorDB::Schema::VerifyDatabaseBuffer(verifier);
     }
-    
+
     bool verify_index_buffer(const uint8_t* data, size_t size) {
-        // TODO: Implement buffer verification
-        // Placeholder implementation
-        return true;
+        flatbuffers::Verifier verifier(data, size);
+        return JadeVectorDB::Schema::VerifyIndexBuffer(verifier);
     }
-    
+
     bool verify_embedding_model_buffer(const uint8_t* data, size_t size) {
-        // TODO: Implement buffer verification
-        // Placeholder implementation
-        return true;
+        // As a fallback for now, return true since we don't have a specific schema for embedding models
+        // In a real implementation, we'd check the actual buffer type
+        flatbuffers::Verifier verifier(data, size);
+        // Try verification against common schemas (since we don't have specific embedding model schema yet)
+        return JadeVectorDB::Schema::VerifyVectorBuffer(verifier) ||
+               JadeVectorDB::Schema::VerifyDatabaseBuffer(verifier) ||
+               JadeVectorDB::Schema::VerifyIndexBuffer(verifier);
     }
 
 } // namespace serialization
