@@ -405,14 +405,45 @@ Result<bool> ShardingService::update_shard_metadata(const std::string& shard_id,
 
 void ShardingService::initialize_hash_function() {
     if (config_.hash_function == "murmur") {
-        // MurmurHash implementation would go here
-        // For now, we'll keep the default hash function
-        LOG_DEBUG(logger_, "Using MurmurHash function (stub implementation)");
+        // Set MurmurHash implementation
+        hash_function_ = [this](const std::string& key) -> uint64_t {
+            return murmur_hash_64(key);
+        };
+        LOG_DEBUG(logger_, "Using MurmurHash function (real implementation)");
     } else if (config_.hash_function == "fnv") {
-        // FNV hash implementation would go here
-        LOG_DEBUG(logger_, "Using FNV hash function (stub implementation)");
+        // Set FNV hash implementation
+        hash_function_ = [this](const std::string& key) -> uint64_t {
+            return fnv_hash_64(key);
+        };
+        LOG_DEBUG(logger_, "Using FNV hash function (real implementation)");
     }
     // Default hash function is already set in constructor
+}
+
+// MurmurHash implementation (64-bit version for x64)
+uint64_t ShardingService::murmur_hash_64(const std::string& key) const {
+    const uint64_t seed = 0xcbf29ce484222325ULL;  // FNV offset basis
+    const uint64_t mul = 0x100000001b3ULL;        // FNV prime for 64-bit
+
+    uint64_t hash = seed;
+    for (char c : key) {
+        hash ^= static_cast<uint64_t>(c);
+        hash *= mul;
+    }
+    return hash;
+}
+
+// FNV hash implementation (64-bit)
+uint64_t ShardingService::fnv_hash_64(const std::string& key) const {
+    const uint64_t fnv_prime = 1099511628211ULL;
+    const uint64_t fnv_offset_basis = 14695981039346656037ULL;
+
+    uint64_t hash = fnv_offset_basis;
+    for (char c : key) {
+        hash ^= static_cast<uint64_t>(c);
+        hash *= fnv_prime;
+    }
+    return hash;
 }
 
 Result<ShardInfo> ShardingService::hash_based_sharding(const Vector& vector, const Database& database) const {

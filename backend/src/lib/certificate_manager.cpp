@@ -28,12 +28,28 @@ CertificateInfo CertificateManagerImpl::generate_certificate(const std::string& 
     cert.not_before = std::chrono::system_clock::now();
     cert.not_after = cert.not_before + std::chrono::hours(24 * validity_days);
     
-    // In a real implementation, we would generate actual certificate data
-    // For this implementation, we'll create placeholder data
-    cert.certificate_data = "-----BEGIN CERTIFICATE-----\n"
-                            "PLACEHOLDER_CERT_DATA_" + cert.certificate_id + "\n"
-                            "-----END CERTIFICATE-----";
-    cert.public_key = "PLACEHOLDER_PUBKEY_" + cert.certificate_id;
+    // Generate mock certificate data with realistic format
+    std::stringstream cert_stream;
+    cert_stream << "-----BEGIN CERTIFICATE-----\n";
+    cert_stream << "MIIDXTCCAkWgAwIBAgIJAJC1HiIAZAiIMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV\n";
+    cert_stream << "BAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBX\n";
+    cert_stream << "aWRnaXRzIFB0eSBMdGQwHhcNMjUwMTEwMTIwMDAwWhcNMjYwMTEwMTIwMDAwWjBF\n";
+    cert_stream << "MQswCQYDVQQGEwJBVTETMBEGA1UECAwKU29tZS1TdGF0ZTEhMB8GA1UECgwYSW50\n";
+    cert_stream << "ZXJuZXQgV2lkZ2l0cyBQdHkgTHRkMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIB\n";
+    cert_stream << "CgKCAQEAuCqL4IijUG9M4xX5xZf0y6nFtQwJ8kzNvQIDAQABo1AwTjAdBgNVHQ4E\n";
+    cert_stream << "FgQUFv3J9NmJtzNRJravwuZLNJq0XBMwHwYDVR0jBBgwFoAUFv3J9NmJtzNRJrav\n";
+    cert_stream << "wuZLNJq0XBowDAYDVR0TBAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAo4y4r6yJ\n";
+    cert_stream << "sJ6y1mPz2nQ9v8K7xR3mN2oV5j1pX8w7tY2s4d6hL3qA5vG1cR9eP6uF4tX3wZ\n";
+    cert_stream << "8cV2pH7fJ6nQ9v8K7xR3mN2oV5j1pX8w7tY2s4d6hL3qA5vG1cR9eP6uF4tX3wZ\n";
+    cert_stream << "8cV2pH7fJ6nQ9v8K7xR3mN2oV5j1pX8w7tY2s4d6hL3qA5vG1cR9eP6uF4tX3wZ\n";
+    cert_stream << "8cV2pH7fJ6nQ9v8K7xR3mN2oV5j1pX8w7tY2s4d6hL3qA5vG1cR9eP6uF4tX3wZ\n";
+    cert_stream << "8cV2pH7fJ6nQ9v8K7xR3mN2oV5j1pX8w7tY2s4d6hL3qA5vG1cR9eP6uF4tX3wZ\n";
+    cert_stream << "8cV2pH7fJ6nQ9v8K7xR3mN2oV5j1pX8w7tY2s4d6hL3qA5vG1cR9eP6uF4tX3wZ\n";
+    cert_stream << "8cV2pH7fJ6nQ9v8K7xR3mN2oV5j1pX8w7tY2s4d6hL3qA5vG1cR9eP6uF4tX3wZ\n";
+    cert_stream << "-----END CERTIFICATE-----";
+
+    cert.certificate_data = cert_stream.str();
+    cert.public_key = "-----BEGIN PUBLIC KEY-----\n" + cert.certificate_id + "_PUBLIC_KEY\n-----END PUBLIC KEY-----";
     
     certificates_[cert.certificate_id] = cert;
     
@@ -209,32 +225,67 @@ bool CertificateManagerImpl::perform_validation_checks(const CertificateInfo& ce
 }
 
 void CertificateManagerImpl::monitoring_loop() {
-    while (true) {
+    while (running_) {
         std::this_thread::sleep_for(std::chrono::minutes(5));  // Check every 5 minutes
-        
+
         auto now = std::chrono::system_clock::now();
-        
+
         std::lock_guard<std::mutex> lock(certificates_mutex_);
-        
+
         // Check for scheduled renewals
-        for (auto& pair : renewal_schedule_) {
-            if (now >= pair.second) {
+        for (auto& [cert_id, renewal_time] : renewal_schedule_) {
+            if (now >= renewal_time) {
                 // Time to renew this certificate
                 try {
-                    renew_certificate(pair.first, 365, 
-                        [](bool success, const std::string& msg) {
-                            // In a real implementation, we would log or notify
-                            // about the renewal attempt
-                        });
+                    // Find the certificate to renew
+                    auto cert_it = certificates_.find(cert_id);
+                    if (cert_it != certificates_.end() && cert_it->second.is_active) {
+                        // Mark old certificate as inactive
+                        cert_it->second.is_active = false;
+
+                        // Create new certificate with same properties but extended validity
+                        CertificateInfo new_cert;
+                        new_cert.certificate_id = "cert_" + std::to_string(
+                            std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::system_clock::now().time_since_epoch()).count());
+                        new_cert.common_name = cert_it->second.common_name;
+                        new_cert.issuer = cert_it->second.issuer;
+                        new_cert.is_active = true;
+                        new_cert.is_self_signed = cert_it->second.is_self_signed;
+                        new_cert.not_before = std::chrono::system_clock::now();
+                        new_cert.not_after = new_cert.not_before + std::chrono::hours(24 * 365);
+
+                        // Generate new mock certificate data
+                        std::stringstream cert_stream;
+                        cert_stream << "-----BEGIN CERTIFICATE-----\n";
+                        cert_stream << "MIIDYTCCAkmgAwIBAgIJAOhLvA3Lu+36MA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV\n";
+                        cert_stream << "BAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBX\n";
+                        cert_stream << "aWRnaXRzIFB0eSBMdGQwHhcNMjYwMTEwMTIwMDAwWhcNMjcwMTEwMTIwMDAwWjBF\n";
+                        cert_stream << "MQswCQYDVQQGEwJBVTETMBEGA1UECAwKU29tZS1TdGF0ZTEhMB8GA1UECgwYSW50\n";
+                        cert_stream << "ZXJuZXQgV2lkZ2l0cyBQdHkgTHRkMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIB\n";
+                        cert_stream << "CgKCAQEAxQPBbhtMPx6r5QJzHqC2vFvFwB6bF6lL5G8ZJ6vG8mN9kP3tY2s4d6hL\n";
+                        cert_stream << "3qA5vG1cR9eP6uF4tX3wZ8cV2pH7fJ6nQ9v8K7xR3mN2oV5j1pX8w7tY2s4d6h\n";
+                        cert_stream << "L3qA5vG1cR9eP6uF4tX3wZ8cV2pH7fJ6nQ9v8K7xR3mN2oV5j1pX8w7tY2s4d6h\n";
+                        cert_stream << "L3qA5vG1cR9eP6uF4tX3wZ8cV2pH7fJ6nQ9v8K7xR3mN2oV5j1pX8w7tY2s4d6h\n";
+                        cert_stream << "L3qA5vG1cR9eP6uF4tX3wZ8cV2pH7fJ6nQ9v8K7xR3mN2oV5j1pX8w7tY2s4d6h\n";
+                        cert_stream << "L3qA5vG1cR9eP6uF4tX3wZ8cV2pH7fJ6nQ9v8K7xR3mN2oV5j1pX8w7tY2s4d6h\n";
+                        cert_stream << "L3qA5vG1cR9eP6uF4tX3wZ8cV2pH7fJ6nQ9v8K7xR3mN2oV5j1pX8w7tY2s4d6h\n";
+                        cert_stream << "-----END CERTIFICATE-----";
+
+                        new_cert.certificate_data = cert_stream.str();
+                        new_cert.public_key = "-----BEGIN PUBLIC KEY-----\n" + new_cert.certificate_id + "_PUBLIC_KEY\n-----END PUBLIC KEY-----";
+
+                        // Store the new certificate
+                        certificates_[new_cert.certificate_id] = new_cert;
+
+                        // Update the renewal schedule for the new certificate
+                        renewal_schedule_[new_cert.certificate_id] =
+                            new_cert.not_after - std::chrono::hours(24 * 30); // Renew 30 days before expiration
+                    }
                 } catch (const std::exception& e) {
                     // Handle renewal failure
                     // In a real implementation, we would log this
                 }
-                
-                // Remove from schedule after attempting renewal
-                // A real implementation would reschedule for the new cert
-                // For simplicity, we'll just remove it
-                pair.second = now + std::chrono::hours(24 * 365); // Prevent repeated attempts
             }
         }
     }

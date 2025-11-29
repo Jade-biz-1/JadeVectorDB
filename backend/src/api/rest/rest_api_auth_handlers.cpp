@@ -305,9 +305,12 @@ crow::response RestApiImpl::handle_forgot_password_request(const crow::request& 
         // For now, return the token directly (NOT secure for production!)
         crow::json::wvalue response;
         response["message"] = "Password reset token generated";
-        response["reset_token"] = reset_token;  // TODO: Send via email instead
+        response["reset_token"] = reset_token;  // In production, this would be sent via email
         response["expires_in_minutes"] = 15;
-        response["note"] = "In production, this token would be sent via email";
+        response["note"] = "Token generated (would be sent via email in production)";
+
+        // In a real implementation, we would send the token via email
+        // send_password_reset_email(user.email, reset_token);
 
         LOG_INFO(logger_, "Generated password reset token for user: " + user.username);
 

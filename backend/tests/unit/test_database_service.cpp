@@ -420,12 +420,87 @@ int main(int argc, char **argv) {
     return RUN_ALL_TESTS();
 }
 // Additional test cases for enhanced coverage
-TEST_F(Database_serviceTest, AdditionalTestCase1) {
-    // TODO: Add specific test case for database_service
-    SUCCEED();
+TEST_F(DatabaseServiceTest, CreateAndConfigureDatabaseWithSpecificSettings) {
+    // Test creating a database with specific configuration settings
+    DatabaseConfig config;
+    config.vector_dimension = 768; // Common embedding dimension
+    config.index_type = "HNSW";
+    config.storage_format = "custom_binary";
+    config.replication_factor = 3;
+    config.sharding_enabled = true;
+    config.retention_policy.days = 365;
+    config.performance_tier = "standard";
+
+    auto result = database_service_->create_database("configured_test_db", config);
+    EXPECT_TRUE(result.has_value());
+
+    if (result.has_value()) {
+        std::string created_db_id = result.value();
+
+        // Verify the database was created with the specified configuration
+        auto db_result = database_service_->get_database(created_db_id);
+        EXPECT_TRUE(db_result.has_value());
+
+        if (db_result.has_value()) {
+            Database created_db = db_result.value();
+            EXPECT_EQ(created_db.vectorDimension, 768);
+            EXPECT_EQ(created_db.indexType, "HNSW");
+            EXPECT_EQ(created_db.config.storage_format, "custom_binary");
+            EXPECT_EQ(created_db.config.replication_factor, 3);
+            EXPECT_EQ(created_db.config.sharding_enabled, true);
+            EXPECT_EQ(created_db.config.retention_policy.days, 365);
+            EXPECT_EQ(created_db.config.performance_tier, "standard");
+        }
+    }
 }
 
-TEST_F(Database_serviceTest, AdditionalTestCase2) {
-    // TODO: Add specific test case for database_service
-    SUCCEED();
+TEST_F(DatabaseServiceTest, ListDatabasesWithPagination) {
+    // Test pagination functionality when listing databases
+    std::vector<std::string> created_dbs;
+
+    // Create multiple test databases
+    for (int i = 0; i < 10; ++i) {
+        DatabaseConfig config;
+        config.vector_dimension = 128;
+        config.index_type = "IVF";
+        config.sharding_enabled = false;
+
+        auto result = database_service_->create_database("pagination_test_db_" + std::to_string(i), config);
+        if (result.has_value()) {
+            created_dbs.push_back(result.value());
+        }
+    }
+
+    // Test listing with pagination
+    auto list_result = database_service_->list_databases(0, 5); // First 5
+    EXPECT_TRUE(list_result.has_value());
+
+    if (list_result.has_value()) {
+        auto page1 = list_result.value();
+        EXPECT_EQ(page1.size(), 5);  // Should return first 5 databases
+
+        // Test the next page
+        auto list_result_page2 = database_service_->list_databases(5, 5); // Next 5
+        EXPECT_TRUE(list_result_page2.has_value());
+
+        if (list_result_page2.has_value()) {
+            auto page2 = list_result_page2.value();
+            EXPECT_EQ(page2.size(), created_dbs.size() - 5);  // Remaining databases
+
+            // Verify no overlap between pages
+            std::set<std::string> page1_ids;
+            for (const auto& db : page1) {
+                page1_ids.insert(db.databaseId);
+            }
+
+            for (const auto& db : page2) {
+                EXPECT_FALSE(page1_ids.count(db.databaseId));  // No overlap
+            }
+        }
+    }
+
+    // Clean up test databases
+    for (const auto& db_id : created_dbs) {
+        database_service_->delete_database(db_id);
+    }
 }

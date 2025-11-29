@@ -752,9 +752,20 @@ Result<std::string> AuthManager::register_device(const zero_trust::DeviceIdentit
 
 
 Result<void> AuthManager::initialize_zero_trust() {
-    // Stub: Zero trust orchestrator initialization not implemented
-    // zero_trust_orchestrator_ = std::make_unique<zero_trust::ZeroTrustOrchestrator>(...);
-    zero_trust_orchestrator_ = nullptr; // Not implemented yet
+    // Create individual zero-trust components
+    auto continuous_auth = std::make_unique<zero_trust::ContinuousAuthentication>();
+    auto microseg = std::make_unique<zero_trust::MicroSegmentation>();
+    auto jit_access = std::make_unique<zero_trust::JustInTimeAccess>();
+    auto device_attestation = std::make_unique<zero_trust::DeviceAttestation>();
+
+    // Create and initialize the orchestrator with these components
+    zero_trust_orchestrator_ = std::make_unique<zero_trust::ZeroTrustOrchestrator>(
+        std::move(continuous_auth),
+        std::move(microseg),
+        std::move(jit_access),
+        std::move(device_attestation)
+    );
+
     return {}; // Success
 }
 
