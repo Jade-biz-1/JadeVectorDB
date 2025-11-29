@@ -130,7 +130,7 @@ When you migrate, you'll gain access to:
 
 If you have questions about this deprecation or need help migrating, please:
 1. Review the `rest_api.cpp` implementation
-2. Check the `AUTHENTICATION_IMPLEMENTATION_STATUS.md` document
+2. Check the `../../../../../docs/AUTHENTICATION_IMPLEMENTATION_STATUS.md` document
 3. Refer to `docs/api_documentation.md` for complete API reference
 
 ---

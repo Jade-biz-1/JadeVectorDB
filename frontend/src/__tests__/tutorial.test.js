@@ -16,13 +16,13 @@ describe('Tutorial Components', () => {
   describe('InteractiveAPIDocs', () => {
     it('renders without crashing', async () => {
       // Dynamically import the component to avoid issues with direct import
-      const { default: InteractiveAPIDocs } = await import('../../tutorial/src/components/InteractiveAPIDocs');
+      const { default: InteractiveAPIDocs } = await import('../../tutorials/web/src/components/InteractiveAPIDocs');
       render(<InteractiveAPIDocs />);
       expect(screen.getByText('📖')).toBeInTheDocument();
     });
 
     it('displays API documentation sections', async () => {
-      const { default: InteractiveAPIDocs } = await import('../../tutorial/src/components/InteractiveAPIDocs');
+      const { default: InteractiveAPIDocs } = await import('../../tutorials/web/src/components/InteractiveAPIDocs');
       render(<InteractiveAPIDocs />);
       
       expect(screen.getByText('Create Database')).toBeInTheDocument();
@@ -33,13 +33,13 @@ describe('Tutorial Components', () => {
 
   describe('BenchmarkingTools', () => {
     it('renders without crashing', async () => {
-      const { default: BenchmarkingTools } = await import('../../tutorial/src/components/BenchmarkingTools');
+      const { default: BenchmarkingTools } = await import('../../tutorials/web/src/components/BenchmarkingTools');
       render(<BenchmarkingTools />);
       expect(screen.getByText('📊')).toBeInTheDocument();
     });
 
     it('displays benchmark controls', async () => {
-      const { default: BenchmarkingTools } = await import('../../tutorial/src/components/BenchmarkingTools');
+      const { default: BenchmarkingTools } = await import('../../tutorials/web/src/components/BenchmarkingTools');
       render(<BenchmarkingTools />);
       
       expect(screen.getByText('Run')).toBeInTheDocument();
@@ -48,7 +48,7 @@ describe('Tutorial Components', () => {
     });
 
     it('has different benchmark tabs', async () => {
-      const { default: BenchmarkingTools } = await import('../../tutorial/src/components/BenchmarkingTools');
+      const { default: BenchmarkingTools } = await import('../../tutorials/web/src/components/BenchmarkingTools');
       render(<BenchmarkingTools />);
       
       expect(screen.getByText('Vector Search')).toBeInTheDocument();
@@ -59,13 +59,13 @@ describe('Tutorial Components', () => {
 
   describe('CommunitySharing', () => {
     it('renders without crashing', async () => {
-      const { default: CommunitySharing } = await import('../../tutorial/src/components/CommunitySharing');
+      const { default: CommunitySharing } = await import('../../tutorials/web/src/components/CommunitySharing');
       render(<CommunitySharing />);
       expect(screen.getByText('📤')).toBeInTheDocument();
     });
 
     it('has different sharing tabs', async () => {
-      const { default: CommunitySharing } = await import('../../tutorial/src/components/CommunitySharing');
+      const { default: CommunitySharing } = await import('../../tutorials/web/src/components/CommunitySharing');
       render(<CommunitySharing />);
       
       expect(screen.getByText('Share')).toBeInTheDocument();
@@ -74,7 +74,7 @@ describe('Tutorial Components', () => {
     });
 
     it('allows sharing a new scenario', async () => {
-      const { default: CommunitySharing } = await import('../../tutorial/src/components/CommunitySharing');
+      const { default: CommunitySharing } = await import('../../tutorials/web/src/components/CommunitySharing');
       render(<CommunitySharing />);
       
       // Switch to Share tab
@@ -104,13 +104,13 @@ describe('Tutorial Components', () => {
 
   describe('ResourceUsageMonitor', () => {
     it('renders without crashing', async () => {
-      const { default: ResourceUsageMonitor } = await import('../../tutorial/src/components/ResourceUsageMonitor');
+      const { default: ResourceUsageMonitor } = await import('../../tutorials/web/src/components/ResourceUsageMonitor');
       render(<ResourceUsageMonitor sessionId="test-session" />);
       expect(screen.getByText('📊')).toBeInTheDocument();
     });
 
     it('displays resource usage metrics', async () => {
-      const { default: ResourceUsageMonitor } = await import('../../tutorial/src/components/ResourceUsageMonitor');
+      const { default: ResourceUsageMonitor } = await import('../../tutorials/web/src/components/ResourceUsageMonitor');
       render(<ResourceUsageMonitor sessionId="test-session" />);
       
       expect(screen.getByText('API Calls (per minute)')).toBeInTheDocument();
@@ -120,7 +120,7 @@ describe('Tutorial Components', () => {
     });
 
     it('has a reset button', async () => {
-      const { default: ResourceUsageMonitor } = await import('../../tutorial/src/components/ResourceUsageMonitor');
+      const { default: ResourceUsageMonitor } = await import('../../tutorials/web/src/components/ResourceUsageMonitor');
       render(<ResourceUsageMonitor sessionId="test-session" />);
       
       expect(screen.getByText('Reset')).toBeInTheDocument();

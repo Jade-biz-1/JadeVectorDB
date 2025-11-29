@@ -132,7 +132,7 @@ The tutorial is successfully running at `http://localhost:3000` with:
 
 ## Integration Guide
 
-A separate integration guide (`INTEGRATION_GUIDE.md`) provides instructions on how to incorporate the new components into the tutorial interface when needed.
+A separate integration guide (`../INTEGRATION_GUIDE.md`) provides instructions on how to incorporate the new components into the tutorial interface when needed.
 
 ## Key Accomplishments
 
