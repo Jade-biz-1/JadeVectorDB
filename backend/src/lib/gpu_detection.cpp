@@ -49,19 +49,69 @@ std::vector<GPUDeviceInfo> detect_cuda_gpus() {
 
 std::vector<GPUDeviceInfo> detect_opencl_gpus() {
     std::vector<GPUDeviceInfo> devices;
-    
-    // NOTE: This is a placeholder since we don't have OpenCL fully integrated
-    // In a real implementation, we would query OpenCL platforms and devices
-    
+
 #ifdef OPENCL_AVAILABLE
-    // Placeholder for OpenCL implementation
-    // This would involve:
-    // 1. Enumerating OpenCL platforms
-    // 2. Querying devices on each platform
-    // 3. Identifying GPU devices specifically
-    // 4. Gathering device information
-#endif
-    
+    cl_uint platform_count = 0;
+    cl_int error = clGetPlatformIDs(0, nullptr, &platform_count);
+
+    if (error != CL_SUCCESS || platform_count == 0) {
+        // No OpenCL platforms available
+        return devices;
+    }
+
+    std::vector<cl_platform_id> platforms(platform_count);
+    error = clGetPlatformIDs(platform_count, platforms.data(), nullptr);
+
+    if (error != CL_SUCCESS) {
+        return devices;
+    }
+
+    for (cl_uint p = 0; p < platform_count; ++p) {
+        cl_uint device_count = 0;
+        error = clGetDeviceIDs(platforms[p], CL_DEVICE_TYPE_GPU, 0, nullptr, &device_count);
+
+        if (error != CL_SUCCESS || device_count == 0) {
+            continue; // No GPU devices on this platform
+        }
+
+        std::vector<cl_device_id> cl_devices(device_count);
+        error = clGetDeviceIDs(platforms[p], CL_DEVICE_TYPE_GPU, device_count, cl_devices.data(), nullptr);
+
+        if (error != CL_SUCCESS) {
+            continue;
+        }
+
+        for (cl_uint d = 0; d < device_count; ++d) {
+            GPUDeviceInfo info;
+            info.device_id = devices.size(); // Unique ID across all devices
+
+            // Get device name
+            char name_buffer[256];
+            size_t name_size;
+            clGetDeviceInfo(cl_devices[d], CL_DEVICE_NAME, sizeof(name_buffer), name_buffer, &name_size);
+            info.name = std::string(name_buffer, name_size);
+
+            // Get global memory size
+            cl_ulong global_mem_size;
+            clGetDeviceInfo(cl_devices[d], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(global_mem_size), &global_mem_size, nullptr);
+            info.memory_size = static_cast<size_t>(global_mem_size);
+
+            // Get compute capability equivalent for OpenCL
+            char version_buffer[256];
+            size_t version_size;
+            clGetDeviceInfo(cl_devices[d], CL_DEVICE_VERSION, sizeof(version_buffer), version_buffer, &version_size);
+            info.compute_capability = std::string(version_buffer, version_size); // OpenCL version
+
+            // Check if the device is available
+            cl_bool available;
+            clGetDeviceInfo(cl_devices[d], CL_DEVICE_AVAILABLE, sizeof(available), &available, nullptr);
+            info.is_available = (available == CL_TRUE);
+
+            devices.push_back(info);
+        }
+    }
+#endif // OPENCL_AVAILABLE
+
     return devices;
 }
 

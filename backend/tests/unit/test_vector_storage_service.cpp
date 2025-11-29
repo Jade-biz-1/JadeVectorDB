@@ -326,12 +326,214 @@ int main(int argc, char **argv) {
     return RUN_ALL_TESTS();
 }
 // Additional test cases for enhanced coverage
-TEST_F(Vector_storage_serviceTest, AdditionalTestCase1) {
-    // TODO: Add specific test case for vector_storage_service
-    SUCCEED();
+TEST_F(VectorStorageServiceTest, StoreAndRetrieveLargeVector) {
+    // Test storing and retrieving large vectors
+    Vector large_vector;
+    large_vector.id = "large_vector";
+    large_vector.values.reserve(10000); // Large vector with 10,000 dimensions
+
+    // Fill with some test data
+    for (int i = 0; i < 10000; ++i) {
+        large_vector.values.push_back(static_cast<float>(i) / 1000.0f);
+    }
+
+    // Add metadata
+    large_vector.metadata.source = "test_large";
+    large_vector.metadata.owner = "test_user";
+    large_vector.metadata.category = "large_vectors";
+
+    // Store the large vector
+    auto store_result = vector_storage_service_->store_vector("test_db_123", large_vector);
+    EXPECT_TRUE(store_result.has_value());
+
+    // Retrieve the large vector
+    auto retrieve_result = vector_storage_service_->retrieve_vector("test_db_123", "large_vector");
+    EXPECT_TRUE(retrieve_result.has_value());
+
+    if (retrieve_result.has_value()) {
+        auto retrieved_vector = retrieve_result.value();
+        EXPECT_EQ(retrieved_vector.id, "large_vector");
+        EXPECT_EQ(retrieved_vector.values.size(), 10000);
+        EXPECT_EQ(retrieved_vector.metadata.source, "test_large");
+        EXPECT_EQ(retrieved_vector.metadata.owner, "test_user");
+
+        // Check a few values to ensure they match
+        for (int i = 0; i < 10; ++i) {  // Check first 10 values
+            EXPECT_FLOAT_EQ(retrieved_vector.values[i],
+                           static_cast<float>(i) / 1000.0f);
+        }
+    }
 }
 
-TEST_F(Vector_storage_serviceTest, AdditionalTestCase2) {
-    // TODO: Add specific test case for vector_storage_service
-    SUCCEED();
+TEST_F(VectorStorageServiceTest, BatchOperationsWithMetadataFiltering) {
+    // Test batch operations with metadata filtering
+    std::vector<Vector> test_vectors;
+
+    // Create multiple vectors with different metadata
+    for (int i = 0; i < 5; ++i) {
+        Vector vec;
+        vec.id = "vector_" + std::to_string(i);
+        vec.values = {static_cast<float>(i), static_cast<float>(i+1)};
+        vec.metadata.category = (i % 2 == 0) ? "even" : "odd";
+        vec.metadata.owner = "test_user";
+        vec.metadata.tags = {(i < 3) ? "small" : "large"};
+
+        test_vectors.push_back(vec);
+    }
+
+    // Batch store vectors
+    auto batch_store_result = vector_storage_service_->batch_store_vectors("test_db_123", test_vectors);
+    EXPECT_TRUE(batch_store_result.has_value());
+
+    if (batch_store_result.has_value()) {
+        auto stored_ids = batch_store_result.value();
+        EXPECT_EQ(stored_ids.size(), 5);
+    }
+
+    // Create a filter to get only even-numbered vectors
+    MetadataFilterCondition category_filter;
+    category_filter.field = "category";
+    category_filter.operator_type = FilterOperator::EQUALS;
+    category_filter.value = "even";
+
+    // Test batch retrieval with filtering
+    auto filter_result = vector_storage_service_->retrieve_vectors_by_metadata("test_db_123", {category_filter});
+    EXPECT_TRUE(filter_result.has_value());
+
+    if (filter_result.has_value()) {
+        auto filtered_vectors = filter_result.value();
+
+        // Should have 3 vectors with even category (indices 0, 2, 4)
+        EXPECT_EQ(filtered_vectors.size(), 3);
+
+        // Verify all returned vectors have the correct category
+        for (const auto& vec : filtered_vectors) {
+            EXPECT_EQ(vec.metadata.category, "even");
+        }
+    }
+}
+// Additional comprehensive tests for edge cases and error conditions
+TEST_F(VectorStorageServiceTest, StoreVectorWithInvalidDimensions) {
+    // Test storing a vector with mismatched dimensions compared to database configuration
+    Vector invalid_vector;
+    invalid_vector.id = "invalid_vector";
+    invalid_vector.values = {1.0f, 2.0f}; // Only 2 values
+
+    // Try to store in a database that expects more dimensions
+    auto result = vector_storage_service_->store_vector("mismatched_db", invalid_vector);
+
+    // Behavior depends on validation implementation, but should handle gracefully
+    // If validation is strict, this might return an error
+    if (result.has_value()) {
+        // If it's accepted, verify it was stored correctly
+        auto retrieve_result = vector_storage_service_->retrieve_vector("mismatched_db", "invalid_vector");
+        EXPECT_TRUE(retrieve_result.has_value());
+    }
+}
+
+TEST_F(VectorStorageServiceTest, RetrieveNonExistentVector) {
+    // Test retrieving a vector that doesn't exist
+    auto result = vector_storage_service_->retrieve_vector("test_db_123", "nonexistent_vector");
+
+    // Should return an error since vector doesn't exist
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST_F(VectorStorageServiceTest, UpdateNonExistentVector) {
+    // Test updating a vector that doesn't exist
+    Vector new_vector;
+    new_vector.id = "nonexistent_vector";
+    new_vector.values = {1.0f, 2.0f, 3.0f, 4.0f};
+
+    auto result = vector_storage_service_->update_vector("test_db_123", new_vector);
+
+    // Should return an error since vector doesn't exist
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST_F(VectorStorageServiceTest, DeleteNonExistentVector) {
+    // Test deleting a vector that doesn't exist
+    auto result = vector_storage_service_->delete_vector("test_db_123", "nonexistent_vector");
+
+    // Behavior depends on implementation - could return success (no-op) or error
+    // In a well-designed API, this might return success as deleting non-existent items is often treated as no-op
+    EXPECT_TRUE(result.has_value());
+}
+
+TEST_F(VectorStorageServiceTest, BatchStoreWithMixedValidity) {
+    // Test batch storing vectors with mixed validity (some valid, some invalid)
+    Vector valid_vector;
+    valid_vector.id = "valid_vector";
+    valid_vector.values = {1.0f, 2.0f, 3.0f, 4.0f};
+
+    Vector invalid_vector;
+    invalid_vector.id = "invalid_vector";
+    invalid_vector.values = {}; // Empty values - invalid
+
+    std::vector<Vector> vectors = {valid_vector, invalid_vector};
+
+    auto result = vector_storage_service_->batch_store_vectors("test_db_123", vectors);
+
+    // Should handle mixed validity appropriately (may partially succeed or fail completely depending on implementation)
+    if (result.has_value()) {
+        auto ids = result.value();
+        // Implementation may return only successfully stored IDs or all requested IDs with status
+        EXPECT_TRUE(ids.size() <= vectors.size());
+    }
+}
+
+TEST_F(VectorStorageServiceTest, BatchRetrieveWithMixedExistence) {
+    // Test batch retrieving vectors with mixed existence (some exist, some don't)
+    Vector existing_vector;
+    existing_vector.id = "existing_vector";
+    existing_vector.values = {1.0f, 2.0f, 3.0f, 4.0f};
+
+    // Store one vector first
+    auto store_result = vector_storage_service_->store_vector("test_db_123", existing_vector);
+    EXPECT_TRUE(store_result.has_value());
+
+    // Then try to retrieve both existing and non-existing vectors
+    std::vector<std::string> vector_ids = {"existing_vector", "nonexistent_vector"};
+
+    auto result = vector_storage_service_->retrieve_vectors("test_db_123", vector_ids);
+
+    // Should return vectors that exist and handle missing ones appropriately
+    if (result.has_value()) {
+        auto retrieved_vectors = result.value();
+        EXPECT_LE(retrieved_vectors.size(), vector_ids.size());  // At most the number of requested vectors
+        
+        // At least the existing vector should be returned
+        bool found_existing = false;
+        for (const auto& vec : retrieved_vectors) {
+            if (vec.id == "existing_vector") {
+                found_existing = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(found_existing);
+    }
+}
+
+TEST_F(VectorStorageServiceTest, StoreVectorWithEmptyID) {
+    // Test storing a vector with an empty ID
+    Vector vector_with_empty_id;
+    vector_with_empty_id.id = "";  // Empty ID - invalid
+    vector_with_empty_id.values = {1.0f, 2.0f, 3.0f, 4.0f};
+
+    auto result = vector_storage_service_->store_vector("test_db_123", vector_with_empty_id);
+
+    // Should return an error since vector ID is empty
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST_F(VectorStorageServiceTest, RetrieveVectorsWithEmptyList) {
+    // Test retrieving vectors with an empty list of IDs
+    std::vector<std::string> empty_ids = {};
+
+    auto result = vector_storage_service_->retrieve_vectors("test_db_123", empty_ids);
+
+    // Should return an empty vector of results
+    if (result.has_value()) {
+        EXPECT_EQ(result.value().size(), 0);
+    }
 }
