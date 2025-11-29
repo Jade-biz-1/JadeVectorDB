@@ -713,10 +713,10 @@ For detailed documentation:
 - [CLI Documentation](docs/cli-documentation.md) - Complete CLI reference
 - [CLI Examples](examples/cli/README.md) - Real-world usage examples
 - [CLI Tutorials](tutorials/cli/README.md) - Step-by-step guides
-- [Quiz System](QUIZ_SYSTEM_DOCUMENTATION.md) - Interactive tutorial assessment platform
+- [Quiz System](docs/QUIZ_SYSTEM_DOCUMENTATION.md) - Interactive tutorial assessment platform
 - [API Documentation](docs/api_documentation.md) - REST API reference
 - [Search Functionality](docs/search_functionality.md) - Search algorithms and metadata filtering
-- [Backend Service Verification](BACKEND_SERVICE_VERIFICATION.md) - Implementation details
+- [Backend Service Verification](docs/BACKEND_SERVICE_VERIFICATION.md) - Implementation details
 
 ## Development Tools
 
