@@ -195,6 +195,9 @@ public:
     // Get current configuration
     AuthenticationConfig get_config() const;
 
+    // Seed default users for non-production environments
+    Result<bool> seed_default_users();
+
 private:
     // Password hashing
     std::string hash_password(const std::string& password, const std::string& salt) const;

@@ -3,11 +3,14 @@
 
 #include "models/vector.h"
 #include "models/database.h"
+#include "lib/error_handling.h"
+#include "lib/logging.h"
 #include <string>
 #include <vector>
 #include <memory>
 #include <unordered_map>
 #include <chrono>
+#include <mutex>
 
 namespace jadevectordb {
 
@@ -17,7 +20,7 @@ struct ArchivedVector {
     std::string original_vector_id;
     std::string database_id;
     std::vector<float> values;
-    std::unordered_map<std::string, std::string> metadata;
+    Vector::Metadata metadata;
     std::chrono::system_clock::time_point archived_at;
     std::chrono::system_clock::time_point expires_at;  // When it will be deleted permanently
     std::string restored_from;  // Archive ID this was restored from (if applicable)
@@ -63,7 +66,7 @@ private:
     ArchivalConfig config_;
     std::unordered_map<std::string, ArchivedVector> archive_store_; // archive_id -> archived_vector
     std::unordered_map<std::string, std::vector<std::string>> db_archives_; // database_id -> [archive_ids]
-    std::mutex archive_mutex_;
+    mutable std::mutex archive_mutex_;
     
     size_t current_archive_size_;
     size_t max_archive_size_;

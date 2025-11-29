@@ -1,0 +1,17 @@
+// FlatBuffers schema for Index storage
+namespace JadeVectorDB.Schema;
+
+// Index structure
+table Index {
+    index_id: string (key);
+    database_id: string;
+    type: string;
+    parameters_json: string;
+    status: string;
+    created_timestamp: ulong;
+    updated_timestamp: ulong;
+    vector_count: ulong;
+    size_bytes: ulong;
+}
+
+root_type Index;

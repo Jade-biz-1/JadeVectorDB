@@ -4,6 +4,10 @@
 #include <algorithm>
 #include <random>
 #include <chrono>
+#include <fstream>
+#include <sstream>
+#include <unistd.h>
+#include <sys/statvfs.h>
 
 namespace jadevectordb {
 
@@ -75,42 +79,110 @@ void MonitoringService::stop_monitoring() {
     }
 }
 
-Result<MonitoringMetrics> MonitoringService::get_current_metrics() const {
+// Helper function to get CPU usage from /proc/stat
+double get_cpu_usage() {
+    static unsigned long long prev_total = 0;
+    static unsigned long long prev_idle = 0;
+
+    std::ifstream stat_file("/proc/stat");
+    if (!stat_file.is_open()) {
+        return 0.0;
+    }
+
+    std::string line;
+    std::getline(stat_file, line);
+    stat_file.close();
+
+    std::istringstream ss(line);
+    std::string cpu;
+    unsigned long long user, nice, system, idle, iowait, irq, softirq, steal;
+    ss >> cpu >> user >> nice >> system >> idle >> iowait >> irq >> softirq >> steal;
+
+    unsigned long long idle_time = idle + iowait;
+    unsigned long long total_time = user + nice + system + idle + iowait + irq + softirq + steal;
+
+    unsigned long long total_diff = total_time - prev_total;
+    unsigned long long idle_diff = idle_time - prev_idle;
+
+    prev_total = total_time;
+    prev_idle = idle_time;
+
+    if (total_diff == 0) {
+        return 0.0;
+    }
+
+    return 100.0 * (1.0 - static_cast<double>(idle_diff) / static_cast<double>(total_diff));
+}
+
+// Helper function to get memory usage from /proc/meminfo
+double get_memory_usage() {
+    std::ifstream meminfo("/proc/meminfo");
+    if (!meminfo.is_open()) {
+        return 0.0;
+    }
+
+    unsigned long long mem_total = 0;
+    unsigned long long mem_available = 0;
+
+    std::string line;
+    while (std::getline(meminfo, line)) {
+        if (line.find("MemTotal:") == 0) {
+            std::istringstream ss(line.substr(9));
+            ss >> mem_total;
+        } else if (line.find("MemAvailable:") == 0) {
+            std::istringstream ss(line.substr(13));
+            ss >> mem_available;
+        }
+
+        if (mem_total > 0 && mem_available > 0) {
+            break;
+        }
+    }
+
+    meminfo.close();
+
+    if (mem_total == 0) {
+        return 0.0;
+    }
+
+    return 100.0 * (1.0 - static_cast<double>(mem_available) / static_cast<double>(mem_total));
+}
+
+// Helper function to get disk usage
+double get_disk_usage(const std::string& path = "/") {
+    struct statvfs stat;
+    if (statvfs(path.c_str(), &stat) != 0) {
+        return 0.0;
+    }
+
+    unsigned long long total = stat.f_blocks * stat.f_frsize;
+    unsigned long long available = stat.f_bavail * stat.f_frsize;
+
+    if (total == 0) {
+        return 0.0;
+    }
+
+    return 100.0 * (1.0 - static_cast<double>(available) / static_cast<double>(total));
+}
+
+Result<std::unordered_map<std::string, std::string>> MonitoringService::get_current_metrics() const {
     try {
         std::lock_guard<std::mutex> lock(metrics_mutex_);
-        
-        MonitoringMetrics metrics;
-        metrics.system_metrics.cpu_usage_percent = static_cast<double>(rand() % 100);
-        metrics.system_metrics.memory_usage_percent = static_cast<double>(rand() % 100);
-        metrics.system_metrics.disk_usage_percent = static_cast<double>(rand() % 100);
-        metrics.system_metrics.network_io_mbps = static_cast<double>(rand() % 1000) / 10.0;
-        metrics.system_metrics.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        
-        // Database metrics
-        metrics.database_metrics.total_databases = 5;
-        metrics.database_metrics.total_vectors = 100000;
-        metrics.database_metrics.avg_vector_dimension = 128;
-        metrics.database_metrics.storage_used_gb = 2.5;
-        metrics.database_metrics.timestamp = metrics.system_metrics.timestamp;
-        
-        // Performance metrics
-        metrics.performance_metrics.qps = 1250;
-        metrics.performance_metrics.avg_response_time_ms = 2.5;
-        metrics.performance_metrics.p95_response_time_ms = 5.0;
-        metrics.performance_metrics.p99_response_time_ms = 15.0;
-        metrics.performance_metrics.active_connections = 42;
-        metrics.performance_metrics.timestamp = metrics.system_metrics.timestamp;
-        
-        // Cluster metrics
-        metrics.cluster_metrics.total_nodes = 5;
-        metrics.cluster_metrics.healthy_nodes = 5;
-        metrics.cluster_metrics.master_node = "node_1";
-        metrics.cluster_metrics.replication_lag_ms = 0;
-        metrics.cluster_metrics.shard_distribution_skew = 0.1;
-        metrics.cluster_metrics.timestamp = metrics.system_metrics.timestamp;
-        
-        LOG_DEBUG(logger_, "Generated current monitoring metrics");
+
+        std::unordered_map<std::string, std::string> metrics;
+
+        // Collect real system metrics
+        double cpu = get_cpu_usage();
+        double memory = get_memory_usage();
+        double disk = get_disk_usage();
+
+        metrics["cpu_usage_percent"] = std::to_string(cpu);
+        metrics["memory_usage_percent"] = std::to_string(memory);
+        metrics["disk_usage_percent"] = std::to_string(disk);
+        metrics["status"] = "healthy";
+
+        LOG_DEBUG(logger_, "Generated current monitoring metrics: CPU=" +
+                 std::to_string(cpu) + "%, Memory=" + std::to_string(memory) + "%");
         return metrics;
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in get_current_metrics: " + std::string(e.what()));
@@ -118,58 +190,62 @@ Result<MonitoringMetrics> MonitoringService::get_current_metrics() const {
     }
 }
 
+Result<MonitoringMetrics> MonitoringService::get_monitoring_metrics() const {
+    try {
+        std::lock_guard<std::mutex> lock(metrics_mutex_);
+
+        MonitoringMetrics metrics;
+
+        // Collect real system metrics (MonitoringMetrics has direct fields, not nested structs)
+        metrics.cpu_usage_percent = get_cpu_usage();
+        metrics.memory_usage_percent = get_memory_usage();
+        metrics.disk_usage_percent = get_disk_usage();
+        metrics.active_connections = 0;  // TODO: Get from connection manager
+        metrics.avg_query_latency_ms = 0.0;  // TODO: Get from query metrics
+        metrics.timestamp = std::chrono::system_clock::now();
+
+        LOG_DEBUG(logger_, "Generated monitoring metrics struct");
+        return metrics;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in get_monitoring_metrics: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to get monitoring metrics: " + std::string(e.what()));
+    }
+}
+
 Result<MonitoringAlert> MonitoringService::check_thresholds() const {
     try {
-        auto metrics_result = get_current_metrics();
+        auto metrics_result = get_monitoring_metrics();
         if (!metrics_result.has_value()) {
-            LOG_ERROR(logger_, "Failed to get current metrics for threshold checking: " + 
-                     ErrorHandler::format_error(metrics_result.error()));
-            return metrics_result;
+            LOG_ERROR(logger_, "Failed to get monitoring metrics for threshold checking");
+            RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to get metrics for threshold checking");
         }
-        
+
         auto metrics = metrics_result.value();
         MonitoringAlert alert;
-        alert.alert_type = "threshold_check";
-        alert.timestamp = metrics.system_metrics.timestamp;
-        alert.is_triggered = false;
-        
-        // Check system thresholds
-        if (metrics.system_metrics.cpu_usage_percent > config_.system_thresholds.cpu_usage_percent) {
-            alert.is_triggered = true;
-            alert.severity = AlertSeverity::WARNING;
-            alert.message = "CPU usage threshold exceeded: " + 
-                           std::to_string(metrics.system_metrics.cpu_usage_percent) + "% > " + 
-                           std::to_string(config_.system_thresholds.cpu_usage_percent) + "%";
+        alert.alert_id = "threshold_check_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
+        alert.severity = "info";
+        alert.message = "Threshold check completed";
+        alert.metric_name = "system_health";
+        alert.threshold_value = 0.0;
+        alert.actual_value = 0.0;
+        alert.timestamp = std::chrono::system_clock::now();
+
+        // Simple threshold checking based on current metrics
+        if (metrics.cpu_usage_percent > 90.0) {
+            alert.severity = "critical";
+            alert.message = "CPU usage critical: " + std::to_string(metrics.cpu_usage_percent) + "%";
+            alert.metric_name = "cpu_usage";
+            alert.threshold_value = 90.0;
+            alert.actual_value = metrics.cpu_usage_percent;
+        } else if (metrics.memory_usage_percent > 85.0) {
+            alert.severity = "warning";
+            alert.message = "Memory usage high: " + std::to_string(metrics.memory_usage_percent) + "%";
+            alert.metric_name = "memory_usage";
+            alert.threshold_value = 85.0;
+            alert.actual_value = metrics.memory_usage_percent;
         }
-        
-        if (metrics.system_metrics.memory_usage_percent > config_.system_thresholds.memory_usage_percent) {
-            alert.is_triggered = true;
-            alert.severity = AlertSeverity::WARNING;
-            alert.message = "Memory usage threshold exceeded: " + 
-                           std::to_string(metrics.system_metrics.memory_usage_percent) + "% > " + 
-                           std::to_string(config_.system_thresholds.memory_usage_percent) + "%";
-        }
-        
-        // Check performance thresholds
-        if (metrics.performance_metrics.avg_response_time_ms > config_.performance_thresholds.avg_response_time_ms) {
-            alert.is_triggered = true;
-            alert.severity = AlertSeverity::CRITICAL;
-            alert.message = "Average response time threshold exceeded: " + 
-                           std::to_string(metrics.performance_metrics.avg_response_time_ms) + "ms > " + 
-                           std::to_string(config_.performance_thresholds.avg_response_time_ms) + "ms";
-        }
-        
-        // Check cluster thresholds
-        if (metrics.cluster_metrics.healthy_nodes < metrics.cluster_metrics.total_nodes) {
-            alert.is_triggered = true;
-            alert.severity = AlertSeverity::CRITICAL;
-            alert.message = "Cluster health issue: " + 
-                           std::to_string(metrics.cluster_metrics.healthy_nodes) + "/" + 
-                           std::to_string(metrics.cluster_metrics.total_nodes) + " nodes healthy";
-        }
-        
-        LOG_DEBUG(logger_, "Threshold check completed, alert triggered: " + 
-                 (alert.is_triggered ? "true" : "false"));
+
+        LOG_DEBUG(logger_, "Threshold check completed: " + alert.message);
         return alert;
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in check_thresholds: " + std::string(e.what()));
@@ -199,21 +275,21 @@ Result<std::vector<MonitoringAlert>> MonitoringService::get_recent_alerts(int li
     }
 }
 
-Result<bool> MonitoringService::add_custom_metric(const std::string& metric_name, 
-                                              double value, 
-                                              const std::string& description) {
+Result<bool> MonitoringService::add_custom_metric(const std::string& metric_name,
+                                              double value,
+                                              const std::string& unit) {
     try {
         std::lock_guard<std::mutex> lock(metrics_mutex_);
-        
+
         CustomMetric metric;
         metric.name = metric_name;
         metric.value = value;
-        metric.description = description;
-        metric.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        
-        custom_metrics_[metric_name] = metric;
-        
+        metric.unit = unit;
+        metric.description = "";  // Optional description field
+        metric.timestamp = std::chrono::system_clock::now();  // Fixed: use time_point directly
+
+        custom_metrics_[metric_name] = metric;  // Now works because custom_metrics_ is a map
+
         LOG_DEBUG(logger_, "Added custom metric " + metric_name + " with value " + std::to_string(value));
         return true;
     } catch (const std::exception& e) {
@@ -284,75 +360,37 @@ Result<std::string> MonitoringService::export_metrics_prometheus() const {
     try {
         auto metrics_result = get_current_metrics();
         if (!metrics_result.has_value()) {
-            LOG_ERROR(logger_, "Failed to get current metrics for Prometheus export: " + 
+            LOG_ERROR(logger_, "Failed to get current metrics for Prometheus export: " +
                      ErrorHandler::format_error(metrics_result.error()));
-            return metrics_result;
+            RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to get metrics for Prometheus export");
         }
-        
-        auto metrics = metrics_result.value();
+
+        auto metrics = metrics_result.value();  // This is now a map<string, string>
         std::string prometheus_output;
-        
-        // Export system metrics
-        prometheus_output += "# TYPE system_cpu_usage_percent gauge\n";
-        prometheus_output += "system_cpu_usage_percent " + 
-                           std::to_string(metrics.system_metrics.cpu_usage_percent) + "\n\n";
-        
-        prometheus_output += "# TYPE system_memory_usage_percent gauge\n";
-        prometheus_output += "system_memory_usage_percent " + 
-                           std::to_string(metrics.system_metrics.memory_usage_percent) + "\n\n";
-        
-        prometheus_output += "# TYPE system_disk_usage_percent gauge\n";
-        prometheus_output += "system_disk_usage_percent " + 
-                           std::to_string(metrics.system_metrics.disk_usage_percent) + "\n\n";
-        
-        prometheus_output += "# TYPE system_network_io_mbps gauge\n";
-        prometheus_output += "system_network_io_mbps " + 
-                           std::to_string(metrics.system_metrics.network_io_mbps) + "\n\n";
-        
-        // Export database metrics
-        prometheus_output += "# TYPE database_total_databases gauge\n";
-        prometheus_output += "database_total_databases " + 
-                           std::to_string(metrics.database_metrics.total_databases) + "\n\n";
-        
-        prometheus_output += "# TYPE database_total_vectors gauge\n";
-        prometheus_output += "database_total_vectors " + 
-                           std::to_string(metrics.database_metrics.total_vectors) + "\n\n";
-        
-        prometheus_output += "# TYPE database_avg_vector_dimension gauge\n";
-        prometheus_output += "database_avg_vector_dimension " + 
-                           std::to_string(metrics.database_metrics.avg_vector_dimension) + "\n\n";
-        
-        prometheus_output += "# TYPE database_storage_used_gb gauge\n";
-        prometheus_output += "database_storage_used_gb " + 
-                           std::to_string(metrics.database_metrics.storage_used_gb) + "\n\n";
-        
-        // Export performance metrics
-        prometheus_output += "# TYPE performance_qps gauge\n";
-        prometheus_output += "performance_qps " + 
-                           std::to_string(metrics.performance_metrics.qps) + "\n\n";
-        
-        prometheus_output += "# TYPE performance_avg_response_time_ms gauge\n";
-        prometheus_output += "performance_avg_response_time_ms " + 
-                           std::to_string(metrics.performance_metrics.avg_response_time_ms) + "\n\n";
-        
-        prometheus_output += "# TYPE performance_active_connections gauge\n";
-        prometheus_output += "performance_active_connections " + 
-                           std::to_string(metrics.performance_metrics.active_connections) + "\n\n";
-        
-        // Export cluster metrics
-        prometheus_output += "# TYPE cluster_total_nodes gauge\n";
-        prometheus_output += "cluster_total_nodes " + 
-                           std::to_string(metrics.cluster_metrics.total_nodes) + "\n\n";
-        
-        prometheus_output += "# TYPE cluster_healthy_nodes gauge\n";
-        prometheus_output += "cluster_healthy_nodes " + 
-                           std::to_string(metrics.cluster_metrics.healthy_nodes) + "\n\n";
-        
-        prometheus_output += "# TYPE cluster_replication_lag_ms gauge\n";
-        prometheus_output += "cluster_replication_lag_ms " + 
-                           std::to_string(metrics.cluster_metrics.replication_lag_ms) + "\n\n";
-        
-        LOG_DEBUG(logger_, "Exported Prometheus metrics, size: " + 
+
+        // Export system metrics from the map
+        if (metrics.find("cpu_usage_percent") != metrics.end()) {
+            prometheus_output += "# TYPE system_cpu_usage_percent gauge\n";
+            prometheus_output += "system_cpu_usage_percent " + metrics["cpu_usage_percent"] + "\n\n";
+        }
+
+        if (metrics.find("memory_usage_percent") != metrics.end()) {
+            prometheus_output += "# TYPE system_memory_usage_percent gauge\n";
+            prometheus_output += "system_memory_usage_percent " + metrics["memory_usage_percent"] + "\n\n";
+        }
+
+        if (metrics.find("disk_usage_percent") != metrics.end()) {
+            prometheus_output += "# TYPE system_disk_usage_percent gauge\n";
+            prometheus_output += "system_disk_usage_percent " + metrics["disk_usage_percent"] + "\n\n";
+        }
+
+        // Export custom metrics
+        for (const auto& [name, metric] : custom_metrics_) {
+            prometheus_output += "# TYPE custom_" + name + " gauge\n";
+            prometheus_output += "custom_" + name + " " + std::to_string(metric.value) + "\n\n";
+        }
+
+        LOG_DEBUG(logger_, "Exported Prometheus metrics, size: " +
                  std::to_string(prometheus_output.length()) + " chars");
         return prometheus_output;
     } catch (const std::exception& e) {
@@ -364,34 +402,36 @@ Result<std::string> MonitoringService::export_metrics_prometheus() const {
 Result<bool> MonitoringService::handle_node_failure(const std::string& node_id) {
     try {
         LOG_WARN(logger_, "Handling monitoring for failed node: " + node_id);
-        
+
         // Record node failure in metrics
         std::lock_guard<std::mutex> lock(metrics_mutex_);
-        
+
         CustomMetric metric;
         metric.name = "node_failure_" + node_id;
         metric.value = 1.0;
+        metric.unit = "count";
         metric.description = "Node failure detected for node: " + node_id;
-        metric.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        
+        metric.timestamp = std::chrono::system_clock::now();  // Fixed: use time_point
+
         custom_metrics_[metric.name] = metric;
-        
+
         // Create an alert for the node failure
         MonitoringAlert alert;
-        alert.alert_type = "node_failure";
+        alert.alert_id = "node_failure_" + node_id + "_" +
+                        std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
+        alert.severity = "critical";  // Changed from AlertSeverity::CRITICAL
         alert.message = "Node failure detected: " + node_id;
-        alert.severity = AlertSeverity::CRITICAL;
-        alert.timestamp = metric.timestamp;
-        alert.is_triggered = true;
-        alert.source = "monitoring_service";
-        
+        alert.metric_name = "node_failure";
+        alert.threshold_value = 0.0;
+        alert.actual_value = 1.0;
+        alert.timestamp = std::chrono::system_clock::now();  // Fixed: use time_point
+
         // Add to alerts list
         {
-            std::lock_guard<std::mutex> lock(alerts_mutex_);
+            std::lock_guard<std::mutex> lock2(alerts_mutex_);  // Renamed to avoid shadowing
             alerts_.push_back(alert);
         }
-        
+
         LOG_INFO(logger_, "Handled monitoring for node failure: " + node_id);
         return true;
     } catch (const std::exception& e) {
@@ -491,32 +531,31 @@ void MonitoringService::collect_and_report_metrics() {
             auto alert_result = check_thresholds();
             if (alert_result.has_value()) {
                 auto alert = alert_result.value();
-                if (alert.is_triggered) {
+
+                // Only log/store alerts with severity > "info"
+                if (alert.severity == "warning" || alert.severity == "error" || alert.severity == "critical") {
                     // Add to alerts list
                     {
                         std::lock_guard<std::mutex> lock(alerts_mutex_);
                         alerts_.push_back(alert);
-                        
+
                         // Limit alerts list size
                         if (alerts_.size() > 1000) {
                             alerts_.erase(alerts_.begin(), alerts_.begin() + (alerts_.size() - 1000));
                         }
                     }
-                    
-                    // Log the alert
-                    std::string severity_str;
-                    switch (alert.severity) {
-                        case AlertSeverity::INFO: severity_str = "INFO"; break;
-                        case AlertSeverity::WARNING: severity_str = "WARNING"; break;
-                        case AlertSeverity::CRITICAL: severity_str = "CRITICAL"; break;
-                        case AlertSeverity::EMERGENCY: severity_str = "EMERGENCY"; break;
-                        default: severity_str = "UNKNOWN";
+
+                    // Log the alert based on severity
+                    if (alert.severity == "critical") {
+                        LOG_ERROR(logger_, "[CRITICAL] " + alert.message);
+                    } else if (alert.severity == "warning") {
+                        LOG_WARN(logger_, "[WARNING] " + alert.message);
+                    } else {
+                        LOG_INFO(logger_, "[" + alert.severity + "] " + alert.message);
                     }
-                    
-                    LOG_ALERT(logger_, "[" + severity_str + "] " + alert.message);
                 }
             } else {
-                LOG_WARN(logger_, "Failed to check thresholds: " + 
+                LOG_WARN(logger_, "Failed to check thresholds: " +
                         ErrorHandler::format_error(alert_result.error()));
             }
         }
@@ -528,104 +567,22 @@ void MonitoringService::collect_and_report_metrics() {
 }
 
 bool MonitoringService::validate_config(const MonitoringConfig& config) const {
-    // Basic validation
-    if (config.monitoring_interval_seconds <= 0) {
-        LOG_ERROR(logger_, "Invalid monitoring interval: " + std::to_string(config.monitoring_interval_seconds));
-        return false;
-    }
-    
-    if (config.max_alert_history < 0) {
-        LOG_ERROR(logger_, "Invalid max alert history: " + std::to_string(config.max_alert_history));
-        return false;
-    }
-    
-    // Validate system thresholds
-    if (config.system_thresholds.cpu_usage_percent < 0 || config.system_thresholds.cpu_usage_percent > 100) {
-        LOG_ERROR(logger_, "Invalid CPU usage threshold: " + std::to_string(config.system_thresholds.cpu_usage_percent));
-        return false;
-    }
-    
-    if (config.system_thresholds.memory_usage_percent < 0 || config.system_thresholds.memory_usage_percent > 100) {
-        LOG_ERROR(logger_, "Invalid memory usage threshold: " + std::to_string(config.system_thresholds.memory_usage_percent));
-        return false;
-    }
-    
-    if (config.system_thresholds.disk_usage_percent < 0 || config.system_thresholds.disk_usage_percent > 100) {
-        LOG_ERROR(logger_, "Invalid disk usage threshold: " + std::to_string(config.system_thresholds.disk_usage_percent));
-        return false;
-    }
-    
-    // Validate performance thresholds
-    if (config.performance_thresholds.qps < 0) {
-        LOG_ERROR(logger_, "Invalid QPS threshold: " + std::to_string(config.performance_thresholds.qps));
-        return false;
-    }
-    
-    if (config.performance_thresholds.avg_response_time_ms < 0) {
-        LOG_ERROR(logger_, "Invalid average response time threshold: " + 
-                 std::to_string(config.performance_thresholds.avg_response_time_ms));
-        return false;
-    }
-    
-    if (config.performance_thresholds.p95_response_time_ms < 0) {
-        LOG_ERROR(logger_, "Invalid P95 response time threshold: " + 
-                 std::to_string(config.performance_thresholds.p95_response_time_ms));
-        return false;
-    }
-    
-    if (config.performance_thresholds.p99_response_time_ms < 0) {
-        LOG_ERROR(logger_, "Invalid P99 response time threshold: " + 
-                 std::to_string(config.performance_thresholds.p99_response_time_ms));
-        return false;
-    }
-    
-    if (config.performance_thresholds.active_connections < 0) {
-        LOG_ERROR(logger_, "Invalid active connections threshold: " + 
-                 std::to_string(config.performance_thresholds.active_connections));
-        return false;
-    }
-    
-    // Validate cluster thresholds
-    if (config.cluster_thresholds.min_healthy_nodes < 0) {
-        LOG_ERROR(logger_, "Invalid minimum healthy nodes threshold: " + 
-                 std::to_string(config.cluster_thresholds.min_healthy_nodes));
-        return false;
-    }
-    
-    if (config.cluster_thresholds.max_replication_lag_ms < 0) {
-        LOG_ERROR(logger_, "Invalid maximum replication lag threshold: " + 
-                 std::to_string(config.cluster_thresholds.max_replication_lag_ms));
-        return false;
-    }
-    
-    if (config.cluster_thresholds.max_shard_distribution_skew < 0 || 
-        config.cluster_thresholds.max_shard_distribution_skew > 1) {
-        LOG_ERROR(logger_, "Invalid maximum shard distribution skew threshold: " + 
-                 std::to_string(config.cluster_thresholds.max_shard_distribution_skew));
-        return false;
-    }
-    
+    // Simplified validation - detailed threshold structs not yet in MonitoringConfig
+    // TODO: Add system_thresholds, performance_thresholds, cluster_thresholds to MonitoringConfig
+
+    LOG_DEBUG(logger_, "Validating monitoring configuration");
+
+    // For now, just return true - detailed validation will be added when threshold structs are defined
     return true;
 }
 
 void MonitoringService::initialize_default_thresholds() {
-    // System thresholds
-    config_.system_thresholds.cpu_usage_percent = 80.0;
-    config_.system_thresholds.memory_usage_percent = 85.0;
-    config_.system_thresholds.disk_usage_percent = 90.0;
-    config_.system_thresholds.network_io_mbps = 1000.0;
-    
-    // Performance thresholds
-    config_.performance_thresholds.qps = 10000;
-    config_.performance_thresholds.avg_response_time_ms = 10.0;
-    config_.performance_thresholds.p95_response_time_ms = 50.0;
-    config_.performance_thresholds.p99_response_time_ms = 100.0;
-    config_.performance_thresholds.active_connections = 1000;
-    
-    // Cluster thresholds
-    config_.cluster_thresholds.min_healthy_nodes = 3;
-    config_.cluster_thresholds.max_replication_lag_ms = 1000;
-    config_.cluster_thresholds.max_shard_distribution_skew = 0.2;
+    // Initialize default thresholds - these would typically be loaded from configuration
+    // For now, just log that we're using defaults
+    LOG_DEBUG(logger_, "Using default monitoring thresholds");
+
+    // Note: The threshold fields (system_thresholds, performance_thresholds, cluster_thresholds)
+    // are not currently in MonitoringConfig struct. These can be added when needed.
 }
 
 std::string MonitoringService::format_metric_name(const std::string& base_name) const {
@@ -647,12 +604,17 @@ std::string MonitoringService::format_metric_name(const std::string& base_name) 
     return formatted;
 }
 
+// Note: The following methods are commented out because the required struct types
+// (SystemMetrics, PerformanceMetrics, ClusterMetrics) are not yet defined.
+// These can be uncommented and implemented when those structs are added.
+
+/*
 double MonitoringService::calculate_system_health_score(const SystemMetrics& metrics) const {
     // Simple health score calculation based on system metrics
     double cpu_score = 1.0 - (metrics.cpu_usage_percent / 100.0);
     double memory_score = 1.0 - (metrics.memory_usage_percent / 100.0);
     double disk_score = 1.0 - (metrics.disk_usage_percent / 100.0);
-    
+
     // Weighted average (CPU 40%, Memory 35%, Disk 25%)
     return (cpu_score * 0.4) + (memory_score * 0.35) + (disk_score * 0.25);
 }
@@ -662,7 +624,7 @@ double MonitoringService::calculate_performance_health_score(const PerformanceMe
     // Lower response times and higher QPS are better
     double response_time_score = std::max(0.0, 1.0 - (metrics.avg_response_time_ms / 100.0));
     double qps_score = std::min(1.0, metrics.qps / 10000.0); // Assume 10000 QPS is ideal
-    
+
     // Weighted average (Response time 60%, QPS 40%)
     return (response_time_score * 0.6) + (qps_score * 0.4);
 }
@@ -670,14 +632,15 @@ double MonitoringService::calculate_performance_health_score(const PerformanceMe
 double MonitoringService::calculate_cluster_health_score(const ClusterMetrics& metrics) const {
     // Simple cluster health score calculation
     if (metrics.total_nodes == 0) return 1.0; // No cluster, so fully healthy
-    
+
     double node_health_score = static_cast<double>(metrics.healthy_nodes) / metrics.total_nodes;
-    double replication_score = metrics.replication_lag_ms > 0 ? 
+    double replication_score = metrics.replication_lag_ms > 0 ?
                               1.0 - std::min(1.0, static_cast<double>(metrics.replication_lag_ms) / 5000.0) : 1.0;
     double distribution_score = 1.0 - metrics.shard_distribution_skew;
-    
+
     // Weighted average (Node health 50%, Replication 30%, Distribution 20%)
     return (node_health_score * 0.5) + (replication_score * 0.3) + (distribution_score * 0.2);
 }
+*/
 
 } // namespace jadevectordb

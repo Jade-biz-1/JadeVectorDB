@@ -1,0 +1,22 @@
+// FlatBuffers schema for Database storage
+namespace JadeVectorDB.Schema;
+
+// Database configuration structure
+table Database {
+    database_id: string (key);
+    name: string;
+    description: string;
+    vector_dimension: uint;
+    index_type: string;
+    index_parameters_json: string;
+    sharding_config_json: string;
+    replication_config_json: string;
+    embedding_models_json: string;
+    metadata_schema_json: string;
+    retention_policy_json: string;
+    access_control_json: string;
+    created_timestamp: ulong;
+    updated_timestamp: ulong;
+}
+
+root_type Database;

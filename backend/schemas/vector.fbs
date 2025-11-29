@@ -1,0 +1,26 @@
+// FlatBuffers schema for Vector storage
+namespace JadeVectorDB.Schema;
+
+// Metadata structure
+table VectorMetadata {
+    source: string;
+    created_at: ulong;
+    updated_at: ulong;
+    owner: string;
+    category: string;
+    score: float;
+    status: string;
+    tags: [string];
+}
+
+// Main vector structure
+table Vector {
+    id: string (key);
+    values: [float];
+    dimension: uint;
+    metadata: VectorMetadata;
+    version: uint = 1;
+    deleted: bool = false;
+}
+
+root_type Vector;

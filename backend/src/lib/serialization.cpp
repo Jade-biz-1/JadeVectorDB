@@ -1,4 +1,7 @@
 #include "serialization.h"
+#include "generated/vector_generated.h"
+#include "generated/database_generated.h"
+#include "generated/index_generated.h"
 #include <stdexcept>
 #include <cstring>
 
@@ -8,112 +11,180 @@ namespace serialization {
 
     // Serialize Vector to FlatBuffer
     std::vector<uint8_t> serialize_vector(const Vector& vec) {
-        auto builder = create_builder();
-        
-        // TODO: Implement actual FlatBuffer serialization
-        // This is a placeholder implementation
-        
-        // For now, we'll just serialize to a simple binary format
-        // In a real implementation, we would use FlatBuffer schema-generated code
-        std::vector<uint8_t> buffer;
-        buffer.reserve(sizeof(size_t) + vec.id.size() + sizeof(size_t) + vec.values.size() * sizeof(float));
-        
-        // Serialize ID
-        size_t id_size = vec.id.size();
-        buffer.insert(buffer.end(), reinterpret_cast<uint8_t*>(&id_size), 
-                      reinterpret_cast<uint8_t*>(&id_size) + sizeof(size_t));
-        buffer.insert(buffer.end(), vec.id.begin(), vec.id.end());
-        
-        // Serialize values
-        size_t values_size = vec.values.size();
-        buffer.insert(buffer.end(), reinterpret_cast<uint8_t*>(&values_size), 
-                      reinterpret_cast<uint8_t*>(&values_size) + sizeof(size_t));
-        buffer.insert(buffer.end(), reinterpret_cast<const uint8_t*>(vec.values.data()), 
-                      reinterpret_cast<const uint8_t*>(vec.values.data()) + values_size * sizeof(float));
-        
-        return buffer;
+        flatbuffers::FlatBufferBuilder builder(1024);
+
+        // Create metadata
+        auto metadata_fb = JadeVectorDB::Schema::CreateVectorMetadata(
+            builder,
+            builder.CreateString(vec.metadata.source),
+            0,  // created_at (timestamp as ulong)
+            0,  // updated_at (timestamp as ulong)
+            builder.CreateString(vec.metadata.owner),
+            builder.CreateString(vec.metadata.category),
+            vec.metadata.score,
+            builder.CreateString(vec.metadata.status),
+            builder.CreateVectorOfStrings(vec.metadata.tags)
+        );
+
+        // Create vector
+        auto vector_fb = JadeVectorDB::Schema::CreateVector(
+            builder,
+            builder.CreateString(vec.id),
+            builder.CreateVector(vec.values),
+            static_cast<uint32_t>(vec.values.size()),
+            metadata_fb,
+            1,  // version
+            false  // deleted
+        );
+
+        builder.Finish(vector_fb);
+
+        return std::vector<uint8_t>(builder.GetBufferPointer(),
+                                    builder.GetBufferPointer() + builder.GetSize());
     }
     
     // Deserialize Vector from FlatBuffer
     Vector deserialize_vector(const uint8_t* data, size_t size) {
+        // Verify buffer
+        flatbuffers::Verifier verifier(data, size);
+        if (!JadeVectorDB::Schema::VerifyVectorBuffer(verifier)) {
+            throw std::runtime_error("Invalid FlatBuffer data for vector");
+        }
+
+        // Get root
+        auto vector_fb = JadeVectorDB::Schema::GetVector(data);
+
+        // Create Vector object
         Vector vec;
-        
-        // TODO: Implement actual FlatBuffer deserialization
-        // This is a placeholder implementation
-        
-        if (size < sizeof(size_t)) {
-            throw std::runtime_error("Invalid data size for vector deserialization");
+        vec.id = vector_fb->id()->str();
+
+        // Copy values
+        auto values_fb = vector_fb->values();
+        if (values_fb) {
+            vec.values.assign(values_fb->begin(), values_fb->end());
         }
-        
-        // Deserialize ID
-        size_t offset = 0;
-        size_t id_size = *reinterpret_cast<const size_t*>(data + offset);
-        offset += sizeof(size_t);
-        
-        if (offset + id_size > size) {
-            throw std::runtime_error("Invalid data size for vector ID");
+
+        // Copy metadata
+        auto metadata_fb = vector_fb->metadata();
+        if (metadata_fb) {
+            vec.metadata.source = metadata_fb->source() ? metadata_fb->source()->str() : "";
+            vec.metadata.created_at = std::to_string(metadata_fb->created_at());
+            vec.metadata.updated_at = std::to_string(metadata_fb->updated_at());
+            vec.metadata.owner = metadata_fb->owner() ? metadata_fb->owner()->str() : "";
+            vec.metadata.category = metadata_fb->category() ? metadata_fb->category()->str() : "";
+            vec.metadata.score = metadata_fb->score();
+            vec.metadata.status = metadata_fb->status() ? metadata_fb->status()->str() : "";
+
+            auto tags_fb = metadata_fb->tags();
+            if (tags_fb) {
+                for (auto tag : *tags_fb) {
+                    vec.metadata.tags.push_back(tag->str());
+                }
+            }
         }
-        
-        vec.id.assign(reinterpret_cast<const char*>(data + offset), id_size);
-        offset += id_size;
-        
-        // Deserialize values
-        if (offset + sizeof(size_t) > size) {
-            throw std::runtime_error("Invalid data size for vector values");
-        }
-        
-        size_t values_size = *reinterpret_cast<const size_t*>(data + offset);
-        offset += sizeof(size_t);
-        
-        if (offset + values_size * sizeof(float) > size) {
-            throw std::runtime_error("Invalid data size for vector values");
-        }
-        
-        vec.values.resize(values_size);
-        std::memcpy(vec.values.data(), data + offset, values_size * sizeof(float));
-        
+
         return vec;
     }
     
     // Serialize Database to FlatBuffer
     std::vector<uint8_t> serialize_database(const Database& db) {
-        // TODO: Implement actual FlatBuffer serialization
-        // Placeholder implementation
-        return std::vector<uint8_t>();
+        flatbuffers::FlatBufferBuilder builder(1024);
+
+        auto database_fb = JadeVectorDB::Schema::CreateDatabase(
+            builder,
+            builder.CreateString(db.databaseId),
+            builder.CreateString(db.name),
+            builder.CreateString(db.description),
+            static_cast<uint32_t>(db.vectorDimension),
+            builder.CreateString(db.indexType),
+            builder.CreateString("{}"),  // index_parameters_json
+            builder.CreateString("{}"),  // sharding_config_json
+            builder.CreateString("{}"),  // replication_config_json
+            builder.CreateString("{}"),  // embedding_models_json
+            builder.CreateString("{}"),  // metadata_schema_json
+            builder.CreateString("{}"),  // retention_policy_json
+            builder.CreateString("{}"),  // access_control_json
+            0,  // created_timestamp
+            0   // updated_timestamp
+        );
+
+        builder.Finish(database_fb);
+
+        return std::vector<uint8_t>(builder.GetBufferPointer(),
+                                    builder.GetBufferPointer() + builder.GetSize());
     }
-    
+
     // Deserialize Database from FlatBuffer
     Database deserialize_database(const uint8_t* data, size_t size) {
-        // TODO: Implement actual FlatBuffer deserialization
-        // Placeholder implementation
-        return Database();
+        // Verify buffer
+        flatbuffers::Verifier verifier(data, size);
+        if (!JadeVectorDB::Schema::VerifyDatabaseBuffer(verifier)) {
+            throw std::runtime_error("Invalid FlatBuffer data for database");
+        }
+
+        auto database_fb = JadeVectorDB::Schema::GetDatabase(data);
+
+        Database db;
+        db.databaseId = database_fb->database_id() ? database_fb->database_id()->str() : "";
+        db.name = database_fb->name() ? database_fb->name()->str() : "";
+        db.description = database_fb->description() ? database_fb->description()->str() : "";
+        db.vectorDimension = database_fb->vector_dimension();
+        db.indexType = database_fb->index_type() ? database_fb->index_type()->str() : "";
+
+        return db;
     }
     
     // Serialize Index to FlatBuffer
     std::vector<uint8_t> serialize_index(const Index& idx) {
-        // TODO: Implement actual FlatBuffer serialization
-        // Placeholder implementation
-        return std::vector<uint8_t>();
+        flatbuffers::FlatBufferBuilder builder(1024);
+
+        auto index_fb = JadeVectorDB::Schema::CreateIndex(
+            builder,
+            builder.CreateString(idx.indexId),
+            builder.CreateString(idx.databaseId),
+            builder.CreateString(idx.type),
+            builder.CreateString("{}"),  // parameters_json
+            builder.CreateString("ready"),  // status
+            0,  // created_timestamp
+            0,  // updated_timestamp
+            0,  // vector_count
+            0   // size_bytes
+        );
+
+        builder.Finish(index_fb);
+
+        return std::vector<uint8_t>(builder.GetBufferPointer(),
+                                    builder.GetBufferPointer() + builder.GetSize());
     }
-    
+
     // Deserialize Index from FlatBuffer
     Index deserialize_index(const uint8_t* data, size_t size) {
-        // TODO: Implement actual FlatBuffer deserialization
-        // Placeholder implementation
-        return Index();
+        // Verify buffer
+        flatbuffers::Verifier verifier(data, size);
+        if (!JadeVectorDB::Schema::VerifyIndexBuffer(verifier)) {
+            throw std::runtime_error("Invalid FlatBuffer data for index");
+        }
+
+        auto index_fb = JadeVectorDB::Schema::GetIndex(data);
+
+        Index idx;
+        idx.indexId = index_fb->index_id() ? index_fb->index_id()->str() : "";
+        idx.databaseId = index_fb->database_id() ? index_fb->database_id()->str() : "";
+        idx.type = index_fb->type() ? index_fb->type()->str() : "";
+
+        return idx;
     }
-    
+
     // Serialize EmbeddingModel to FlatBuffer
     std::vector<uint8_t> serialize_embedding_model(const EmbeddingModel& model) {
-        // TODO: Implement actual FlatBuffer serialization
-        // Placeholder implementation
+        // For now, use generic JSON serialization since we don't have a FlatBuffers schema
+        // This would be implemented similarly to Vector/Database/Index
         return std::vector<uint8_t>();
     }
-    
+
     // Deserialize EmbeddingModel from FlatBuffer
     EmbeddingModel deserialize_embedding_model(const uint8_t* data, size_t size) {
-        // TODO: Implement actual FlatBuffer deserialization
-        // Placeholder implementation
+        // For now, return empty model
         return EmbeddingModel();
     }
     

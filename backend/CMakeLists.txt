@@ -22,6 +22,8 @@ endif()
 
 # Find required packages
 find_package(Threads REQUIRED)
+find_package(OpenSSL REQUIRED)
+find_package(ZLIB REQUIRED)
 
 # Use FetchContent to include all required libraries directly from source
 include(FetchContent)
@@ -178,6 +180,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/models)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/services)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/lib)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/api)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/generated)
 
 # Arrow includes
 if(TARGET arrow_static)
@@ -208,6 +211,9 @@ set(CORE_SOURCES
     src/services/distributed_service_manager.cpp
     src/services/performance_benchmark.cpp
     src/services/security_audit_logger.cpp
+    src/services/archival_service.cpp
+    src/services/monitoring_service.cpp
+    src/services/authentication_service.cpp
     src/services/index/pq_index.cpp
     src/services/index/opq_index.cpp
     src/services/index/sq_index.cpp
@@ -236,6 +242,10 @@ set(CORE_SOURCES
 
 set(API_SOURCES
     src/api/rest/rest_api.cpp
+    src/api/rest/rest_api_auth_handlers.cpp
+    src/api/rest/rest_api_user_handlers.cpp
+    src/api/rest/rest_api_apikey_handlers.cpp
+    src/api/rest/rest_api_security_handlers.cpp
     src/api/grpc/grpc_service_stub.cpp
 )
 
@@ -248,6 +258,9 @@ add_library(jadevectordb_core STATIC ${CORE_SOURCES})
 
 target_link_libraries(jadevectordb_core PUBLIC
     Threads::Threads
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    ZLIB::ZLIB
     $<$<BOOL:${GRPC_AVAILABLE}>:grpc++>
     $<$<BOOL:${GRPC_AVAILABLE}>:grpc>
     $<$<BOOL:${GRPC_AVAILABLE}>:gpr>
@@ -301,6 +314,7 @@ if(BUILD_TESTS)
         tests/test_advanced_filtering_integration.cpp
         tests/test_advanced_embedding_unit.cpp
         tests/test_advanced_embedding_integration.cpp
+        tests/test_search_serialization.cpp
     )
 
     target_link_libraries(jadevectordb_tests PRIVATE
