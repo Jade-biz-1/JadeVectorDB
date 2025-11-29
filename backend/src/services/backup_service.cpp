@@ -1,4 +1,5 @@
 #include "backup_service.h"
+#include "lib/storage_format.h"
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -356,20 +357,74 @@ Result<std::string> BackupService::perform_backup(const BackupConfig& config, co
             return Result<std::string>::unexpected(MAKE_ERROR(ErrorCode::STORAGE_IO_ERROR, "Could not create backup file"));
         }
         
-        // Write a simple header with backup information
-        backup_file << "JADEVECTORDB_BACKUP_V1\n";
-        backup_file << "BackupID: " << backup_id << "\n";
-        backup_file << "Name: " << config.backup_name << "\n";
-        backup_file << "Description: " << config.description << "\n";
-        backup_file << "StartTime: " << std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count() << "\n";
-        
-        // Write placeholder data
-        backup_file << "BACKUP_START\n";
-        // In a real implementation, this would write actual database content
-        backup_file << "BACKUP_END\n";
-        
         backup_file.close();
+
+        // Use storage format for actual backup
+        storage_format::StorageFileManager backup_storage(backup_file_path);
+        if (!backup_storage.open_file()) {
+            active_backups_[backup_id].status = BackupStatus::FAILED;
+            active_backups_[backup_id].error_message = "Could not open backup file for writing";
+            active_backups_[backup_id].end_time = std::chrono::system_clock::now();
+            return Result<std::string>::unexpected(MAKE_ERROR(ErrorCode::STORAGE_IO_ERROR, "Could not open backup file"));
+        }
+
+        // Get list of databases to backup
+        std::vector<std::string> databases_to_backup;
+        if (config.databases_to_backup.empty()) {
+            // Backup all databases
+            auto db_list_result = db_layer_->list_databases();
+            if (db_list_result.has_value()) {
+                for (const auto& db : db_list_result.value()) {
+                    databases_to_backup.push_back(db.databaseId);
+                }
+            }
+        } else {
+            databases_to_backup = config.databases_to_backup;
+        }
+
+        // Backup each database
+        size_t total_vectors_backed_up = 0;
+        for (const auto& db_id : databases_to_backup) {
+            // Write database metadata
+            auto db_result = db_layer_->get_database(db_id);
+            if (db_result.has_value()) {
+                if (!backup_storage.write_database(db_result.value())) {
+                    LOG_WARN(logger_, "Failed to backup database metadata for: " + db_id);
+                }
+            }
+
+            // Get all vector IDs in this database
+            auto vector_ids_result = db_layer_->get_all_vector_ids(db_id);
+            if (vector_ids_result.has_value()) {
+                const auto& vector_ids = vector_ids_result.value();
+
+                // Backup vectors in batches
+                const size_t batch_size = 100;
+                for (size_t i = 0; i < vector_ids.size(); i += batch_size) {
+                    size_t end = std::min(i + batch_size, vector_ids.size());
+                    std::vector<std::string> batch_ids(vector_ids.begin() + i,
+                                                       vector_ids.begin() + end);
+
+                    // Retrieve vectors in batch
+                    auto vectors_result = db_layer_->retrieve_vectors(db_id, batch_ids);
+                    if (vectors_result.has_value()) {
+                        // Write each vector to backup
+                        for (const auto& vector : vectors_result.value()) {
+                            if (backup_storage.write_vector(vector)) {
+                                total_vectors_backed_up++;
+                            } else {
+                                LOG_WARN(logger_, "Failed to backup vector: " + vector.id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        backup_storage.close_file();
+
+        LOG_INFO(logger_, "Backed up " + std::to_string(total_vectors_backed_up) +
+                         " vectors from " + std::to_string(databases_to_backup.size()) + " databases");
         
         // Update backup info
         active_backups_[backup_id].status = BackupStatus::COMPLETED;
@@ -379,19 +434,9 @@ Result<std::string> BackupService::perform_backup(const BackupConfig& config, co
         
         // Calculate checksum
         active_backups_[backup_id].checksum = calculate_checksum(backup_file_path);
-        
-        // Add to databases backed up (for illustration)
-        if (config.databases_to_backup.empty()) {
-            // If no specific databases specified, assume all are backed up
-            auto db_list_result = db_layer_->list_databases();
-            if (db_list_result.has_value()) {
-                for (const auto& db : db_list_result.value()) {
-                    active_backups_[backup_id].databases_backed_up.push_back(db.databaseId);
-                }
-            }
-        } else {
-            active_backups_[backup_id].databases_backed_up = config.databases_to_backup;
-        }
+
+        // Set databases backed up
+        active_backups_[backup_id].databases_backed_up = databases_to_backup;
         
         LOG_INFO(logger_, "Backup completed successfully: " + backup_id + " (" + backup_file_path + ")");
         

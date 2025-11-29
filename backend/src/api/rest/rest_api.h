@@ -34,6 +34,9 @@ namespace jadevectordb {
     class ShardingService;
     class ReplicationService;
     class QueryRouter;
+    struct User;
+    struct ApiKey;
+    struct SecurityEvent;
 }
 
 // For now, we'll define a basic interface structure
@@ -214,6 +217,7 @@ public:
 
     crow::response handle_create_user_request(const crow::request& req);
     crow::response handle_list_users_request(const crow::request& req);
+    crow::response handle_get_user_request(const crow::request& req, const std::string& user_id);
     crow::response handle_update_user_request(const crow::request& req, const std::string& user_id);
     crow::response handle_delete_user_request(const crow::request& req, const std::string& user_id);
     crow::response handle_user_status_request(const crow::request& req, const std::string& user_id, bool activate);
@@ -223,6 +227,9 @@ public:
     crow::response handle_revoke_api_key_request(const crow::request& req, const std::string& key_id);
 
     crow::response handle_list_audit_logs_request(const crow::request& req);
+    crow::response handle_get_audit_log_request(const crow::request& req);
+    crow::response handle_get_sessions_request(const crow::request& req);
+    crow::response handle_get_audit_stats_request(const crow::request& req);
 
     crow::response handle_list_alerts_request(const crow::request& req);
     crow::response handle_create_alert_request(const crow::request& req);

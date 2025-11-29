@@ -99,7 +99,8 @@ namespace storage_format {
     private:
         std::string file_path_;
         bool is_open_;
-        
+        int file_descriptor_;  // For file locking
+
     public:
         explicit StorageFileManager(const std::string& file_path);
         ~StorageFileManager();
@@ -109,7 +110,18 @@ namespace storage_format {
         bool open_file();
         bool close_file();
         bool is_open() const;
-        
+
+        // File locking operations
+        bool acquire_read_lock();
+        bool acquire_write_lock();
+        bool release_lock();
+
+        // Error recovery operations
+        bool verify_file_integrity();
+        bool repair_corrupted_file(const std::string& backup_path);
+        std::vector<size_t> find_corrupted_entries();
+        bool create_recovery_checkpoint();
+
         // Write operations
         bool write_vector(const Vector& vector);
         bool write_database(const Database& database);

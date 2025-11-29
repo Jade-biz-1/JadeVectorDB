@@ -141,36 +141,6 @@ Result<void> AuthManager::create_user_with_id(const User& user) {
     return {};
 }
 
-Result<void> AuthManager::create_user_with_id(const User& user) {
-    std::unique_lock<std::shared_mutex> lock(auth_mutex_);
-
-    if (user.user_id.empty()) {
-        RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "User id cannot be empty");
-    }
-
-    if (users_.find(user.user_id) != users_.end()) {
-        RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "User already exists: " + user.user_id);
-    }
-
-    for (const auto& pair : users_) {
-        if (!user.email.empty() && pair.second.email == user.email) {
-            RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "User with this email already exists");
-        }
-        if (!user.username.empty() && pair.second.username == user.username) {
-            RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "User with this username already exists");
-        }
-    }
-
-    for (const auto& role : user.roles) {
-        if (roles_.find(role) == roles_.end()) {
-            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid role: " + role);
-        }
-    }
-
-    users_[user.user_id] = user;
-    return {};
-}
-
 Result<User> AuthManager::get_user(const std::string& user_id) const {
     std::shared_lock<std::shared_mutex> lock(auth_mutex_);
     

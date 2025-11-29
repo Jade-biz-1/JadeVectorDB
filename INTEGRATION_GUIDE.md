@@ -5,22 +5,22 @@ This guide explains how to integrate the new components created for tasks T215.2
 ## Components Created
 
 ### 1. InteractiveAPIDocs
-- Location: `/tutorial/src/components/InteractiveAPIDocs.jsx`
+- Location: `/tutorials/web/src/components/InteractiveAPIDocs.jsx`
 - Functionality: Interactive API documentation with runnable examples
 - Features: Tabbed interface for different endpoints, language switching, copy/run functionality
 
 ### 2. BenchmarkingTools
-- Location: `/tutorial/src/components/BenchmarkingTools.jsx`
+- Location: `/tutorials/web/src/components/BenchmarkingTools.jsx`
 - Functionality: Performance benchmarking tools with visualizations
 - Features: Vector search, DB operations, and index operations benchmarks with charts
 
 ### 3. CommunitySharing
-- Location: `/tutorial/src/components/CommunitySharing.jsx`
+- Location: `/tutorials/web/src/components/CommunitySharing.jsx`
 - Functionality: Community sharing features for tutorial scenarios
 - Features: Share, browse, and download community-created scenarios
 
 ### 4. ResourceUsageMonitor
-- Location: `/tutorial/src/components/ResourceUsageMonitor.jsx`
+- Location: `/tutorials/web/src/components/ResourceUsageMonitor.jsx`
 - Functionality: Monitoring resource usage for the tutorial environment
 - Features: Tracks API calls, vectors stored, databases created, and memory usage
 
