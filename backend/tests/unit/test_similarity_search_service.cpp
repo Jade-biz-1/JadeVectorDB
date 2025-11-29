@@ -321,12 +321,175 @@ int main(int argc, char **argv) {
     return RUN_ALL_TESTS();
 }
 // Additional test cases for enhanced coverage
-TEST_F(Similarity_search_serviceTest, AdditionalTestCase1) {
-    // TODO: Add specific test case for similarity_search_service
-    SUCCEED();
+TEST_F(SimilaritySearchServiceTest, SearchWithHighDimensionalVectors) {
+    // Create a database with a high dimensional vector space
+    Database db;
+    db.databaseId = "high_dim_db";
+    db.vectorDimension = 1024; // High-dimensional space
+
+    // Create high dimensional vectors
+    Vector v1;
+    v1.id = "vector1";
+    v1.values.resize(1024);
+    for (size_t i = 0; i < 1024; ++i) {
+        v1.values[i] = static_cast<float>(i % 100) / 100.0f;  // Values in [0, 1) range
+    }
+
+    Vector v2;
+    v2.id = "vector2";
+    v2.values.resize(1024);
+    for (size_t i = 0; i < 1024; ++i) {
+        v2.values[i] = static_cast<float>((i + 50) % 100) / 100.0f;  // Different pattern
+    }
+
+    std::vector<Vector> vectors = {v1, v2};
+
+    // Perform a similarity search
+    std::vector<float> query_vector(1024);
+    for (size_t i = 0; i < 1024; ++i) {
+        query_vector[i] = static_cast<float>(i % 100) / 100.0f;  // Similar to v1
+    }
+
+    auto search_params = similarity_search_service_->create_search_parameters();
+    search_params.top_k = 2;
+    search_params.metric_type = "cosine";
+
+    auto result = similarity_search_service_->search(db.databaseId, query_vector, search_params);
+
+    EXPECT_TRUE(result.has_value());
+    if (result.has_value()) {
+        auto search_results = result.value();
+        EXPECT_EQ(search_results.size(), 2);
+        // Check that the most similar vector to our query is v1 (since query is similar to v1)
+        if (!search_results.empty()) {
+            EXPECT_EQ(search_results[0].id, "vector1");
+        }
+    }
 }
 
-TEST_F(Similarity_search_serviceTest, AdditionalTestCase2) {
-    // TODO: Add specific test case for similarity_search_service
-    SUCCEED();
+TEST_F(SimilaritySearchServiceTest, SearchWithCustomFilters) {
+    // Create vectors with metadata
+    Vector v1;
+    v1.id = "vector1";
+    v1.values = {0.1f, 0.2f, 0.3f, 0.4f};
+    v1.metadata.category = "products";
+    v1.metadata.tags = {"electronics", "premium"};
+
+    Vector v2;
+    v2.id = "vector2";
+    v2.values = {0.5f, 0.6f, 0.7f, 0.8f};
+    v2.metadata.category = "products";
+    v2.metadata.tags = {"clothing", "standard"};
+
+    Vector v3;
+    v3.id = "vector3";
+    v3.values = {0.9f, 1.0f, 1.1f, 1.2f};
+    v3.metadata.category = "documents";
+    v3.metadata.tags = {"reports", "internal"};
+
+    std::vector<Vector> vectors = {v1, v2, v3};
+
+    // Perform a similarity search with filters
+    std::vector<float> query_vector = {0.1f, 0.2f, 0.3f, 0.4f};
+
+    auto search_params = similarity_search_service_->create_search_parameters();
+    search_params.top_k = 3;
+    search_params.metric_type = "cosine";
+
+    // Create filter to only include "products" category
+    MetadataFilterCondition category_filter;
+    category_filter.field = "category";
+    category_filter.operator_type = FilterOperator::EQUALS;
+    category_filter.value = "products";
+
+    auto result = similarity_search_service_->search_with_filters("test_db", query_vector,
+                                                                 search_params, {category_filter});
+
+    EXPECT_TRUE(result.has_value());
+    if (result.has_value()) {
+        auto search_results = result.value();
+        // Should only return 2 vectors (v1 and v2) since v3 has "documents" category
+        EXPECT_EQ(search_results.size(), 2);
+
+        // Verify that only products are returned
+        for (const auto& result_vec : search_results) {
+            EXPECT_EQ(result_vec.metadata.category, "products");
+        }
+    }
+}
+
+// Additional comprehensive tests for edge cases and error conditions
+TEST_F(SimilaritySearchServiceTest, SearchWithEmptyQueryVector) {
+    // Test similarity search with an empty query vector
+    std::vector<float> empty_query_vector = {};
+
+    auto search_params = similarity_search_service_->create_search_parameters();
+    search_params.top_k = 10;
+    search_params.metric_type = "cosine";
+
+    auto result = similarity_search_service_->search("test_db", empty_query_vector, search_params);
+
+    // Should return an error since query vector is empty
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST_F(SimilaritySearchServiceTest, SearchWithMismatchedDimensions) {
+    // Test similarity search with a query vector dimension that doesn't match database
+    std::vector<float> query_vector = {0.1f, 0.2f, 0.3f};  // 3-dimensional vector
+
+    auto search_params = similarity_search_service_->create_search_parameters();
+    search_params.top_k = 10;
+    search_params.metric_type = "cosine";
+
+    // Try to search in a database that expects different dimension vectors
+    auto result = similarity_search_service_->search("different_dimension_db", query_vector, search_params);
+
+    // Should return an error since dimensions don't match
+    EXPECT_FALSE(result.has_value()) << "Search should fail with dimension mismatch";
+}
+
+TEST_F(SimilaritySearchServiceTest, SearchWithInvalidMetricType) {
+    // Test similarity search with an invalid metric type
+    std::vector<float> query_vector = {0.1f, 0.2f, 0.3f, 0.4f};
+
+    auto search_params = similarity_search_service_->create_search_parameters();
+    search_params.top_k = 10;
+    search_params.metric_type = "invalid_metric";  // Invalid metric type
+
+    auto result = similarity_search_service_->search("test_db", query_vector, search_params);
+
+    // Should return an error for invalid metric
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST_F(SimilaritySearchServiceTest, SearchWithZeroTopK) {
+    // Test similarity search with top_k set to 0
+    std::vector<float> query_vector = {0.1f, 0.2f, 0.3f, 0.4f};
+
+    auto search_params = similarity_search_service_->create_search_parameters();
+    search_params.top_k = 0;  // Zero results requested
+    search_params.metric_type = "cosine";
+
+    auto result = similarity_search_service_->search("test_db", query_vector, search_params);
+
+    if (result.has_value()) {
+        auto search_results = result.value();
+        // For top_k=0, behavior depends on implementation - could return empty or default to some value
+        // In a proper implementation, this should be handled gracefully
+        EXPECT_TRUE(search_results.size() == 0);
+    }
+}
+
+TEST_F(SimilaritySearchServiceTest, SearchOnNonExistentDatabase) {
+    // Test similarity search on a database that doesn't exist
+    std::vector<float> query_vector = {0.1f, 0.2f, 0.3f, 0.4f};
+
+    auto search_params = similarity_search_service_->create_search_parameters();
+    search_params.top_k = 10;
+    search_params.metric_type = "cosine";
+
+    auto result = similarity_search_service_->search("nonexistent_db", query_vector, search_params);
+
+    // Should return an error for non-existent database
+    EXPECT_FALSE(result.has_value());
 }

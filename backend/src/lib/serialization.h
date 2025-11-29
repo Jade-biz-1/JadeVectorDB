@@ -47,11 +47,13 @@ namespace serialization {
     std::vector<Vector> deserialize_vector_batch(const uint8_t* data, size_t size);
     
     // Utility functions for working with FlatBuffers
-    template<typename T>
-    std::vector<uint8_t> serialize_generic(const T& obj);
-    
-    template<typename T>
-    T deserialize_generic(const uint8_t* data, size_t size);
+    std::vector<uint8_t> serialize_generic_vector(const Vector& vec);
+    std::vector<uint8_t> serialize_generic_database(const Database& db);
+    std::vector<uint8_t> serialize_generic_index(const Index& idx);
+
+    Vector deserialize_generic_vector(const uint8_t* data, size_t size);
+    Database deserialize_generic_database(const uint8_t* data, size_t size);
+    Index deserialize_generic_index(const uint8_t* data, size_t size);
     
     // Helper functions for creating FlatBuffer builders
     std::unique_ptr<fb::FlatBufferBuilder> create_builder();

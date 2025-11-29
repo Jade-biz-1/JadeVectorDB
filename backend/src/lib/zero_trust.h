@@ -77,6 +77,7 @@ namespace zero_trust {
         TrustLevel trust_level;
         std::chrono::system_clock::time_point expires_at;
         std::vector<std::string> granted_permissions;
+        std::chrono::seconds requested_duration;  // Duration for JIT access
     };
 
     /**

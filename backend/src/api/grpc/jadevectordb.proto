@@ -1,0 +1,169 @@
+syntax = "proto3";
+
+package jadevectordb;
+
+// Service for managing vector databases
+service JadeVectorDBService {
+  // Create a new database
+  rpc CreateDatabase(CreateDatabaseRequest) returns (CreateDatabaseResponse);
+
+  // Store a vector in a database
+  rpc StoreVector(StoreVectorRequest) returns (StoreVectorResponse);
+
+  // Retrieve a vector from a database
+  rpc RetrieveVector(RetrieveVectorRequest) returns (RetrieveVectorResponse);
+
+  // Perform similarity search
+  rpc SimilaritySearch(SimilaritySearchRequest) returns (SimilaritySearchResponse);
+
+  // Update a vector
+  rpc UpdateVector(UpdateVectorRequest) returns (UpdateVectorResponse);
+
+  // Delete a vector
+  rpc DeleteVector(DeleteVectorRequest) returns (DeleteVectorResponse);
+
+  // List databases
+  rpc ListDatabases(ListDatabasesRequest) returns (ListDatabasesResponse);
+
+  // Get database information
+  rpc GetDatabase(GetDatabaseRequest) returns (GetDatabaseResponse);
+}
+
+// Request to create a database
+message CreateDatabaseRequest {
+  string name = 1;
+  int32 vector_dimension = 2;
+  string index_type = 3;
+  string storage_format = 4;
+  string performance_tier = 5;
+}
+
+// Response for creating a database
+message CreateDatabaseResponse {
+  string database_id = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+// Request to store a vector
+message StoreVectorRequest {
+  string database_id = 1;
+  string vector_id = 2;
+  repeated float values = 3;
+  VectorMetadata metadata = 4;
+}
+
+// Response for storing a vector
+message StoreVectorResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Request to retrieve a vector
+message RetrieveVectorRequest {
+  string database_id = 1;
+  string vector_id = 2;
+}
+
+// Response for retrieving a vector
+message RetrieveVectorResponse {
+  string vector_id = 1;
+  repeated float values = 2;
+  VectorMetadata metadata = 3;
+  bool success = 4;
+  string message = 5;
+}
+
+// Request for similarity search
+message SimilaritySearchRequest {
+  string database_id = 1;
+  repeated float query_vector = 2;
+  int32 top_k = 3;
+  string metric_type = 4;
+  float threshold = 5;
+}
+
+// Response for similarity search
+message SimilaritySearchResponse {
+  message SearchResult {
+    string vector_id = 1;
+    float similarity_score = 2;
+    repeated float values = 3;
+  }
+  repeated SearchResult results = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+// Metadata for vectors
+message VectorMetadata {
+  string source = 1;
+  string owner = 2;
+  string category = 3;
+  repeated string tags = 4;
+  string created_at = 5;
+  string updated_at = 6;
+  string status = 7;
+}
+
+// Request to update a vector
+message UpdateVectorRequest {
+  string database_id = 1;
+  string vector_id = 2;
+  repeated float values = 3;
+  VectorMetadata metadata = 4;
+}
+
+// Response for updating a vector
+message UpdateVectorResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Request to delete a vector
+message DeleteVectorRequest {
+  string database_id = 1;
+  string vector_id = 2;
+}
+
+// Response for deleting a vector
+message DeleteVectorResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Request to list databases
+message ListDatabasesRequest {
+  int32 page = 1;
+  int32 limit = 2;
+}
+
+// Response for listing databases
+message ListDatabasesResponse {
+  message DatabaseSummary {
+    string database_id = 1;
+    string name = 2;
+    int32 vector_dimension = 3;
+    string index_type = 4;
+    string status = 5;
+  }
+  repeated DatabaseSummary databases = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+// Request to get database info
+message GetDatabaseRequest {
+  string database_id = 1;
+}
+
+// Response for getting database info
+message GetDatabaseResponse {
+  string database_id = 1;
+  string name = 2;
+  int32 vector_dimension = 3;
+  string index_type = 4;
+  string status = 5;
+  bool success = 6;
+  string message = 7;
+}
