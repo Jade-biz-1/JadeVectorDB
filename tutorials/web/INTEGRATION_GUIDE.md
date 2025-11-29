@@ -565,4 +565,4 @@ const {
 - Check individual component documentation in their respective files
 - Review example integrations in the codebase
 - Press F1 in the tutorial for contextual help
-- See `SPRINT_5_FINAL_PLAN.md` for implementation details
+- See `../../docs/SPRINT_5_FINAL_PLAN.md` for implementation details
