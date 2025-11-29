@@ -138,12 +138,12 @@ Remaining:
 - Quiz results storage
 
 **Files to Create/Modify**:
-- `tutorial/src/components/tutorial/AssessmentSystem.jsx` (new)
-- `tutorial/src/components/tutorial/Quiz.jsx` (new)
-- `tutorial/src/components/tutorial/QuizQuestion.jsx` (new)
-- `tutorial/src/lib/assessmentState.js` (new)
-- `tutorial/src/data/quizzes/` (new directory with quiz data)
-- `tutorial/src/tutorial/modules/*` (update to integrate quizzes)
+- `tutorials/web/src/components/tutorial/AssessmentSystem.jsx` (new)
+- `tutorials/web/src/components/tutorial/Quiz.jsx` (new)
+- `tutorials/web/src/components/tutorial/QuizQuestion.jsx` (new)
+- `tutorials/web/src/lib/assessmentState.js` (new)
+- `tutorials/web/src/data/quizzes/` (new directory with quiz data)
+- `tutorials/web/src/tutorial/modules/*` (update to integrate quizzes)
 
 **Acceptance Criteria**:
 - ✅ Quizzes available at end of each module
@@ -168,11 +168,11 @@ Remaining:
 - Performance report generation
 
 **Files to Create/Modify**:
-- `tutorial/src/components/tutorial/ReadinessAssessment.jsx` (new)
-- `tutorial/src/components/tutorial/SkillsChecklist.jsx` (new)
-- `tutorial/src/components/tutorial/Certificate.jsx` (new)
-- `tutorial/src/lib/readinessEvaluation.js` (new)
-- `tutorial/src/data/readinessCriteria.json` (new)
+- `tutorials/web/src/components/tutorial/ReadinessAssessment.jsx` (new)
+- `tutorials/web/src/components/tutorial/SkillsChecklist.jsx` (new)
+- `tutorials/web/src/components/tutorial/Certificate.jsx` (new)
+- `tutorials/web/src/lib/readinessEvaluation.js` (new)
+- `tutorials/web/src/data/readinessCriteria.json` (new)
 
 **Acceptance Criteria**:
 - ✅ Comprehensive final assessment
@@ -198,10 +198,10 @@ Remaining:
 - Help overlay system
 
 **Files to Create/Modify**:
-- `tutorial/src/components/tutorial/ContextualHelp.jsx` (new)
-- `tutorial/src/components/tutorial/HelpTooltip.jsx` (new)
-- `tutorial/src/data/helpContent.json` (new)
-- `tutorial/src/hooks/useContextualHelp.js` (new)
+- `tutorials/web/src/components/tutorial/ContextualHelp.jsx` (new)
+- `tutorials/web/src/components/tutorial/HelpTooltip.jsx` (new)
+- `tutorials/web/src/data/helpContent.json` (new)
+- `tutorials/web/src/hooks/useContextualHelp.js` (new)
 
 ---
 
@@ -217,10 +217,10 @@ Remaining:
 - Integration with tutorial state
 
 **Files to Create/Modify**:
-- `tutorial/src/lib/hintSystem.js` (new)
-- `tutorial/src/components/tutorial/HintDisplay.jsx` (new)
-- `tutorial/src/data/hints/` (new directory with hint data)
-- `tutorial/src/lib/tutorialState.js` (update)
+- `tutorials/web/src/lib/hintSystem.js` (new)
+- `tutorials/web/src/components/tutorial/HintDisplay.jsx` (new)
+- `tutorials/web/src/data/hints/` (new directory with hint data)
+- `tutorials/web/src/lib/tutorialState.js` (update)
 
 ---
 
@@ -236,10 +236,10 @@ Remaining:
 - Local storage persistence for achievements
 
 **Files to Create/Modify**:
-- `tutorial/src/components/tutorial/AchievementSystem.jsx` (new)
-- `tutorial/src/components/tutorial/Badge.jsx` (new)
-- `tutorial/src/lib/achievementLogic.js` (new)
-- `tutorial/src/data/achievements.json` (new)
+- `tutorials/web/src/components/tutorial/AchievementSystem.jsx` (new)
+- `tutorials/web/src/components/tutorial/Badge.jsx` (new)
+- `tutorials/web/src/lib/achievementLogic.js` (new)
+- `tutorials/web/src/data/achievements.json` (new)
 
 ---
 
@@ -360,16 +360,16 @@ None identified
 ## Resources
 
 ### Documentation
-- Tutorial architecture: `tutorial/architecture.md`
+- Tutorial architecture: `tutorials/web/architecture.md`
 - Implementation status: `docs/implementation_status.md`
 - Pending tasks: `tutorial_pending_tasks.md`
 - API reference: `docs/api/api_reference.md`
 
 ### Code References
-- Tutorial components: `tutorial/src/components/`
-- Tutorial modules: `tutorial/src/tutorial/modules/`
-- State management: `tutorial/src/lib/tutorialState.js`
-- API service: `tutorial/src/services/api.js`
+- Tutorial components: `tutorials/web/src/components/`
+- Tutorial modules: `tutorials/web/src/tutorial/modules/`
+- State management: `tutorials/web/src/lib/tutorialState.js`
+- API service: `tutorials/web/src/services/api.js`
 - Backend services: `backend/src/services/`
 
 ---
@@ -378,7 +378,6 @@ None identified
 
 For questions about sprint tasks:
 - Review this document and linked resources first
-- Check `tutorial_pending_tasks.md` for detailed task requirements
 - Consult `docs/implementation_status.md` for overall project status
 
 ---

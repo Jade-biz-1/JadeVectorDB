@@ -199,7 +199,7 @@ To contribute to any CLI implementation:
 
 ## Tutorial Examples
 
-JadeVectorDB provides ready-to-run executable tutorial scripts in `/tutorial/cli/examples/`:
+JadeVectorDB provides ready-to-run executable tutorial scripts in `/tutorials/cli/examples/`:
 
 ### Quick Start (quick-start.sh)
 - **Duration**: 2 minutes
@@ -223,17 +223,17 @@ JadeVectorDB provides ready-to-run executable tutorial scripts in `/tutorial/cli
 - **Duration**: 10 minutes
 - **Level**: Advanced
 - Covers: Real-world e-commerce recommendation system
-- **Run**: `cd tutorial/cli/examples && ./product-search-demo.sh`
+- **Run**: `cd tutorials/cli/examples && ./product-search-demo.sh`
 
-See `/tutorial/cli/examples/README.md` for detailed information on each example.
+See `/tutorials/cli/examples/README.md` for detailed information on each example.
 
 ## Getting Help
 
 For help with any CLI implementation:
 - Use the `--help` flag for command-specific help
 - Check the examples in the `/examples/cli/` directory
-- Try the tutorial scripts in `/tutorial/cli/examples/` directory
-- Review the tutorials in `/tutorial/cli/` directory (basics.md, advanced.md)
+- Try the tutorial scripts in `/tutorials/cli/examples/` directory
+- Review the tutorials in `/tutorials/cli/` directory (basics.md, advanced.md)
 - Refer to the API documentation for endpoint details
 
 ## Troubleshooting

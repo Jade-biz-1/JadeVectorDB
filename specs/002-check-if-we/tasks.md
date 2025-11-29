@@ -1638,7 +1638,7 @@ This provides the core functionality needed for basic vector storage and similar
 
 ### T215.01: Design tutorial UI/UX architecture
 **[P] US10 Task**
-**File**: `tutorial/architecture.md`, `tutorial/wireframes/`
+**File**: `tutorials/web/architecture.md`, `tutorials/web/wireframes/`
 **Dependencies**: T181
 Design the UI architecture and user experience flow for the interactive tutorial system with visualizations, code editor, and live preview components
 **Status**: [X] COMPLETE
@@ -1729,7 +1729,7 @@ Implement user progress tracking across tutorial modules with local storage pers
 
 ### T215.14: Create achievement/badge system
 **[P] US10 Task**
-**File**: `tutorial/src/components/tutorial/AchievementSystem.jsx`, `tutorial/src/components/tutorial/Badge.jsx`, `tutorial/src/components/tutorial/AchievementNotification.jsx`, `tutorial/src/data/achievements.json`, `tutorial/src/lib/achievementLogic.js`
+**File**: `tutorials/web/src/components/tutorial/AchievementSystem.jsx`, `tutorials/web/src/components/tutorial/Badge.jsx`, `tutorials/web/src/components/tutorial/AchievementNotification.jsx`, `tutorials/web/src/data/achievements.json`, `tutorials/web/src/lib/achievementLogic.js`
 **Dependencies**: T215.13
 Implement a badge/achievement system to reward tutorial completion milestones
 **Status**: [X] COMPLETE
@@ -1740,7 +1740,7 @@ Implement a badge/achievement system to reward tutorial completion milestones
 
 ### T215.15: Implement contextual help system
 **[P] US10 Task**
-**File**: `tutorial/src/components/tutorial/HelpOverlay.jsx`, `tutorial/src/components/tutorial/HelpTooltip.jsx`, `tutorial/src/hooks/useContextualHelp.js`, `tutorial/src/data/helpContent.json`
+**File**: `tutorials/web/src/components/tutorial/HelpOverlay.jsx`, `tutorials/web/src/components/tutorial/HelpTooltip.jsx`, `tutorials/web/src/hooks/useContextualHelp.js`, `tutorials/web/src/data/helpContent.json`
 **Dependencies**: T215.01
 Create a contextual help system with tooltips and documentation links within tutorials
 **Status**: [X] COMPLETE
@@ -1752,7 +1752,7 @@ Create a contextual help system with tooltips and documentation links within tut
 
 ### T215.16: Develop hint system for tutorials
 **[P] US10 Task**
-**File**: Quiz question components (integrated), `tutorial/src/lib/achievementLogic.js` (hint tracking)
+**File**: Quiz question components (integrated), `tutorials/web/src/lib/achievementLogic.js` (hint tracking)
 **Dependencies**: T215.01
 Implement a progressive hint system that provides assistance without giving away answers
 **Status**: [X] COMPLETE (Integrated into quiz questions)
@@ -1791,7 +1791,7 @@ Add ability to export working code snippets to use in production environments
 
 ### T215.21: Create assessment and quiz system
 **[P] US10 Task**
-**File**: `tutorial/src/components/tutorial/AssessmentSystem.jsx`, `tutorial/src/components/tutorial/Quiz.jsx`, `tutorial/src/components/tutorial/QuizQuestion.jsx`, `tutorial/src/components/tutorial/QuizProgress.jsx`, `tutorial/src/components/tutorial/QuizResults.jsx`, `tutorial/src/components/tutorial/MultipleChoiceQuestion.jsx`, `tutorial/src/components/tutorial/TrueFalseQuestion.jsx`, `tutorial/src/components/tutorial/CodeChallengeQuestion.jsx`, `tutorial/src/lib/assessmentState.js`, `tutorial/src/lib/quizScoring.js`, `tutorial/src/data/quizzes/module[1-6]_quiz.json`
+**File**: `tutorials/web/src/components/tutorial/AssessmentSystem.jsx`, `tutorials/web/src/components/tutorial/Quiz.jsx`, `tutorials/web/src/components/tutorial/QuizQuestion.jsx`, `tutorials/web/src/components/tutorial/QuizProgress.jsx`, `tutorials/web/src/components/tutorial/QuizResults.jsx`, `tutorials/web/src/components/tutorial/MultipleChoiceQuestion.jsx`, `tutorials/web/src/components/tutorial/TrueFalseQuestion.jsx`, `tutorials/web/src/components/tutorial/CodeChallengeQuestion.jsx`, `tutorials/web/src/lib/assessmentState.js`, `tutorials/web/src/lib/quizScoring.js`, `tutorials/web/src/data/quizzes/module[1-6]_quiz.json`
 **Dependencies**: T215.06
 Implement interactive quizzes and knowledge checks at the end of each module
 **Status**: [X] COMPLETE
@@ -1818,7 +1818,7 @@ Implement options for learning path selection, preferred languages, and use case
 
 ### T215.24: Create tutorial completion readiness assessment
 **[P] US10 Task**
-**File**: `tutorial/src/components/tutorial/ReadinessAssessment.jsx`, `tutorial/src/components/tutorial/SkillsChecklist.jsx`, `tutorial/src/components/tutorial/ProductionReadinessReport.jsx`, `tutorial/src/components/tutorial/RecommendationsPanel.jsx`, `tutorial/src/components/tutorial/Certificate.jsx`, `tutorial/src/lib/readinessEvaluation.js`, `tutorial/src/lib/certificateGenerator.js`, `tutorial/src/data/readinessCriteria.json`, `tutorial/src/data/recommendations.json`
+**File**: `tutorials/web/src/components/tutorial/ReadinessAssessment.jsx`, `tutorials/web/src/components/tutorial/SkillsChecklist.jsx`, `tutorials/web/src/components/tutorial/ProductionReadinessReport.jsx`, `tutorials/web/src/components/tutorial/RecommendationsPanel.jsx`, `tutorials/web/src/components/tutorial/Certificate.jsx`, `tutorials/web/src/lib/readinessEvaluation.js`, `tutorials/web/src/lib/certificateGenerator.js`, `tutorials/web/src/data/readinessCriteria.json`, `tutorials/web/src/data/recommendations.json`
 **Dependencies**: T215.21
 Build self-evaluation tools to gauge user's preparedness to use JadeVectorDB in production
 **Status**: [X] COMPLETE
@@ -2148,7 +2148,7 @@ Uses JADE_ENV environment variable for detection. Idempotent operation. Removed 
 **Objective**: Complete critical placeholder implementations in backend code identified during comprehensive code audit. These are essential for data persistence, security, and production readiness.
 
 **Dependencies**: Foundational phase (T009-T027) completed
-**Related**: Addresses issues documented in `BACKEND_FIXES_SUMMARY.md`
+**Related**: Addresses issues documented in `../docs/BACKEND_FIXES_SUMMARY.md`
 
 **Progress Update (2025-11-27)**:
 - Completed T239 (REST API): 3/3 subtasks ✓
@@ -2160,7 +2160,7 @@ Uses JADE_ENV environment variable for detection. Idempotent operation. Removed 
 - Completed T248 (Metrics Collection): 3/6 core subtasks ✓ (REAL /proc METRICS)
 - Completed T249 (Archival Service): 7/5 subtasks (exceeded) ✓
 - **Total**: 9/15 Phase 15 tasks functionally complete (60%)
-- **Note**: T240, T241, T242, T243, T244 are fully functional despite outdated BACKEND_FIXES_SUMMARY.md
+- **Note**: T240, T241, T242, T243, T244 are fully functional despite outdated ../docs/BACKEND_FIXES_SUMMARY.md
 - **Completed 2025-11-27**: T253 (Integration Tests)
 - **Remaining**: T250 (Query Optimizer), T251 (Certificate Mgmt), T252 (Model Versioning)
 - **In Progress**: Monitoring service header compilation fixes
