@@ -102,19 +102,61 @@ We believe in building great software together! 🚀
 
 - C++20 compatible compiler (GCC 11+, Clang 14+)
 - CMake 3.20+
- 
-## Default Users for Local Development
+- Eigen, FlatBuffers, Apache Arrow, gRPC, Google Test
 
-JadeVectorDB automatically creates default users (`admin`, `dev`, `test`) with appropriate roles and permissions when deployed in local, development, or test environments. These users are intended for rapid development and testing only:
+## Default Users for Development and Testing
 
-- `admin`: Full administrative permissions, status `active`.
-- `dev`: Development permissions, status `active`.
-- `test`: Limited/test permissions, status `active`.
+JadeVectorDB automatically creates three default users when deployed in local, development, or test environments. **These users are for testing purposes only and are NOT created in production.**
 
-**Production Restriction:** These default users are NOT created or enabled in production deployments. In production, they are set to `inactive` or removed entirely for security.
+### Default Credentials
 
-**Rationale:** This feature streamlines local development and testing, while ensuring robust security in production environments.
-- Dependencies: Eigen, FlatBuffers, Apache Arrow, gRPC, Google Test
+| Username | Password | User ID | Roles | Permissions |
+|----------|----------|---------|-------|-------------|
+| `admin` | `admin123` | user_admin_default | admin, developer, user | Full administrative access |
+| `dev` | `dev123` | user_dev_default | developer, user | Development permissions |
+| `test` | `test123` | user_test_default | tester, user | Limited/test permissions |
+
+### Environment Configuration
+
+Control default user creation using the `JADE_ENV` environment variable:
+
+```bash
+# Development mode (creates default users) - DEFAULT
+export JADE_ENV=development
+./jadevectordb
+
+# Test mode (creates default users)
+export JADE_ENV=test
+./jadevectordb
+
+# Production mode (NO default users created)
+export JADE_ENV=production
+./jadevectordb
+```
+
+**Recognized environments:**
+- Creates users: `development`, `dev`, `test`, `testing`, `local`
+- Skips creation: `production`, `prod`, or any other value
+
+**Security Note:** Default users are **automatically removed** in production environments. If `JADE_ENV` is not set, it defaults to `development` mode and creates the default users.
+
+### Using Default Credentials
+
+After starting the server in development mode, you can immediately log in using the default credentials:
+
+```bash
+# Example: Login as admin
+curl -X POST http://localhost:8080/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin123"}'
+
+# Example: Login as dev user
+curl -X POST http://localhost:8080/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "dev", "password": "dev123"}'
+```
+
+You can also use these credentials with the web UI at `http://localhost:3000` (if frontend is running).
 
 ### Building
 

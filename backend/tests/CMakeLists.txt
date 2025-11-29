@@ -142,6 +142,34 @@ target_link_libraries(test_alert_service
 
 add_test(NAME AlertServiceTest COMMAND test_alert_service)
 
+# Create test executable for search serialization
+add_executable(test_search_serialization
+    test_search_serialization.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/vector.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/database.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/index.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/embedding_model.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/similarity_search.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/vector_storage.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/database_layer.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/search_utils.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/metadata_filter.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/error_handling.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/logging.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/config.cpp
+)
+
+# Link libraries
+target_link_libraries(test_search_serialization
+    GTest::gtest
+    GTest::gtest_main
+    Threads::Threads
+    ${CMAKE_DL_LIBS}
+)
+
+# Add test to CTest
+add_test(NAME SearchSerializationTest COMMAND test_search_serialization)
+
 # Create test executable for authentication service
 add_executable(test_authentication_service
     unit/test_authentication_service.cpp

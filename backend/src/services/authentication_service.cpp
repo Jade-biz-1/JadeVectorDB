@@ -625,4 +625,203 @@ bool AuthenticationService::validate_config(const AuthenticationConfig& config) 
     return true;
 }
 
+Result<bool> AuthenticationService::reset_password(const std::string& user_id,
+                                                   const std::string& new_password) {
+    try {
+        if (user_id.empty() || new_password.empty()) {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "User ID and new password are required");
+        }
+
+        // Check password strength if enabled
+        if (config_.require_strong_passwords && !is_strong_password(new_password)) {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT,
+                        "Password does not meet strength requirements");
+        }
+
+        std::lock_guard<std::mutex> lock(users_mutex_);
+
+        auto it = users_.find(user_id);
+        if (it == users_.end()) {
+            LOG_WARN(logger_, "Attempt to reset password for non-existent user: " + user_id);
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found");
+        }
+
+        // Generate new salt and hash password
+        std::string salt = generate_salt();
+        std::string password_hash = hash_password(new_password, salt);
+
+        // Update user credentials
+        it->second.password_hash = password_hash;
+        it->second.salt = salt;
+        it->second.failed_login_attempts = 0;  // Reset failed attempts
+
+        LOG_INFO(logger_, "Password reset successfully for user: " + user_id);
+        log_auth_event(SecurityEventType::ADMIN_OPERATION, user_id, "", true,
+                      "Password reset");
+
+        return true;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in reset_password: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to reset password: " + std::string(e.what()));
+    }
+}
+
+Result<UserCredentials> AuthenticationService::get_user_by_username(const std::string& username) const {
+    try {
+        if (username.empty()) {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Username is required");
+        }
+
+        std::lock_guard<std::mutex> lock(users_mutex_);
+
+        // Search for user by username
+        for (const auto& [user_id, credentials] : users_) {
+            if (credentials.username == username) {
+                LOG_DEBUG(logger_, "Found user by username: " + username);
+                return credentials;
+            }
+        }
+
+        LOG_WARN(logger_, "User not found with username: " + username);
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found");
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in get_user_by_username: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to get user: " + std::string(e.what()));
+    }
+}
+
+Result<std::vector<AuthSession>> AuthenticationService::get_user_sessions(const std::string& user_id) const {
+    try {
+        if (user_id.empty()) {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "User ID is required");
+        }
+
+        std::lock_guard<std::mutex> lock(sessions_mutex_);
+
+        // Collect all sessions for the given user
+        std::vector<AuthSession> user_sessions;
+        for (const auto& [session_id, session] : sessions_) {
+            if (session.user_id == user_id) {
+                user_sessions.push_back(session);
+            }
+        }
+
+        LOG_DEBUG(logger_, "Found " + std::to_string(user_sessions.size()) +
+                  " sessions for user: " + user_id);
+
+        return user_sessions;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in get_user_sessions: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to get user sessions: " + std::string(e.what()));
+    }
+}
+
+Result<bool> AuthenticationService::seed_default_users() {
+    try {
+        // Check environment - only seed in non-production environments
+        const char* env = std::getenv("JADE_ENV");
+        std::string environment = env ? env : "development";
+
+        // Convert to lowercase for comparison
+        std::transform(environment.begin(), environment.end(), environment.begin(), ::tolower);
+
+        // Only seed in development, test, or local environments
+        if (environment != "development" &&
+            environment != "dev" &&
+            environment != "test" &&
+            environment != "testing" &&
+            environment != "local") {
+            LOG_INFO(logger_, "Skipping default user seeding in " + environment + " environment");
+            return true;  // Not an error, just skipping
+        }
+
+        LOG_INFO(logger_, "Seeding default users for " + environment + " environment");
+
+        // Define default users
+        struct DefaultUser {
+            std::string username;
+            std::string password;
+            std::vector<std::string> roles;
+            std::string user_id;
+        };
+
+        std::vector<DefaultUser> default_users = {
+            {
+                "admin",
+                "admin123",  // Simple password for dev/test
+                {"admin", "developer", "user"},
+                "user_admin_default"
+            },
+            {
+                "dev",
+                "dev123",
+                {"developer", "user"},
+                "user_dev_default"
+            },
+            {
+                "test",
+                "test123",
+                {"tester", "user"},
+                "user_test_default"
+            }
+        };
+
+        int created_count = 0;
+        int skipped_count = 0;
+
+        for (const auto& default_user : default_users) {
+            // Check if user already exists (idempotent operation)
+            bool user_exists = false;
+            {
+                std::lock_guard<std::mutex> lock(users_mutex_);
+                for (const auto& [user_id, user] : users_) {
+                    if (user.username == default_user.username) {
+                        user_exists = true;
+                        break;
+                    }
+                }
+            }
+
+            if (user_exists) {
+                LOG_DEBUG(logger_, "Default user '" + default_user.username + "' already exists, skipping");
+                skipped_count++;
+                continue;
+            }
+
+            // Register the default user
+            auto result = register_user(
+                default_user.username,
+                default_user.password,
+                default_user.roles,
+                default_user.user_id
+            );
+
+            if (result.has_value()) {
+                LOG_INFO(logger_, "Created default user: " + default_user.username +
+                        " with roles: [" + [&]() {
+                            std::string roles_str;
+                            for (size_t i = 0; i < default_user.roles.size(); ++i) {
+                                if (i > 0) roles_str += ", ";
+                                roles_str += default_user.roles[i];
+                            }
+                            return roles_str;
+                        }() + "]");
+                created_count++;
+            } else {
+                LOG_WARN(logger_, "Failed to create default user '" + default_user.username +
+                        "': " + result.error().message);
+            }
+        }
+
+        LOG_INFO(logger_, "Default user seeding complete: " +
+                std::to_string(created_count) + " created, " +
+                std::to_string(skipped_count) + " skipped");
+
+        return true;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in seed_default_users: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to seed default users: " + std::string(e.what()));
+    }
+}
+
 } // namespace jadevectordb

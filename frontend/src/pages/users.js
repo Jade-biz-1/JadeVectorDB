@@ -1,21 +1,25 @@
 import Head from 'next/head';
 import { useState, useEffect } from 'react';
-import { userApi } from '../lib/api';
+import { usersApi } from '../lib/api';
 
 export default function UserManagement() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ username: '', email: '', roles: '', status: 'active' });
+  const [form, setForm] = useState({ username: '', password: '', email: '', roles: '' });
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   const fetchUsers = async () => {
     setLoading(true);
+    setError('');
     try {
-      const response = await userApi.listUsers();
+      const response = await usersApi.listUsers();
       setUsers(response.users || []);
     } catch (error) {
       console.error('Error fetching users:', error);
+      setError(`Error fetching users: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -33,59 +37,80 @@ export default function UserManagement() {
   const handleAddUser = async (e) => {
     e.preventDefault();
     setSaving(true);
+    setError('');
+    setSuccess('');
     try {
-      await userApi.createUser({
-        username: form.username,
-        email: form.email,
-        roles: form.roles.split(',').map(r => r.trim()),
-        status: form.status
-      });
-      setForm({ username: '', email: '', roles: '', status: 'active' });
+      const rolesArray = form.roles ? form.roles.split(',').map(r => r.trim()) : [];
+      await usersApi.createUser(
+        form.username,
+        form.password,
+        form.email,
+        rolesArray
+      );
+      setForm({ username: '', password: '', email: '', roles: '' });
+      setSuccess('User created successfully!');
       fetchUsers();
     } catch (error) {
       console.error('Error adding user:', error);
+      setError(`Error adding user: ${error.message}`);
     } finally {
       setSaving(false);
     }
   };
 
   const handleEditUser = (user) => {
-    setEditingId(user.id);
+    setEditingId(user.user_id);
     setForm({
       username: user.username,
-      email: user.email,
-      roles: Array.isArray(user.roles) ? user.roles.join(', ') : user.roles,
-      status: user.status
+      password: '', // Don't populate password for security
+      email: user.email || '',
+      roles: Array.isArray(user.roles) ? user.roles.join(', ') : user.roles || ''
     });
   };
 
   const handleUpdateUser = async (e) => {
     e.preventDefault();
     setSaving(true);
+    setError('');
+    setSuccess('');
     try {
-      await userApi.updateUser(editingId, {
+      const rolesArray = form.roles ? form.roles.split(',').map(r => r.trim()) : [];
+      const updateData = {
         username: form.username,
         email: form.email,
-        roles: form.roles.split(',').map(r => r.trim()),
-        status: form.status
-      });
+        roles: rolesArray
+      };
+      // Only include password if it's been entered
+      if (form.password) {
+        updateData.password = form.password;
+      }
+      await usersApi.updateUser(editingId, updateData);
       setEditingId(null);
-      setForm({ username: '', email: '', roles: '', status: 'active' });
+      setForm({ username: '', password: '', email: '', roles: '' });
+      setSuccess('User updated successfully!');
       fetchUsers();
     } catch (error) {
       console.error('Error updating user:', error);
+      setError(`Error updating user: ${error.message}`);
     } finally {
       setSaving(false);
     }
   };
 
   const handleDeleteUser = async (userId) => {
+    if (!window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+      return;
+    }
     setSaving(true);
+    setError('');
+    setSuccess('');
     try {
-      await userApi.deleteUser(userId);
+      await usersApi.deleteUser(userId);
+      setSuccess('User deleted successfully!');
       fetchUsers();
     } catch (error) {
       console.error('Error deleting user:', error);
+      setError(`Error deleting user: ${error.message}`);
     } finally {
       setSaving(false);
     }

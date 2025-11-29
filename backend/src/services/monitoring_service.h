@@ -3,13 +3,46 @@
 
 #include "lib/metrics.h"
 #include "lib/logging.h"
+#include "lib/error_handling.h"
+#include "services/metrics_service.h"
 #include <string>
 #include <vector>
 #include <memory>
 #include <unordered_map>
 #include <chrono>
+#include <mutex>
+#include <thread>
 
 namespace jadevectordb {
+
+// Supporting structures for monitoring (forward declarations)
+struct MonitoringMetrics {
+    double cpu_usage_percent = 0.0;
+    double memory_usage_percent = 0.0;
+    double disk_usage_percent = 0.0;
+    size_t active_connections = 0;
+    double avg_query_latency_ms = 0.0;
+    std::unordered_map<std::string, double> custom_metrics;
+    std::chrono::system_clock::time_point timestamp;
+};
+
+struct MonitoringAlert {
+    std::string alert_id;
+    std::string severity;  // "warning", "error", "critical"
+    std::string message;
+    std::string metric_name;
+    double threshold_value;
+    double actual_value;
+    std::chrono::system_clock::time_point timestamp;
+};
+
+struct CustomMetric {
+    std::string name;
+    double value;
+    std::string unit;
+    std::string description;  // Added for add_custom_metric()
+    std::chrono::system_clock::time_point timestamp;
+};
 
 // System health status
 struct SystemHealth {
@@ -45,13 +78,14 @@ struct MonitoringConfig {
     bool enabled = true;                           // Whether monitoring is enabled
     int health_check_interval_seconds = 30;       // How often to perform health checks
     int metrics_collection_interval_seconds = 5;  // How often to collect metrics
+    int monitoring_interval_seconds = 5;          // General monitoring interval (alias for metrics_collection)
     int status_update_interval_seconds = 10;      // How often to update status
     std::string log_level = "INFO";               // Log level for monitoring
     bool enable_prometheus_export = true;         // Whether to enable Prometheus metrics
     int prometheus_port = 9090;                   // Port for Prometheus metrics
     bool enable_alerts = true;                    // Whether to enable alerts
     std::vector<std::string> alert_channels;      // Where to send alerts ("log", "webhook", etc.)
-    
+
     MonitoringConfig() = default;
 };
 
@@ -69,10 +103,14 @@ private:
     SystemHealth current_health_;
     std::unordered_map<std::string, DatabaseStatus> database_statuses_;  // database_id -> status
     std::chrono::system_clock::time_point service_start_time_;
-    std::mutex status_mutex_;
-    
+    mutable std::mutex status_mutex_;
+    mutable std::mutex config_mutex_;
+    bool running_ = false;
+    std::unique_ptr<std::thread> monitoring_thread_;
+
 public:
-    explicit MonitoringService(std::shared_ptr<MetricsService> metrics_service = nullptr);
+    MonitoringService();
+    explicit MonitoringService(std::shared_ptr<MetricsService> metrics_service);
     ~MonitoringService() = default;
     
     // Initialize the monitoring service with configuration
@@ -111,15 +149,38 @@ public:
     
     // Update monitoring configuration
     Result<bool> update_config(const MonitoringConfig& new_config);
-    
+
+    // Get current monitoring configuration
+    MonitoringConfig get_config() const;
+
     // Trigger alert if system is unhealthy
     Result<bool> trigger_alert(const std::string& alert_message);
     
     // Get the Prometheus metrics in text format
     Result<std::string> get_prometheus_metrics() const;
-    
+
     // Get detailed system status including all components
     Result<std::unordered_map<std::string, std::string>> get_detailed_system_status() const;
+
+    // Start monitoring service
+    Result<bool> start_monitoring();
+
+    // Stop monitoring service
+    void stop_monitoring();
+
+    // Additional monitoring methods from implementation
+    Result<MonitoringMetrics> get_monitoring_metrics() const;
+    Result<MonitoringAlert> check_thresholds() const;
+    Result<std::vector<MonitoringAlert>> get_recent_alerts(int limit = 100) const;
+    Result<bool> add_custom_metric(const std::string& metric_name, double value, const std::string& unit = "");
+    Result<std::vector<CustomMetric>> get_custom_metrics() const;
+    Result<bool> clear_custom_metrics();
+    Result<bool> update_monitoring_config(const MonitoringConfig& new_config);
+    Result<std::string> export_metrics_prometheus() const;
+    Result<bool> handle_node_failure(const std::string& node_id);
+    Result<bool> add_node_monitoring(const std::string& node_id);
+    Result<bool> remove_node_monitoring(const std::string& node_id);
+    Result<std::unordered_map<std::string, std::string>> get_monitoring_stats() const;
 
 private:
     // Internal helper methods
@@ -153,6 +214,26 @@ private:
     
     // Calculate overall health status based on metrics
     std::string calculate_overall_health(const std::unordered_map<std::string, float>& metrics) const;
+
+    // Monitoring thread method
+    void run_monitoring_loop();
+
+    // Collect and report metrics
+    void collect_and_report_metrics();
+
+    // Initialize default thresholds
+    void initialize_default_thresholds();
+
+    // Format metric name
+    std::string format_metric_name(const std::string& base_name) const;
+
+    // Additional private members
+    mutable std::mutex metrics_mutex_;
+    mutable std::mutex alerts_mutex_;  // Added for thread-safe alert access
+    std::vector<MonitoringAlert> recent_alerts_;
+    std::vector<MonitoringAlert> alerts_;  // Added for get_recent_alerts()
+    std::unordered_map<std::string, CustomMetric> custom_metrics_;  // Changed from vector to map
+    std::unordered_map<std::string, std::string> monitored_nodes_;
 };
 
 } // namespace jadevectordb
