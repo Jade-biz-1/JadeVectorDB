@@ -190,94 +190,66 @@ namespace serialization {
     
     // Batch serialization utilities
     std::vector<uint8_t> serialize_vector_batch(const std::vector<Vector>& vectors) {
-        flatbuffers::FlatBufferBuilder builder(1024);
+        // Simple approach: serialize each vector separately with a size prefix
+        std::vector<uint8_t> result;
 
-        // Serialize each vector individually and combine them
-        std::vector<flatbuffers::Offset<JadeVectorDB::Schema::Vector>> offsets;
+        // Write count of vectors (4 bytes)
+        uint32_t count = static_cast<uint32_t>(vectors.size());
+        result.insert(result.end(), reinterpret_cast<uint8_t*>(&count),
+                      reinterpret_cast<uint8_t*>(&count) + sizeof(count));
+
+        // Serialize each vector
         for (const auto& vec : vectors) {
-            // Create metadata
-            auto metadata_fb = JadeVectorDB::Schema::CreateVectorMetadata(
-                builder,
-                builder.CreateString(vec.metadata.source),
-                0,  // created_at (timestamp as ulong)
-                0,  // updated_at (timestamp as ulong)
-                builder.CreateString(vec.metadata.owner),
-                builder.CreateString(vec.metadata.category),
-                vec.metadata.score,
-                builder.CreateString(vec.metadata.status),
-                builder.CreateVectorOfStrings(vec.metadata.tags)
-            );
+            auto vec_data = serialize_vector(vec);
 
-            // Create vector
-            auto vector_fb = JadeVectorDB::Schema::CreateVector(
-                builder,
-                builder.CreateString(vec.id),
-                builder.CreateVector(vec.values),
-                static_cast<uint32_t>(vec.values.size()),
-                metadata_fb,
-                1,  // version
-                false  // deleted
-            );
+            // Write size of this vector data (4 bytes)
+            uint32_t vec_size = static_cast<uint32_t>(vec_data.size());
+            result.insert(result.end(), reinterpret_cast<uint8_t*>(&vec_size),
+                         reinterpret_cast<uint8_t*>(&vec_size) + sizeof(vec_size));
 
-            offsets.push_back(vector_fb);
+            // Write vector data
+            result.insert(result.end(), vec_data.begin(), vec_data.end());
         }
 
-        // Create a vector of vectors
-        auto vectors_vector = builder.CreateVector(offsets);
-        auto batch = JadeVectorDB::Schema::CreateVectorBatch(builder, vectors_vector);
-        builder.Finish(batch);
-
-        return std::vector<uint8_t>(builder.GetBufferPointer(),
-                                    builder.GetBufferPointer() + builder.GetSize());
+        return result;
     }
 
     std::vector<Vector> deserialize_vector_batch(const uint8_t* data, size_t size) {
         std::vector<Vector> result;
 
-        // Verify buffer
-        flatbuffers::Verifier verifier(data, size);
-        if (!JadeVectorDB::Schema::VerifyVectorBatchBuffer(verifier)) {
-            throw std::runtime_error("Invalid FlatBuffer data for vector batch");
+        if (size < sizeof(uint32_t)) {
+            throw std::runtime_error("Invalid batch data: too small");
         }
 
-        // Get root
-        auto batch = JadeVectorDB::Schema::GetVectorBatch(data);
+        size_t offset = 0;
+
+        // Read count
+        uint32_t count;
+        std::memcpy(&count, data + offset, sizeof(count));
+        offset += sizeof(count);
+
+        result.reserve(count);
 
         // Deserialize each vector
-        if (batch->vectors()) {
-            for (const auto* fb_vector : *batch->vectors()) {
-                if (fb_vector) {
-                    Vector vec;
-                    vec.id = fb_vector->id() ? fb_vector->id()->str() : "";
-
-                    // Copy values
-                    auto values_fb = fb_vector->values();
-                    if (values_fb) {
-                        vec.values.assign(values_fb->begin(), values_fb->end());
-                    }
-
-                    // Copy metadata
-                    auto metadata_fb = fb_vector->metadata();
-                    if (metadata_fb) {
-                        vec.metadata.source = metadata_fb->source() ? metadata_fb->source()->str() : "";
-                        vec.metadata.created_at = std::to_string(metadata_fb->created_at());
-                        vec.metadata.updated_at = std::to_string(metadata_fb->updated_at());
-                        vec.metadata.owner = metadata_fb->owner() ? metadata_fb->owner()->str() : "";
-                        vec.metadata.category = metadata_fb->category() ? metadata_fb->category()->str() : "";
-                        vec.metadata.score = metadata_fb->score();
-                        vec.metadata.status = metadata_fb->status() ? metadata_fb->status()->str() : "";
-
-                        auto tags_fb = metadata_fb->tags();
-                        if (tags_fb) {
-                            for (auto tag : *tags_fb) {
-                                vec.metadata.tags.push_back(tag->str());
-                            }
-                        }
-                    }
-
-                    result.push_back(vec);
-                }
+        for (uint32_t i = 0; i < count; ++i) {
+            if (offset + sizeof(uint32_t) > size) {
+                throw std::runtime_error("Invalid batch data: truncated");
             }
+
+            // Read size of this vector
+            uint32_t vec_size;
+            std::memcpy(&vec_size, data + offset, sizeof(vec_size));
+            offset += sizeof(vec_size);
+
+            if (offset + vec_size > size) {
+                throw std::runtime_error("Invalid batch data: vector size exceeds buffer");
+            }
+
+            // Deserialize vector
+            auto vec = deserialize_vector(data + offset, vec_size);
+            result.push_back(vec);
+
+            offset += vec_size;
         }
 
         return result;

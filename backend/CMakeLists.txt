@@ -242,10 +242,11 @@ set(CORE_SOURCES
 
 set(API_SOURCES
     src/api/rest/rest_api.cpp
-    src/api/rest/rest_api_auth_handlers.cpp
-    src/api/rest/rest_api_user_handlers.cpp
-    src/api/rest/rest_api_apikey_handlers.cpp
-    src/api/rest/rest_api_security_handlers.cpp
+    # Commented out to avoid duplicate symbols - implementations are in rest_api.cpp
+    # src/api/rest/rest_api_auth_handlers.cpp
+    # src/api/rest/rest_api_user_handlers.cpp
+    # src/api/rest/rest_api_apikey_handlers.cpp
+    # src/api/rest/rest_api_security_handlers.cpp
     src/api/grpc/grpc_service_stub.cpp
 )
 
