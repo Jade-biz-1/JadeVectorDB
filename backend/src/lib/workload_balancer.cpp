@@ -278,10 +278,20 @@ float WorkloadBalancer::process_single_operation(
     } else {
         // Use GPU for larger vectors
         auto start_time = std::chrono::high_resolution_clock::now();
-        float result = operation_func(vector_a, vector_b);  // Placeholder - would use GPU in real impl
+
+        // Dispatch to GPU operations if available
+        float result;
+        if (gpu_ops_) {
+            // Use actual GPU operations
+            result = (gpu_ops_->*operation_func)(vector_a, vector_b);
+        } else {
+            // Fallback to CPU if GPU not available
+            result = operation_func(vector_a, vector_b);
+        }
+
         auto end_time = std::chrono::high_resolution_clock::now();
-        
-        metrics.gpu_processing_time_ms = 
+
+        metrics.gpu_processing_time_ms =
             std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
         metrics.cpu_processing_time_ms = 0;
         

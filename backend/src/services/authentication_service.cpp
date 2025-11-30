@@ -824,4 +824,33 @@ Result<bool> AuthenticationService::seed_default_users() {
     }
 }
 
+Result<bool> AuthenticationService::set_user_active_status(const std::string& user_id, bool is_active) {
+    std::lock_guard<std::mutex> lock(users_mutex_);
+
+    auto it = users_.find(user_id);
+    if (it == users_.end()) {
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
+    }
+
+    it->second.is_active = is_active;
+    LOG_INFO(logger_, "User " + user_id + " active status set to " + (is_active ? "true" : "false"));
+
+    return true;
+}
+
+Result<bool> AuthenticationService::revoke_api_key(const std::string& api_key) {
+    std::lock_guard<std::mutex> lock(api_keys_mutex_);
+
+    auto it = api_keys_.find(api_key);
+    if (it == api_keys_.end()) {
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "API key not found");
+    }
+
+    std::string user_id = it->second;
+    api_keys_.erase(it);
+    LOG_INFO(logger_, "API key revoked for user: " + user_id);
+
+    return true;
+}
+
 } // namespace jadevectordb
