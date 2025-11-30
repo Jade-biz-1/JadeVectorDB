@@ -3015,6 +3015,15 @@ crow::response RestApiImpl::handle_register_request(const crow::request& req) {
         }
 
         // Log successful registration
+        if (security_audit_logger_) {
+            security_audit_logger_->log_event(
+                SecurityEventType::USER_REGISTERED,
+                user_id,
+                req.get_header_value("X-Forwarded-For"),
+                true,
+                "User registered: " + username
+            );
+        }
 
         crow::json::wvalue response;
         response["success"] = true;
@@ -3056,6 +3065,15 @@ crow::response RestApiImpl::handle_login_request(const crow::request& req) {
 
         if (!auth_result.has_value()) {
             // Log failed login
+            if (security_audit_logger_) {
+                security_audit_logger_->log_event(
+                    SecurityEventType::LOGIN_FAILED,
+                    username,
+                    ip_address,
+                    false,
+                    "Failed login attempt"
+                );
+            }
 
             crow::json::wvalue error_response;
             error_response["error"] = "Invalid username or password";
@@ -3078,6 +3096,15 @@ crow::response RestApiImpl::handle_login_request(const crow::request& req) {
         }
 
         // Log successful login
+        if (security_audit_logger_) {
+            security_audit_logger_->log_event(
+                SecurityEventType::LOGIN_SUCCESS,
+                token.user_id,
+                ip_address,
+                true,
+                "User logged in: " + username
+            );
+        }
 
         crow::json::wvalue response;
         response["success"] = true;
@@ -3126,13 +3153,13 @@ crow::response RestApiImpl::handle_logout_request(const crow::request& req) {
             auto validate_result = authentication_service_->validate_token(token);
             std::string user_id = validate_result.has_value() ? validate_result.value() : "unknown";
 
-            // security_audit_logger_->log_event(
-            //     SecurityEventType::LOGOUT,
-            //     user_id,
-            //     req.get_header_value("X-Forwarded-For"),
-            //     true,
-            //     "User logged out"
-            // );
+            security_audit_logger_->log_event(
+                SecurityEventType::LOGOUT,
+                user_id,
+                req.get_header_value("X-Forwarded-For"),
+                true,
+                "User logged out"
+            );
         }
 
         crow::json::wvalue response;
@@ -3188,6 +3215,15 @@ crow::response RestApiImpl::handle_forgot_password_request(const crow::request& 
         }
 
         // Log password reset request
+        if (security_audit_logger_) {
+            security_audit_logger_->log_event(
+                SecurityEventType::PASSWORD_RESET_REQUESTED,
+                user.user_id,
+                req.get_header_value("X-Forwarded-For"),
+                true,
+                "Password reset requested for: " + identifier
+            );
+        }
 
         // In production, send email with reset token
         // For now, include it in response (remove in production!)
@@ -3252,6 +3288,15 @@ crow::response RestApiImpl::handle_reset_password_request(const crow::request& r
         }
 
         // Log password reset
+        if (security_audit_logger_) {
+            security_audit_logger_->log_event(
+                SecurityEventType::PASSWORD_CHANGED,
+                user_id,
+                req.get_header_value("X-Forwarded-For"),
+                true,
+                "Password reset completed"
+            );
+        }
 
         crow::json::wvalue response;
         response["success"] = true;
@@ -3381,37 +3426,35 @@ crow::response RestApiImpl::handle_user_status_request(const crow::request& req,
         }
 
         // Update user status
-        bool status_updated = false;
+        Result<void> status_result;
         if (auth_manager_) {
-            Result<void> status_result;
             if (activate) {
                 status_result = auth_manager_->activate_user(user_id);
             } else {
                 status_result = auth_manager_->deactivate_user(user_id);
             }
-            if (!status_result.has_value()) {
-                crow::json::wvalue error_response;
-                error_response["error"] = ErrorHandler::format_error(status_result.error());
-                return crow::response(400, error_response.dump());
-            }
-            status_updated = true;
         } else if (authentication_service_) {
-            auto status_result = authentication_service_->set_user_active_status(user_id, activate);
-            if (!status_result.has_value()) {
-                crow::json::wvalue error_response;
-                error_response["error"] = ErrorHandler::format_error(status_result.error());
-                return crow::response(400, error_response.dump());
-            }
-            status_updated = status_result.value();
+            status_result = authentication_service_->set_user_active_status(user_id, activate);
         } else {
             return crow::response(500, "{\"error\":\"Authentication services not available\"}");
         }
 
-        if (!status_updated) {
-            return crow::response(400, "{\"error\":\"Failed to update user status\"}");
+        if (!status_result.has_value()) {
+            crow::json::wvalue error_response;
+            error_response["error"] = ErrorHandler::format_error(status_result.error());
+            return crow::response(400, error_response);
         }
 
         // Log status change
+        if (security_audit_logger_) {
+            security_audit_logger_->log_event(
+                activate ? SecurityEventType::USER_ACTIVATED : SecurityEventType::USER_DEACTIVATED,
+                user_id,
+                req.get_header_value("X-Forwarded-For"),
+                true,
+                activate ? "User activated" : "User deactivated"
+            );
+        }
 
         crow::json::wvalue response;
         response["success"] = true;
@@ -3538,6 +3581,15 @@ crow::response RestApiImpl::handle_create_api_key_request(const crow::request& r
         }
 
         // Log API key creation
+        if (security_audit_logger_) {
+            security_audit_logger_->log_event(
+                SecurityEventType::API_KEY_CREATED,
+                user_id,
+                req.get_header_value("X-Forwarded-For"),
+                true,
+                "API key created: " + description
+            );
+        }
 
         crow::json::wvalue response;
         response["success"] = true;
@@ -3572,32 +3624,31 @@ crow::response RestApiImpl::handle_revoke_api_key_request(const crow::request& r
         }
 
         // Revoke API key
-        bool revoke_success = false;
+        Result<void> revoke_result;
         if (auth_manager_) {
-            auto revoke_result = auth_manager_->revoke_api_key(key_id);
-            if (!revoke_result.has_value()) {
-                crow::json::wvalue error_response;
-                error_response["error"] = ErrorHandler::format_error(revoke_result.error());
-                return crow::response(400, error_response.dump());
-            }
-            revoke_success = true;
+            revoke_result = auth_manager_->revoke_api_key(key_id);
         } else if (authentication_service_) {
-            auto revoke_result = authentication_service_->revoke_api_key(key_id);
-            if (!revoke_result.has_value()) {
-                crow::json::wvalue error_response;
-                error_response["error"] = ErrorHandler::format_error(revoke_result.error());
-                return crow::response(400, error_response.dump());
-            }
-            revoke_success = revoke_result.value();
+            revoke_result = authentication_service_->revoke_api_key(key_id);
         } else {
             return crow::response(500, "{\"error\":\"Authentication services not available\"}");
         }
 
-        if (!revoke_success) {
-            return crow::response(400, "{\"error\":\"Failed to revoke API key\"}");
+        if (!revoke_result.has_value()) {
+            crow::json::wvalue error_response;
+            error_response["error"] = ErrorHandler::format_error(revoke_result.error());
+            return crow::response(400, error_response);
         }
 
         // Log API key revocation
+        if (security_audit_logger_) {
+            security_audit_logger_->log_event(
+                SecurityEventType::API_KEY_REVOKED,
+                "system",
+                req.get_header_value("X-Forwarded-For"),
+                true,
+                "API key revoked: " + key_id
+            );
+        }
 
         crow::json::wvalue response;
         response["success"] = true;
@@ -3709,65 +3760,6 @@ crow::response RestApiImpl::handle_performance_metrics_request(const crow::reque
         LOG_ERROR(logger_, "Exception in performance metrics: " << e.what());
         return crow::response(500, "{\"error\":\"Internal server error\"}");
     }
-}
-
-// Helper function implementations
-std::string RestApiImpl::generate_secure_token() const {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0, 255);
-
-    std::stringstream ss;
-    ss << std::hex << std::setfill('0');
-    for (int i = 0; i < 32; ++i) {
-        ss << std::setw(2) << dis(gen);
-    }
-    return ss.str();
-}
-
-crow::json::wvalue RestApiImpl::serialize_user(const User& user) const {
-    crow::json::wvalue result;
-    result["userId"] = user.user_id;
-    result["username"] = user.username;
-    result["email"] = user.email;
-    result["isActive"] = user.is_active;
-    result["createdAt"] = to_iso_string(user.created_at);
-    result["lastLogin"] = to_iso_string(user.last_login);
-
-    crow::json::wvalue roles_array;
-    for (size_t i = 0; i < user.roles.size(); ++i) {
-        roles_array[i] = user.roles[i];
-    }
-    result["roles"] = std::move(roles_array);
-
-    return result;
-}
-
-crow::json::wvalue RestApiImpl::serialize_api_key(const ApiKey& key) const {
-    crow::json::wvalue result;
-    result["keyId"] = key.key_id;
-    result["userId"] = key.user_id;
-    result["description"] = key.description;
-    result["isActive"] = key.is_active;
-    result["createdAt"] = to_iso_string(key.created_at);
-    result["expiresAt"] = to_iso_string(key.expires_at);
-
-    crow::json::wvalue permissions_array;
-    for (size_t i = 0; i < key.permissions.size(); ++i) {
-        permissions_array[i] = key.permissions[i];
-    }
-    result["permissions"] = std::move(permissions_array);
-
-    return result;
-}
-
-std::string RestApiImpl::to_iso_string(const std::chrono::system_clock::time_point& time_point) const {
-    auto time_t = std::chrono::system_clock::to_time_t(time_point);
-    std::tm tm = *std::gmtime(&time_t);
-
-    std::stringstream ss;
-    ss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
-    return ss.str();
 }
 
 } // namespace jadevectordb

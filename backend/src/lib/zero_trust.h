@@ -344,6 +344,12 @@ namespace zero_trust {
         IDeviceAttestation* get_device_attestation() const;
     };
 
+    // Factory functions to create concrete implementations
+    std::unique_ptr<IContinuousAuthentication> create_continuous_authentication();
+    std::unique_ptr<IMicroSegmentation> create_microsegmentation();
+    std::unique_ptr<IJustInTimeAccess> create_jit_access();
+    std::unique_ptr<IDeviceAttestation> create_device_attestation();
+
 } // namespace zero_trust
 } // namespace jadevectordb
 
