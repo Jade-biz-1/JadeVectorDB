@@ -226,20 +226,195 @@ public:
 };
 
 class ChaCha20Poly1305Encryption : public IEncryptionAlgorithm {
+private:
+    // ChaCha20 quarter round
+    static void quarter_round(uint32_t& a, uint32_t& b, uint32_t& c, uint32_t& d) {
+        a += b; d ^= a; d = (d << 16) | (d >> 16);
+        c += d; b ^= c; b = (b << 12) | (b >> 20);
+        a += b; d ^= a; d = (d << 8) | (d >> 24);
+        c += d; b ^= c; b = (b << 7) | (b >> 25);
+    }
+
+    // ChaCha20 block function
+    static void chacha20_block(const uint32_t in[16], uint32_t out[16]) {
+        for (int i = 0; i < 16; i++) out[i] = in[i];
+
+        for (int i = 0; i < 10; i++) {
+            // Column rounds
+            quarter_round(out[0], out[4], out[8], out[12]);
+            quarter_round(out[1], out[5], out[9], out[13]);
+            quarter_round(out[2], out[6], out[10], out[14]);
+            quarter_round(out[3], out[7], out[11], out[15]);
+            // Diagonal rounds
+            quarter_round(out[0], out[5], out[10], out[15]);
+            quarter_round(out[1], out[6], out[11], out[12]);
+            quarter_round(out[2], out[7], out[8], out[13]);
+            quarter_round(out[3], out[4], out[9], out[14]);
+        }
+
+        for (int i = 0; i < 16; i++) out[i] += in[i];
+    }
+
+    // Poly1305 MAC computation
+    static std::vector<uint8_t> poly1305_mac(const std::vector<uint8_t>& msg, const uint8_t key[32]) {
+        // Simplified Poly1305 implementation
+        // Note: This is a basic implementation for demonstration
+        uint64_t r0 = (uint64_t(key[0]) | (uint64_t(key[1]) << 8) | (uint64_t(key[2]) << 16) | (uint64_t(key[3]) << 24)) & 0x0ffffffc;
+        uint64_t r1 = (uint64_t(key[4]) | (uint64_t(key[5]) << 8) | (uint64_t(key[6]) << 16) | (uint64_t(key[7]) << 24)) & 0x0ffffffc;
+        uint64_t s0 = uint64_t(key[16]) | (uint64_t(key[17]) << 8) | (uint64_t(key[18]) << 16) | (uint64_t(key[19]) << 24);
+        uint64_t s1 = uint64_t(key[20]) | (uint64_t(key[21]) << 8) | (uint64_t(key[22]) << 16) | (uint64_t(key[23]) << 24);
+
+        uint64_t acc0 = 0, acc1 = 0;
+
+        for (size_t i = 0; i < msg.size(); i += 16) {
+            size_t chunk_size = std::min(size_t(16), msg.size() - i);
+            uint64_t t0 = 0, t1 = 0;
+
+            for (size_t j = 0; j < chunk_size && j < 8; j++) {
+                t0 |= uint64_t(msg[i + j]) << (j * 8);
+            }
+            for (size_t j = 8; j < chunk_size; j++) {
+                t1 |= uint64_t(msg[i + j]) << ((j - 8) * 8);
+            }
+
+            acc0 = (acc0 + t0) * r0;
+            acc1 = (acc1 + t1) * r1;
+        }
+
+        acc0 += s0;
+        acc1 += s1;
+
+        std::vector<uint8_t> tag(16);
+        for (int i = 0; i < 8; i++) tag[i] = (acc0 >> (i * 8)) & 0xff;
+        for (int i = 0; i < 8; i++) tag[i + 8] = (acc1 >> (i * 8)) & 0xff;
+
+        return tag;
+    }
+
 public:
-    std::vector<uint8_t> encrypt(const std::vector<uint8_t>& plaintext, 
+    std::vector<uint8_t> encrypt(const std::vector<uint8_t>& plaintext,
                                 const EncryptionKey& key,
                                 const std::vector<uint8_t>& associated_data = {}) override {
-        // In a real implementation, this would perform actual ChaCha20-Poly1305 encryption
-        // For now, return the plaintext as placeholder
-        return plaintext;  // Placeholder
+        if (key.key_data.size() != 32) {
+            throw std::invalid_argument("ChaCha20-Poly1305 requires 32-byte key");
+        }
+
+        // Generate random nonce (12 bytes)
+        std::vector<uint8_t> nonce(12);
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(0, 255);
+        for (auto& byte : nonce) {
+            byte = static_cast<uint8_t>(dis(gen));
+        }
+
+        // Setup ChaCha20 state
+        uint32_t state[16];
+        state[0] = 0x61707865; state[1] = 0x3320646e;
+        state[2] = 0x79622d32; state[3] = 0x6b206574;
+
+        // Key (32 bytes = 8 uint32_t)
+        for (int i = 0; i < 8; i++) {
+            state[4 + i] = uint32_t(key.key_data[i * 4]) |
+                          (uint32_t(key.key_data[i * 4 + 1]) << 8) |
+                          (uint32_t(key.key_data[i * 4 + 2]) << 16) |
+                          (uint32_t(key.key_data[i * 4 + 3]) << 24);
+        }
+
+        // Counter (1) and nonce (12 bytes = 3 uint32_t)
+        state[12] = 0;
+        for (int i = 0; i < 3; i++) {
+            state[13 + i] = uint32_t(nonce[i * 4]) |
+                           (uint32_t(nonce[i * 4 + 1]) << 8) |
+                           (uint32_t(nonce[i * 4 + 2]) << 16) |
+                           (uint32_t(nonce[i * 4 + 3]) << 24);
+        }
+
+        // Encrypt plaintext
+        std::vector<uint8_t> ciphertext = plaintext;
+        for (size_t i = 0; i < plaintext.size(); i += 64) {
+            uint32_t keystream[16];
+            chacha20_block(state, keystream);
+            state[12]++; // Increment counter
+
+            for (size_t j = 0; j < 64 && i + j < plaintext.size(); j++) {
+                ciphertext[i + j] ^= (keystream[j / 4] >> ((j % 4) * 8)) & 0xff;
+            }
+        }
+
+        // Compute Poly1305 MAC over associated data + ciphertext
+        std::vector<uint8_t> mac_data = associated_data;
+        mac_data.insert(mac_data.end(), ciphertext.begin(), ciphertext.end());
+        auto tag = poly1305_mac(mac_data, key.key_data.data());
+
+        // Return: nonce (12) + ciphertext + tag (16)
+        std::vector<uint8_t> result;
+        result.reserve(12 + ciphertext.size() + 16);
+        result.insert(result.end(), nonce.begin(), nonce.end());
+        result.insert(result.end(), ciphertext.begin(), ciphertext.end());
+        result.insert(result.end(), tag.begin(), tag.end());
+
+        return result;
     }
-    
+
     std::vector<uint8_t> decrypt(const std::vector<uint8_t>& ciphertext,
                                 const EncryptionKey& key,
                                 const std::vector<uint8_t>& associated_data = {}) override {
-        // In a real implementation, this would perform actual ChaCha20-Poly1305 decryption
-        return ciphertext;  // Placeholder
+        if (key.key_data.size() != 32) {
+            throw std::invalid_argument("ChaCha20-Poly1305 requires 32-byte key");
+        }
+
+        if (ciphertext.size() < 28) { // nonce(12) + tag(16)
+            throw std::invalid_argument("Ciphertext too short");
+        }
+
+        // Extract nonce, encrypted data, and tag
+        std::vector<uint8_t> nonce(ciphertext.begin(), ciphertext.begin() + 12);
+        std::vector<uint8_t> encrypted(ciphertext.begin() + 12, ciphertext.end() - 16);
+        std::vector<uint8_t> received_tag(ciphertext.end() - 16, ciphertext.end());
+
+        // Verify MAC
+        std::vector<uint8_t> mac_data = associated_data;
+        mac_data.insert(mac_data.end(), encrypted.begin(), encrypted.end());
+        auto computed_tag = poly1305_mac(mac_data, key.key_data.data());
+
+        if (received_tag != computed_tag) {
+            throw std::runtime_error("Authentication tag mismatch - data may be corrupted or tampered");
+        }
+
+        // Setup ChaCha20 state (same as encrypt)
+        uint32_t state[16];
+        state[0] = 0x61707865; state[1] = 0x3320646e;
+        state[2] = 0x79622d32; state[3] = 0x6b206574;
+
+        for (int i = 0; i < 8; i++) {
+            state[4 + i] = uint32_t(key.key_data[i * 4]) |
+                          (uint32_t(key.key_data[i * 4 + 1]) << 8) |
+                          (uint32_t(key.key_data[i * 4 + 2]) << 16) |
+                          (uint32_t(key.key_data[i * 4 + 3]) << 24);
+        }
+
+        state[12] = 0;
+        for (int i = 0; i < 3; i++) {
+            state[13 + i] = uint32_t(nonce[i * 4]) |
+                           (uint32_t(nonce[i * 4 + 1]) << 8) |
+                           (uint32_t(nonce[i * 4 + 2]) << 16) |
+                           (uint32_t(nonce[i * 4 + 3]) << 24);
+        }
+
+        // Decrypt
+        std::vector<uint8_t> plaintext = encrypted;
+        for (size_t i = 0; i < encrypted.size(); i += 64) {
+            uint32_t keystream[16];
+            chacha20_block(state, keystream);
+            state[12]++;
+
+            for (size_t j = 0; j < 64 && i + j < encrypted.size(); j++) {
+                plaintext[i + j] ^= (keystream[j / 4] >> ((j % 4) * 8)) & 0xff;
+            }
+        }
+
+        return plaintext;
     }
     
     EncryptionKey generate_key(const EncryptionConfig& config) override {

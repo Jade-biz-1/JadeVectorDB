@@ -2,6 +2,8 @@
 #include <random>
 #include <sstream>
 #include <iomanip>
+#include <map>
+#include <mutex>
 
 namespace jadevectordb {
 namespace zero_trust {
@@ -23,6 +25,10 @@ std::string generate_random_id() {
 // Implementation classes for interfaces
 
 class ContinuousAuthentication : public IContinuousAuthentication {
+private:
+    mutable std::mutex patterns_mutex_;
+    std::map<std::string, std::vector<std::string>> behavioral_patterns_;
+
 public:
     TrustLevel authenticate_request(const AccessRequest& request,
                                    const SessionInfo& session_info) override {
@@ -59,8 +65,9 @@ public:
 
     void register_behavioral_patterns(const std::string& user_id,
                                     const std::vector<std::string>& patterns) override {
-        // In a real implementation, this would store behavioral patterns for the user
-        // For now, this is a placeholder
+        std::lock_guard<std::mutex> lock(patterns_mutex_);
+        // Store behavioral patterns for the user for later analysis
+        behavioral_patterns_[user_id] = patterns;
     }
 
     TrustLevel update_trust_from_risk(const SessionInfo& session_info,
@@ -84,33 +91,86 @@ public:
 };
 
 class MicroSegmentation : public IMicroSegmentation {
+private:
+    struct SecurityPolicy {
+        std::string source;
+        std::string destination;
+        std::vector<std::string> allowed_protocols;
+        std::vector<int> allowed_ports;
+    };
+
+    mutable std::mutex policy_mutex_;
+    std::map<std::string, SecurityPolicy> policies_; // key: "source->destination"
+
+    std::string make_policy_key(const std::string& source, const std::string& dest) const {
+        return source + "->" + dest;
+    }
+
 public:
     bool is_communication_allowed(const std::string& source_endpoint,
                                  const std::string& destination_endpoint,
                                  const std::string& protocol,
                                  int port) override {
-        // For now, return true for basic communication
-        // In a real implementation, this would check actual policies
-        return true;
+        std::lock_guard<std::mutex> lock(policy_mutex_);
+
+        std::string key = make_policy_key(source_endpoint, destination_endpoint);
+        auto it = policies_.find(key);
+
+        if (it == policies_.end()) {
+            // No policy defined - default deny for zero trust
+            return false;
+        }
+
+        const auto& policy = it->second;
+
+        // Check protocol
+        bool protocol_allowed = std::find(policy.allowed_protocols.begin(),
+                                         policy.allowed_protocols.end(),
+                                         protocol) != policy.allowed_protocols.end();
+
+        // Check port
+        bool port_allowed = std::find(policy.allowed_ports.begin(),
+                                     policy.allowed_ports.end(),
+                                     port) != policy.allowed_ports.end();
+
+        return protocol_allowed && port_allowed;
     }
 
     void create_security_policy(const std::string& source_endpoint,
                                const std::string& destination_endpoint,
                                const std::vector<std::string>& allowed_protocols,
                                const std::vector<int>& allowed_ports) override {
-        // In a real implementation, this would store the security policy
-        // For now, this is a placeholder
+        std::lock_guard<std::mutex> lock(policy_mutex_);
+
+        std::string key = make_policy_key(source_endpoint, destination_endpoint);
+        SecurityPolicy policy;
+        policy.source = source_endpoint;
+        policy.destination = destination_endpoint;
+        policy.allowed_protocols = allowed_protocols;
+        policy.allowed_ports = allowed_ports;
+
+        policies_[key] = policy;
     }
 
     std::vector<std::string> get_applicable_policies(const std::string& endpoint) const override {
-        // Return empty for now - in real implementation would fetch applicable policies
-        return std::vector<std::string>();
+        std::lock_guard<std::mutex> lock(policy_mutex_);
+
+        std::vector<std::string> applicable;
+        for (const auto& pair : policies_) {
+            if (pair.second.source == endpoint || pair.second.destination == endpoint) {
+                applicable.push_back(pair.first);
+            }
+        }
+
+        return applicable;
     }
 
     void remove_security_policy(const std::string& source_endpoint,
                                const std::string& destination_endpoint) override {
-        // In a real implementation, this would remove the security policy
-        // For now, this is a placeholder
+        std::lock_guard<std::mutex> lock(policy_mutex_);
+
+        std::string key = make_policy_key(source_endpoint, destination_endpoint);
+        policies_.erase(key);
     }
 };
 
@@ -318,6 +378,23 @@ IJustInTimeAccess* ZeroTrustOrchestrator::get_jit_access() const {
 
 IDeviceAttestation* ZeroTrustOrchestrator::get_device_attestation() const {
     return device_attestation_.get();
+}
+
+// Factory functions to create concrete implementations
+std::unique_ptr<IContinuousAuthentication> create_continuous_authentication() {
+    return std::make_unique<ContinuousAuthentication>();
+}
+
+std::unique_ptr<IMicroSegmentation> create_microsegmentation() {
+    return std::make_unique<MicroSegmentation>();
+}
+
+std::unique_ptr<IJustInTimeAccess> create_jit_access() {
+    return std::make_unique<JustInTimeAccess>();
+}
+
+std::unique_ptr<IDeviceAttestation> create_device_attestation() {
+    return std::make_unique<DeviceAttestation>();
 }
 
 } // namespace zero_trust

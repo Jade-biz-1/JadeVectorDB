@@ -205,14 +205,14 @@ Result<MonitoringMetrics> MonitoringService::get_monitoring_metrics() const {
         if (metrics_service_) {
             auto conn_result = metrics_service_->get_metric("connections.active");
             if (conn_result.has_value()) {
-                metrics.active_connections = static_cast<size_t>(conn_result.value());
+                metrics.active_connections = static_cast<size_t>(conn_result.value().value);
             } else {
                 metrics.active_connections = 0;  // Default value if not available
             }
 
             auto latency_result = metrics_service_->get_metric("query.latency.avg");
             if (latency_result.has_value()) {
-                metrics.avg_query_latency_ms = latency_result.value();
+                metrics.avg_query_latency_ms = latency_result.value().value;
             } else {
                 metrics.avg_query_latency_ms = 0.0;  // Default value if not available
             }

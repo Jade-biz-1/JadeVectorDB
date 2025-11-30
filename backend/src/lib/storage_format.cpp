@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <set>
+#include <unordered_set>
 #include <zlib.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -366,13 +367,8 @@ namespace storage_format {
                                  storage_format.metadata_json.begin(),
                                  storage_format.metadata_json.end());
 
-            // Write timestamps
-            serialized_data.insert(serialized_data.end(),
-                                 reinterpret_cast<const uint8_t*>(&storage_format.created_timestamp),
-                                 reinterpret_cast<const uint8_t*>(&storage_format.created_timestamp) + sizeof(storage_format.created_timestamp));
-            serialized_data.insert(serialized_data.end(),
-                                 reinterpret_cast<const uint8_t*>(&storage_format.updated_timestamp),
-                                 reinterpret_cast<const uint8_t*>(&storage_format.updated_timestamp) + sizeof(storage_format.updated_timestamp));
+            // Timestamps not present in struct - skipping serialization
+            // If timestamps are needed, add them to EmbeddingModelStorageFormat struct first
 
             // Write version and deleted flag
             serialized_data.insert(serialized_data.end(),
@@ -470,13 +466,8 @@ namespace storage_format {
             write_json_field(storage_format.retention_policy_json);
             write_json_field(storage_format.access_control_json);
 
-            // Write timestamps
-            serialized_data.insert(serialized_data.end(),
-                                 reinterpret_cast<const uint8_t*>(&storage_format.created_timestamp),
-                                 reinterpret_cast<const uint8_t*>(&storage_format.created_timestamp) + sizeof(storage_format.created_timestamp));
-            serialized_data.insert(serialized_data.end(),
-                                 reinterpret_cast<const uint8_t*>(&storage_format.updated_timestamp),
-                                 reinterpret_cast<const uint8_t*>(&storage_format.updated_timestamp) + sizeof(storage_format.updated_timestamp));
+            // Timestamps not present in struct - skipping serialization
+            // If timestamps are needed, add them to EmbeddingModelStorageFormat struct first
 
             // Create header with checksum
             StorageHeader header = create_header(DATABASE_DATA, serialized_data.size());
@@ -556,13 +547,8 @@ namespace storage_format {
                                  storage_format.status.begin(),
                                  storage_format.status.end());
 
-            // Write timestamps
-            serialized_data.insert(serialized_data.end(),
-                                 reinterpret_cast<const uint8_t*>(&storage_format.created_timestamp),
-                                 reinterpret_cast<const uint8_t*>(&storage_format.created_timestamp) + sizeof(storage_format.created_timestamp));
-            serialized_data.insert(serialized_data.end(),
-                                 reinterpret_cast<const uint8_t*>(&storage_format.updated_timestamp),
-                                 reinterpret_cast<const uint8_t*>(&storage_format.updated_timestamp) + sizeof(storage_format.updated_timestamp));
+            // Timestamps not present in struct - skipping serialization
+            // If timestamps are needed, add them to EmbeddingModelStorageFormat struct first
 
             // Write counts and sizes
             serialized_data.insert(serialized_data.end(),
@@ -674,13 +660,8 @@ namespace storage_format {
                                  storage_format.status.begin(),
                                  storage_format.status.end());
 
-            // Write timestamps
-            serialized_data.insert(serialized_data.end(),
-                                 reinterpret_cast<const uint8_t*>(&storage_format.created_timestamp),
-                                 reinterpret_cast<const uint8_t*>(&storage_format.created_timestamp) + sizeof(storage_format.created_timestamp));
-            serialized_data.insert(serialized_data.end(),
-                                 reinterpret_cast<const uint8_t*>(&storage_format.updated_timestamp),
-                                 reinterpret_cast<const uint8_t*>(&storage_format.updated_timestamp) + sizeof(storage_format.updated_timestamp));
+            // Timestamps not present in struct - skipping serialization
+            // If timestamps are needed, add them to EmbeddingModelStorageFormat struct first
 
             // Create header with checksum
             StorageHeader header = create_header(EMBEDDING_MODEL_DATA, serialized_data.size());
@@ -1264,11 +1245,9 @@ namespace storage_format {
                     reinterpret_cast<const char*>(data.data() + offset), status_length);
                 offset += status_length;
 
-                // Read timestamps
-                std::memcpy(&storage_format.created_timestamp, data.data() + offset, sizeof(storage_format.created_timestamp));
-                offset += sizeof(storage_format.created_timestamp);
-
-                std::memcpy(&storage_format.updated_timestamp, data.data() + offset, sizeof(storage_format.updated_timestamp));
+                // Timestamps not present in struct - skipping deserialization
+                // If timestamps were serialized, we need to skip them here
+                // For now, we assume they weren't serialized (see write_embedding_model)
 
                 // Convert back to EmbeddingModel object
                 EmbeddingModel model;
@@ -1648,13 +1627,12 @@ namespace storage_format {
             params_json["status"] = index.status;
 
             // Add index-specific parameters to the JSON (if available)
-            if (index.params) {
-                params_json["params"] = index.params;
+            if (!index.parameters.empty()) {
+                params_json["params"] = index.parameters;
             } else {
                 // Default parameters if no params available
                 params_json["params"] = {
                     {"algorithm", index.type},
-                    {"dimensions", index.vector_dimension},
                     {"metric", "cosine"}
                 };
             }
@@ -1725,18 +1703,16 @@ namespace storage_format {
         // Serialize the parameters to JSON using nlohmann json
         try {
             nlohmann::json params_json;
-            params_json["model_type"] = model.modelType;
+            params_json["name"] = model.name;
             params_json["dimensions"] = model.outputDimension;
             params_json["provider"] = model.provider;
             params_json["input_type"] = model.inputType;
             params_json["version"] = model.version;
 
-            // Add model-specific configuration to JSON
-            nlohmann::json config_json;
-            config_json["batch_size"] = model.config.batchSize;
-            config_json["max_sequence_length"] = model.config.maxSequenceLength;
-            config_json["normalize_embeddings"] = model.config.normalizeEmbeddings;
-            params_json["config"] = config_json;
+            // Add model parameters if available
+            if (!model.parameters.empty()) {
+                params_json["parameters"] = model.parameters;
+            }
 
             storage_format.parameters_json = params_json.dump();
         } catch (const std::exception& e) {
@@ -1764,19 +1740,11 @@ namespace storage_format {
             nlohmann::json params_json = nlohmann::json::parse(storage_format.parameters_json);
 
             // Set model properties from JSON if available
-            if (params_json.contains("model_type")) {
-                model.modelType = params_json["model_type"].get<std::string>();
-            }
-            if (params_json.contains("config")) {
-                auto config = params_json["config"];
-                if (config.contains("batch_size")) {
-                    model.config.batchSize = config["batch_size"].get<int>();
-                }
-                if (config.contains("max_sequence_length")) {
-                    model.config.maxSequenceLength = config["max_sequence_length"].get<int>();
-                }
-                if (config.contains("normalize_embeddings")) {
-                    model.config.normalizeEmbeddings = config["normalize_embeddings"].get<bool>();
+            if (params_json.contains("parameters")) {
+                // Parse parameters map
+                auto params_obj = params_json["parameters"];
+                for (auto& [key, value] : params_obj.items()) {
+                    model.parameters[key] = value.dump();
                 }
             }
         } catch (const std::exception& e) {

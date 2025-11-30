@@ -752,11 +752,11 @@ Result<std::string> AuthManager::register_device(const zero_trust::DeviceIdentit
 
 
 Result<void> AuthManager::initialize_zero_trust() {
-    // Create individual zero-trust components
-    auto continuous_auth = std::make_unique<zero_trust::ContinuousAuthentication>();
-    auto microseg = std::make_unique<zero_trust::MicroSegmentation>();
-    auto jit_access = std::make_unique<zero_trust::JustInTimeAccess>();
-    auto device_attestation = std::make_unique<zero_trust::DeviceAttestation>();
+    // Create individual zero-trust components using factory functions
+    auto continuous_auth = zero_trust::create_continuous_authentication();
+    auto microseg = zero_trust::create_microsegmentation();
+    auto jit_access = zero_trust::create_jit_access();
+    auto device_attestation = zero_trust::create_device_attestation();
 
     // Create and initialize the orchestrator with these components
     zero_trust_orchestrator_ = std::make_unique<zero_trust::ZeroTrustOrchestrator>(

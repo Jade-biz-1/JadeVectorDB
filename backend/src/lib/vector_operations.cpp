@@ -143,40 +143,47 @@ float CUDAVectorOperations::cosine_similarity(const std::vector<float>& a, const
         return 0.0f;
     }
 
-    // In a real implementation, we would use cuBLAS or custom CUDA kernels
-    // For now, we'll use the GPU device's memory management to perform the operation
-
-    // Allocate device memory
-    size_t num_elements = a.size();
-    size_t size_bytes = num_elements * sizeof(float);
-
-    void* device_a = device_->allocate(size_bytes);
-    void* device_b = device_->allocate(size_bytes);
-    void* device_result = device_->allocate(sizeof(float) * 3); // For dot, norm_a, norm_b
-
-    if (!device_a || !device_b || !device_result) {
-        // Fall back to CPU if GPU allocation fails
+#ifdef CUDA_AVAILABLE
+    // Use cuBLAS for efficient GPU computation
+    cublasHandle_t handle;
+    cublasStatus_t status = cublasCreate(&handle);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        // Fall back to CPU if cuBLAS initialization fails
         return CPUVectorOperations().cosine_similarity(a, b);
     }
 
-    // Copy vectors to device
-    device_->copy_to_device(device_a, a.data(), size_bytes);
-    device_->copy_to_device(device_b, b.data(), size_bytes);
+    size_t num_elements = a.size();
+    size_t size_bytes = num_elements * sizeof(float);
 
-    // In a full implementation, we would run a CUDA kernel here
-    // For now, copy back to CPU to perform calculation
-    std::vector<float> cpu_a = a;
-    std::vector<float> cpu_b = b;
+    float *d_a, *d_b;
+    cudaMalloc(&d_a, size_bytes);
+    cudaMalloc(&d_b, size_bytes);
 
-    // Perform calculation using CPU implementation
-    float result = CPUVectorOperations().cosine_similarity(cpu_a, cpu_b);
+    cudaMemcpy(d_a, a.data(), size_bytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b.data(), size_bytes, cudaMemcpyHostToDevice);
 
-    // Clean up device memory
-    device_->deallocate(device_a);
-    device_->deallocate(device_b);
-    device_->deallocate(device_result);
+    // Compute dot product using cuBLAS
+    float dot_result = 0.0f;
+    cublasSdot(handle, num_elements, d_a, 1, d_b, 1, &dot_result);
 
-    return result;
+    // Compute norms
+    float norm_a = 0.0f, norm_b = 0.0f;
+    cublasSnrm2(handle, num_elements, d_a, 1, &norm_a);
+    cublasSnrm2(handle, num_elements, d_b, 1, &norm_b);
+
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cublasDestroy(handle);
+
+    if (norm_a == 0.0f || norm_b == 0.0f) {
+        return 0.0f;
+    }
+
+    return dot_result / (norm_a * norm_b);
+#else
+    // CUDA not available, use CPU implementation
+    return CPUVectorOperations().cosine_similarity(a, b);
+#endif
 }
 
 float CUDAVectorOperations::euclidean_distance(const std::vector<float>& a, const std::vector<float>& b) {
@@ -184,40 +191,37 @@ float CUDAVectorOperations::euclidean_distance(const std::vector<float>& a, cons
         throw std::invalid_argument("Vector sizes must match for euclidean distance");
     }
 
-    // In a real implementation, we would use cuBLAS or custom CUDA kernels
-    // For now, we'll use the GPU device's memory management to perform the operation
-
-    // Allocate device memory
-    size_t num_elements = a.size();
-    size_t size_bytes = num_elements * sizeof(float);
-
-    void* device_a = device_->allocate(size_bytes);
-    void* device_b = device_->allocate(size_bytes);
-    void* device_result = device_->allocate(sizeof(float));
-
-    if (!device_a || !device_b || !device_result) {
-        // Fall back to CPU if GPU allocation fails
+#ifdef CUDA_AVAILABLE
+    cublasHandle_t handle;
+    if (cublasCreate(&handle) != CUBLAS_STATUS_SUCCESS) {
         return CPUVectorOperations().euclidean_distance(a, b);
     }
 
-    // Copy vectors to device
-    device_->copy_to_device(device_a, a.data(), size_bytes);
-    device_->copy_to_device(device_b, b.data(), size_bytes);
+    size_t num_elements = a.size();
+    size_t size_bytes = num_elements * sizeof(float);
 
-    // In a full implementation, we would run a CUDA kernel here
-    // For now, copy back to CPU to perform calculation
-    std::vector<float> cpu_a = a;
-    std::vector<float> cpu_b = b;
+    float *d_diff;
+    cudaMalloc(&d_diff, size_bytes);
 
-    // Perform calculation using CPU implementation
-    float result = CPUVectorOperations().euclidean_distance(cpu_a, cpu_b);
+    // Compute difference on CPU first (small overhead for simplicity)
+    std::vector<float> diff(num_elements);
+    for (size_t i = 0; i < num_elements; i++) {
+        diff[i] = a[i] - b[i];
+    }
 
-    // Clean up device memory
-    device_->deallocate(device_a);
-    device_->deallocate(device_b);
-    device_->deallocate(device_result);
+    cudaMemcpy(d_diff, diff.data(), size_bytes, cudaMemcpyHostToDevice);
+
+    // Compute L2 norm of difference using cuBLAS
+    float result = 0.0f;
+    cublasSnrm2(handle, num_elements, d_diff, 1, &result);
+
+    cudaFree(d_diff);
+    cublasDestroy(handle);
 
     return result;
+#else
+    return CPUVectorOperations().euclidean_distance(a, b);
+#endif
 }
 
 float CUDAVectorOperations::dot_product(const std::vector<float>& a, const std::vector<float>& b) {
