@@ -118,9 +118,9 @@ docker-compose -f docker-compose.distributed.yml up -d
 
 | Document | Purpose | Read If... |
 |----------|---------|------------|
-| `BUILD_QUICK_REFERENCE.md` | Common commands | You want to build quickly |
+| `backend/BUILD_QUICK_REFERENCE.md` | Common commands | You want to build quickly |
 | `BUILD.md` | Complete guide | You need detailed info |
-| `README_BUILD.md` | Getting started | You're new to the project |
+| `backend/README_BUILD.md` | Getting started | You're new to the project |
 | `BUILD_SYSTEM_ENHANCEMENT_SUMMARY.md` | Technical details | You want implementation details |
 | `DOCKER_CLEANUP_SUMMARY.md` | Docker cleanup | You want Docker-specific info |
 | `COMPLETE_BUILD_SYSTEM_SETUP.md` | Overview (this) | You want the big picture |
@@ -317,7 +317,7 @@ build:
 
 ## ✅ Verification Checklist
 
-- [ ] Can build locally with `./build.sh`
+- [ ] Can build locally with `cd backend && ./build.sh`
 - [ ] Can build Docker image with `docker build -t jadevectordb .`
 - [ ] Can run with docker-compose
 - [ ] Can run distributed cluster
