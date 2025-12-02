@@ -755,6 +755,10 @@ Complete documentation is available in the `docs/` directory:
 - [Architecture Documentation](docs/architecture.md) - System architecture and design decisions
 - [API Documentation](docs/api_documentation.md) - Complete API reference
 - [Developer Guide](DEVELOPER_GUIDE.md) - Information for contributors
+- [Build Documentation](BUILD.md) - Complete build system documentation with troubleshooting
+- [Known Issues](docs/KNOWN_ISSUES.md) - Current issues and limitations
+- [Troubleshooting Guide](docs/TROUBLESHOOTING_GUIDE.md) - How to diagnose and resolve common issues
+- [Local Deployment Guide](docs/LOCAL_DEPLOYMENT.md) - Local deployment process with current caveats
 
 ## Next Steps
 

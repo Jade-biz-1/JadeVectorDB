@@ -260,6 +260,10 @@ Authorization: Bearer {api-key}
   }
 }
 ```
+- **Example Usage**:
+```bash
+curl -X GET http://localhost:8080/health
+```
 
 #### GET /status
 - **Description**: Detailed system status
@@ -286,6 +290,11 @@ Authorization: Bearer {api-key}
   }
 }
 ```
+- **Example Usage**:
+```bash
+curl -X GET http://localhost:8080/status \
+  -H "Authorization: Bearer <your-api-key>"
+```
 
 #### GET /v1/databases/{databaseId}/status
 - **Description**: Database-specific status
@@ -310,6 +319,11 @@ Authorization: Bearer {api-key}
     "flat_index_1": "ready"
   }
 }
+```
+- **Example Usage**:
+```bash
+curl -X GET http://localhost:8080/v1/databases/my_database_id/status \
+  -H "Authorization: Bearer <your-api-key>"
 ```
 
 ### Database Management
