@@ -13,7 +13,7 @@ That's it! All dependencies are automatically fetched from source.
 
 - **Quick Reference**: [BUILD_QUICK_REFERENCE.md](BUILD_QUICK_REFERENCE.md) - Common commands and examples
 - **Complete Guide**: [BUILD.md](BUILD.md) - Full documentation with troubleshooting
-- **Enhancement Summary**: [../BUILD_SYSTEM_ENHANCEMENT_SUMMARY.md](../BUILD_SYSTEM_ENHANCEMENT_SUMMARY.md) - Technical details
+- **Enhancement Summary**: [../docs/BUILD_SYSTEM_ENHANCEMENT_SUMMARY.md](../docs/BUILD_SYSTEM_ENHANCEMENT_SUMMARY.md) - Technical details
 
 ## 🐳 Docker
 

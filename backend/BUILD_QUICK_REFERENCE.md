@@ -170,6 +170,7 @@ export PARALLEL_JOBS=4
 - Full documentation: [BUILD.md](BUILD.md)
 - Architecture: [../docs/architecture.md](../docs/architecture.md)
 - API docs: [../docs/api_documentation.md](../docs/api_documentation.md)
+- Build system enhancement: [../docs/BUILD_SYSTEM_ENHANCEMENT_SUMMARY.md](../docs/BUILD_SYSTEM_ENHANCEMENT_SUMMARY.md)
 
 ## ✅ Self-Contained Build
 
