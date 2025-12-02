@@ -229,162 +229,147 @@ float CUDAVectorOperations::dot_product(const std::vector<float>& a, const std::
         throw std::invalid_argument("Vector sizes must match for dot product");
     }
 
-    // In a real implementation, we would use cuBLAS or custom CUDA kernels
-    // For now, we'll use the GPU device's memory management to perform the operation
-
-    // Allocate device memory
-    size_t num_elements = a.size();
-    size_t size_bytes = num_elements * sizeof(float);
-
-    void* device_a = device_->allocate(size_bytes);
-    void* device_b = device_->allocate(size_bytes);
-    void* device_result = device_->allocate(sizeof(float));
-
-    if (!device_a || !device_b || !device_result) {
-        // Fall back to CPU if GPU allocation fails
+#ifdef CUDA_AVAILABLE
+    cublasHandle_t handle;
+    if (cublasCreate(&handle) != CUBLAS_STATUS_SUCCESS) {
         return CPUVectorOperations().dot_product(a, b);
     }
 
-    // Copy vectors to device
-    device_->copy_to_device(device_a, a.data(), size_bytes);
-    device_->copy_to_device(device_b, b.data(), size_bytes);
+    size_t num_elements = a.size();
+    size_t size_bytes = num_elements * sizeof(float);
 
-    // In a full implementation, we would run a CUDA kernel here
-    // For now, copy back to CPU to perform calculation
-    std::vector<float> cpu_a = a;
-    std::vector<float> cpu_b = b;
+    float *d_a, *d_b;
+    cudaMalloc(&d_a, size_bytes);
+    cudaMalloc(&d_b, size_bytes);
 
-    // Perform calculation using CPU implementation
-    float result = CPUVectorOperations().dot_product(cpu_a, cpu_b);
+    cudaMemcpy(d_a, a.data(), size_bytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b.data(), size_bytes, cudaMemcpyHostToDevice);
 
-    // Clean up device memory
-    device_->deallocate(device_a);
-    device_->deallocate(device_b);
-    device_->deallocate(device_result);
+    // Compute dot product using cuBLAS
+    float result = 0.0f;
+    cublasSdot(handle, num_elements, d_a, 1, d_b, 1, &result);
+
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cublasDestroy(handle);
 
     return result;
+#else
+    return CPUVectorOperations().dot_product(a, b);
+#endif
 }
 
 float CUDAVectorOperations::l2_norm(const std::vector<float>& vec) {
-    // In a real implementation, we would use cuBLAS or custom CUDA kernels
-    // For now, we'll use the GPU device's memory management to perform the operation
-
-    size_t num_elements = vec.size();
-    size_t size_bytes = num_elements * sizeof(float);
-
-    void* device_vec = device_->allocate(size_bytes);
-    void* device_result = device_->allocate(sizeof(float));
-
-    if (!device_vec || !device_result) {
-        // Fall back to CPU if GPU allocation fails
+#ifdef CUDA_AVAILABLE
+    cublasHandle_t handle;
+    if (cublasCreate(&handle) != CUBLAS_STATUS_SUCCESS) {
         return CPUVectorOperations().l2_norm(vec);
     }
 
-    // Copy vector to device
-    device_->copy_to_device(device_vec, vec.data(), size_bytes);
+    size_t num_elements = vec.size();
+    size_t size_bytes = num_elements * sizeof(float);
 
-    // In a full implementation, we would run a CUDA kernel here
-    // For now, copy back to CPU to perform calculation
-    std::vector<float> cpu_vec = vec;
+    float *d_vec;
+    cudaMalloc(&d_vec, size_bytes);
+    cudaMemcpy(d_vec, vec.data(), size_bytes, cudaMemcpyHostToDevice);
 
-    // Perform calculation using CPU implementation
-    float result = CPUVectorOperations().l2_norm(cpu_vec);
+    // Compute L2 norm using cuBLAS
+    float result = 0.0f;
+    cublasSnrm2(handle, num_elements, d_vec, 1, &result);
 
-    // Clean up device memory
-    device_->deallocate(device_vec);
-    device_->deallocate(device_result);
+    cudaFree(d_vec);
+    cublasDestroy(handle);
 
     return result;
+#else
+    return CPUVectorOperations().l2_norm(vec);
+#endif
 }
 
 std::vector<float> CUDAVectorOperations::normalize(const std::vector<float>& vec) {
-    // In a real implementation, we would use cuBLAS or custom CUDA kernels
-    // For now, we'll use the GPU device's memory management to perform the operation
+#ifdef CUDA_AVAILABLE
+    // First compute L2 norm
+    float norm = l2_norm(vec);
+
+    if (norm == 0.0f) {
+        return vec; // Return zero vector as is
+    }
+
+    cublasHandle_t handle;
+    if (cublasCreate(&handle) != CUBLAS_STATUS_SUCCESS) {
+        return CPUVectorOperations().normalize(vec);
+    }
 
     size_t num_elements = vec.size();
     size_t size_bytes = num_elements * sizeof(float);
 
-    void* device_vec = device_->allocate(size_bytes);
-    void* device_result = device_->allocate(size_bytes); // For normalized vector
+    float *d_vec;
+    cudaMalloc(&d_vec, size_bytes);
+    cudaMemcpy(d_vec, vec.data(), size_bytes, cudaMemcpyHostToDevice);
 
-    if (!device_vec || !device_result) {
-        // Fall back to CPU if GPU allocation fails
-        return CPUVectorOperations().normalize(vec);
-    }
+    // Scale vector by 1/norm using cuBLAS
+    float scale = 1.0f / norm;
+    cublasSscal(handle, num_elements, &scale, d_vec, 1);
 
-    // Copy vector to device
-    device_->copy_to_device(device_vec, vec.data(), size_bytes);
+    // Copy result back to host
+    std::vector<float> result(num_elements);
+    cudaMemcpy(result.data(), d_vec, size_bytes, cudaMemcpyDeviceToHost);
 
-    // In a full implementation, we would run CUDA kernels here
-    // For now, copy back to CPU to perform calculation
-    std::vector<float> cpu_vec = vec;
-
-    // Perform calculation using CPU implementation
-    auto result = CPUVectorOperations().normalize(cpu_vec);
-
-    // Clean up device memory
-    device_->deallocate(device_vec);
-    device_->deallocate(device_result);
+    cudaFree(d_vec);
+    cublasDestroy(handle);
 
     return result;
+#else
+    return CPUVectorOperations().normalize(vec);
+#endif
 }
 
 std::vector<float> CUDAVectorOperations::batch_cosine_similarity(
     const std::vector<float>& query,
     const std::vector<std::vector<float>>& vectors) {
 
-    // In a real implementation, we would use cuBLAS or custom CUDA kernels
-    // For now, we'll use the GPU device's memory management to perform the operation
-
-    // Allocate device memory for query
-    size_t query_size = query.size();
-    size_t query_bytes = query_size * sizeof(float);
-    void* device_query = device_->allocate(query_bytes);
-
-    if (!device_query) {
-        // Fall back to CPU if GPU allocation fails
-        return CPUVectorOperations().batch_cosine_similarity(query, vectors);
+#ifdef CUDA_AVAILABLE
+    if (vectors.empty()) {
+        return std::vector<float>();
     }
 
-    device_->copy_to_device(device_query, query.data(), query_bytes);
+    std::vector<float> results;
+    results.reserve(vectors.size());
 
-    // In a full implementation, we would transfer all vectors to GPU and run the batch operation
-    // For now, copy back to CPU to perform calculation
-    std::vector<float> result = CPUVectorOperations().batch_cosine_similarity(query, vectors);
+    // Process each vector individually using CUDA cosine_similarity
+    // For better performance in production, this should use batched matrix operations
+    for (const auto& vec : vectors) {
+        results.push_back(cosine_similarity(query, vec));
+    }
 
-    // Clean up device memory
-    device_->deallocate(device_query);
-
-    return result;
+    return results;
+#else
+    return CPUVectorOperations().batch_cosine_similarity(query, vectors);
+#endif
 }
 
 std::vector<float> CUDAVectorOperations::batch_euclidean_distance(
     const std::vector<float>& query,
     const std::vector<std::vector<float>>& vectors) {
 
-    // In a real implementation, we would use cuBLAS or custom CUDA kernels
-    // For now, we'll use the GPU device's memory management to perform the operation
-
-    // Allocate device memory for query
-    size_t query_size = query.size();
-    size_t query_bytes = query_size * sizeof(float);
-    void* device_query = device_->allocate(query_bytes);
-
-    if (!device_query) {
-        // Fall back to CPU if GPU allocation fails
-        return CPUVectorOperations().batch_euclidean_distance(query, vectors);
+#ifdef CUDA_AVAILABLE
+    if (vectors.empty()) {
+        return std::vector<float>();
     }
 
-    device_->copy_to_device(device_query, query.data(), query_bytes);
+    std::vector<float> results;
+    results.reserve(vectors.size());
 
-    // In a full implementation, we would transfer all vectors to GPU and run the batch operation
-    // For now, copy back to CPU to perform calculation
-    std::vector<float> result = CPUVectorOperations().batch_euclidean_distance(query, vectors);
+    // Process each vector individually using CUDA euclidean_distance
+    // For better performance in production, this should use batched matrix operations
+    for (const auto& vec : vectors) {
+        results.push_back(euclidean_distance(query, vec));
+    }
 
-    // Clean up device memory
-    device_->deallocate(device_query);
-
-    return result;
+    return results;
+#else
+    return CPUVectorOperations().batch_euclidean_distance(query, vectors);
+#endif
 }
 #endif
 

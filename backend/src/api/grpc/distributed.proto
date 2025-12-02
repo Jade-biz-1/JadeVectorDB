@@ -1,0 +1,418 @@
+syntax = "proto3";
+
+package jadevectordb.distributed;
+
+// ============================================================================
+// Master-Worker Communication Service
+// ============================================================================
+
+// Service for distributed operations between master and worker nodes
+service DistributedService {
+  // ===== Search Operations =====
+
+  // Execute search on a specific shard
+  rpc ExecuteShardSearch(ShardSearchRequest) returns (ShardSearchResponse);
+
+  // ===== Write Operations =====
+
+  // Write vectors to a specific shard
+  rpc WriteToShard(ShardWriteRequest) returns (ShardWriteResponse);
+
+  // Batch write vectors to a specific shard
+  rpc BatchWriteToShard(BatchShardWriteRequest) returns (ShardWriteResponse);
+
+  // Delete vectors from a specific shard
+  rpc DeleteFromShard(ShardDeleteRequest) returns (ShardDeleteResponse);
+
+  // ===== Health & Monitoring =====
+
+  // Health check for worker node
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+  // Get worker node statistics
+  rpc GetWorkerStats(WorkerStatsRequest) returns (WorkerStatsResponse);
+
+  // ===== Shard Management =====
+
+  // Assign a shard to a worker
+  rpc AssignShard(AssignShardRequest) returns (AssignShardResponse);
+
+  // Remove a shard from a worker
+  rpc RemoveShard(RemoveShardRequest) returns (RemoveShardResponse);
+
+  // Get shard information
+  rpc GetShardInfo(ShardInfoRequest) returns (ShardInfoResponse);
+
+  // ===== Replication Operations =====
+
+  // Replicate data to a replica node
+  rpc ReplicateData(ReplicationRequest) returns (ReplicationResponse);
+
+  // Synchronize shard data between nodes
+  rpc SyncShard(ShardSyncRequest) returns (ShardSyncResponse);
+
+  // ===== Cluster Coordination =====
+
+  // Request vote for master election (Raft)
+  rpc RequestVote(VoteRequest) returns (VoteResponse);
+
+  // Send heartbeat from master (Raft)
+  rpc SendHeartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // Append log entries (Raft)
+  rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse);
+}
+
+// ============================================================================
+// Search Operation Messages
+// ============================================================================
+
+message ShardSearchRequest {
+  string shard_id = 1;
+  string request_id = 2;  // For tracing
+  repeated float query_vector = 3;
+  int32 top_k = 4;
+  string metric_type = 5;  // "cosine", "euclidean", "dot_product"
+  float threshold = 6;
+  map<string, string> filters = 7;  // Optional metadata filters
+  int64 timeout_ms = 8;
+}
+
+message ShardSearchResponse {
+  string shard_id = 1;
+  string request_id = 2;
+  repeated SearchResult results = 3;
+  bool success = 4;
+  string error_message = 5;
+  int64 execution_time_ms = 6;
+  int32 vectors_scanned = 7;
+}
+
+message SearchResult {
+  string vector_id = 1;
+  float similarity_score = 2;
+  repeated float values = 3;
+  map<string, string> metadata = 4;
+}
+
+// ============================================================================
+// Write Operation Messages
+// ============================================================================
+
+message ShardWriteRequest {
+  string shard_id = 1;
+  string request_id = 2;
+  VectorData vector = 3;
+  ConsistencyLevel consistency_level = 4;
+  bool wait_for_replication = 5;
+}
+
+message BatchShardWriteRequest {
+  string shard_id = 1;
+  string request_id = 2;
+  repeated VectorData vectors = 3;
+  ConsistencyLevel consistency_level = 4;
+  bool wait_for_replication = 5;
+}
+
+message VectorData {
+  string vector_id = 1;
+  repeated float values = 2;
+  map<string, string> metadata = 3;
+  int64 timestamp = 4;
+  int64 version = 5;  // For conflict resolution
+}
+
+message ShardWriteResponse {
+  string shard_id = 1;
+  string request_id = 2;
+  bool success = 3;
+  string error_message = 4;
+  int32 vectors_written = 5;
+  int64 execution_time_ms = 6;
+  repeated string failed_vector_ids = 7;
+}
+
+message ShardDeleteRequest {
+  string shard_id = 1;
+  string request_id = 2;
+  repeated string vector_ids = 3;
+  ConsistencyLevel consistency_level = 4;
+}
+
+message ShardDeleteResponse {
+  string shard_id = 1;
+  string request_id = 2;
+  bool success = 3;
+  string error_message = 4;
+  int32 vectors_deleted = 5;
+}
+
+// ============================================================================
+// Health & Monitoring Messages
+// ============================================================================
+
+message HealthCheckRequest {
+  string node_id = 1;
+  int64 timestamp = 2;
+}
+
+message HealthCheckResponse {
+  string node_id = 1;
+  HealthStatus status = 2;
+  string version = 3;
+  int64 uptime_seconds = 4;
+  ResourceUsage resource_usage = 5;
+  repeated ShardStatus shard_statuses = 6;
+  int64 timestamp = 7;
+}
+
+message WorkerStatsRequest {
+  string node_id = 1;
+  bool include_shard_details = 2;
+}
+
+message WorkerStatsResponse {
+  string node_id = 1;
+  int64 total_vectors = 2;
+  int32 active_shards = 3;
+  int64 queries_processed = 4;
+  int64 writes_processed = 5;
+  double avg_query_latency_ms = 6;
+  double avg_write_latency_ms = 7;
+  ResourceUsage resource_usage = 8;
+  repeated ShardStats shard_stats = 9;
+}
+
+message ResourceUsage {
+  double cpu_usage_percent = 1;
+  int64 memory_used_bytes = 2;
+  int64 memory_total_bytes = 3;
+  int64 disk_used_bytes = 4;
+  int64 disk_total_bytes = 5;
+  int32 active_connections = 6;
+}
+
+message ShardStatus {
+  string shard_id = 1;
+  ShardState state = 2;
+  int64 vector_count = 3;
+  int64 size_bytes = 4;
+  bool is_primary = 5;
+}
+
+message ShardStats {
+  string shard_id = 1;
+  int64 vector_count = 2;
+  int64 size_bytes = 3;
+  int64 queries_processed = 4;
+  int64 writes_processed = 5;
+  double avg_query_latency_ms = 6;
+  int64 last_updated_timestamp = 7;
+}
+
+// ============================================================================
+// Shard Management Messages
+// ============================================================================
+
+message AssignShardRequest {
+  string shard_id = 1;
+  string worker_id = 2;
+  bool is_primary = 3;
+  ShardConfig config = 4;
+  bytes initial_data = 5;  // Optional initial shard data
+}
+
+message AssignShardResponse {
+  string shard_id = 1;
+  string worker_id = 2;
+  bool success = 3;
+  string error_message = 4;
+  int64 assignment_timestamp = 5;
+}
+
+message RemoveShardRequest {
+  string shard_id = 1;
+  string worker_id = 2;
+  bool force = 3;  // Force removal even if data not replicated
+  bool transfer_to_worker = 4;  // Transfer to another worker first
+  string target_worker_id = 5;
+}
+
+message RemoveShardResponse {
+  string shard_id = 1;
+  bool success = 2;
+  string error_message = 3;
+  bool data_transferred = 4;
+}
+
+message ShardInfoRequest {
+  string shard_id = 1;
+  string worker_id = 2;
+  bool include_statistics = 3;
+}
+
+message ShardInfoResponse {
+  string shard_id = 1;
+  string worker_id = 2;
+  ShardState state = 3;
+  bool is_primary = 4;
+  int64 vector_count = 5;
+  int64 size_bytes = 6;
+  int64 created_timestamp = 7;
+  int64 last_modified_timestamp = 8;
+  ShardConfig config = 9;
+  ShardStats statistics = 10;
+}
+
+message ShardConfig {
+  string index_type = 1;
+  int32 vector_dimension = 2;
+  string metric_type = 3;
+  int32 replication_factor = 4;
+  map<string, string> index_parameters = 5;
+}
+
+// ============================================================================
+// Replication Messages
+// ============================================================================
+
+message ReplicationRequest {
+  string shard_id = 1;
+  string source_node_id = 2;
+  string target_node_id = 3;
+  ReplicationType replication_type = 4;
+  repeated VectorData vectors = 5;
+  int64 from_version = 6;  // For incremental replication
+  int64 to_version = 7;
+}
+
+message ReplicationResponse {
+  string shard_id = 1;
+  bool success = 2;
+  string error_message = 3;
+  int32 vectors_replicated = 4;
+  int64 replication_lag_ms = 5;
+  int64 current_version = 6;
+}
+
+message ShardSyncRequest {
+  string shard_id = 1;
+  string source_node_id = 2;
+  string target_node_id = 3;
+  int64 target_version = 4;
+}
+
+message ShardSyncResponse {
+  string shard_id = 1;
+  bool success = 2;
+  string error_message = 3;
+  bool in_sync = 4;
+  int64 source_version = 5;
+  int64 target_version = 6;
+  int64 vectors_to_sync = 7;
+}
+
+// ============================================================================
+// Raft Consensus Messages
+// ============================================================================
+
+message VoteRequest {
+  int64 term = 1;
+  string candidate_id = 2;
+  int64 last_log_index = 3;
+  int64 last_log_term = 4;
+}
+
+message VoteResponse {
+  int64 term = 1;
+  bool vote_granted = 2;
+  string voter_id = 3;
+}
+
+message HeartbeatRequest {
+  int64 term = 1;
+  string leader_id = 2;
+  int64 prev_log_index = 3;
+  int64 prev_log_term = 4;
+  int64 leader_commit_index = 5;
+  int64 timestamp = 6;
+}
+
+message HeartbeatResponse {
+  int64 term = 1;
+  bool success = 2;
+  string follower_id = 3;
+  int64 match_index = 4;
+}
+
+message AppendEntriesRequest {
+  int64 term = 1;
+  string leader_id = 2;
+  int64 prev_log_index = 3;
+  int64 prev_log_term = 4;
+  repeated LogEntry entries = 5;
+  int64 leader_commit_index = 6;
+}
+
+message AppendEntriesResponse {
+  int64 term = 1;
+  bool success = 2;
+  string follower_id = 3;
+  int64 match_index = 4;
+  string error_message = 5;
+}
+
+message LogEntry {
+  int64 term = 1;
+  int64 index = 2;
+  LogEntryType type = 3;
+  bytes data = 4;
+  int64 timestamp = 5;
+}
+
+// ============================================================================
+// Enums
+// ============================================================================
+
+enum HealthStatus {
+  HEALTH_UNKNOWN = 0;
+  HEALTHY = 1;
+  DEGRADED = 2;
+  UNHEALTHY = 3;
+  STARTING = 4;
+  STOPPING = 5;
+}
+
+enum ShardState {
+  SHARD_STATE_UNKNOWN = 0;
+  INITIALIZING = 1;
+  ACTIVE = 2;
+  MIGRATING = 3;
+  SYNCING = 4;
+  READONLY = 5;
+  OFFLINE = 6;
+}
+
+enum ConsistencyLevel {
+  CONSISTENCY_UNKNOWN = 0;
+  STRONG = 1;      // Wait for all replicas
+  QUORUM = 2;      // Wait for majority
+  EVENTUAL = 3;    // Async replication
+}
+
+enum ReplicationType {
+  REPLICATION_UNKNOWN = 0;
+  FULL = 1;         // Full shard replication
+  INCREMENTAL = 2;  // Only changed vectors
+  SNAPSHOT = 3;     // Point-in-time snapshot
+}
+
+enum LogEntryType {
+  LOG_UNKNOWN = 0;
+  LOG_CONFIG_CHANGE = 1;
+  LOG_SHARD_ASSIGNMENT = 2;
+  LOG_NODE_JOIN = 3;
+  LOG_NODE_LEAVE = 4;
+  LOG_WRITE_OPERATION = 5;
+}
