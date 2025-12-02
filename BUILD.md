@@ -232,6 +232,47 @@ To speed up:
 cd backend && cmake -B build -DBUILD_WITH_GRPC=OFF
 ```
 
+### Known Build Issues
+
+#### Test Compilation Failures
+When building with tests enabled (default behavior), multiple compilation errors may occur in test files:
+- Test files try to access private members that they shouldn't
+- Incorrect API usage in test files (e.g., `metadata["key"]` syntax doesn't match the expected API)
+- Type mismatches in test expectations (using `Database` instead of `DatabaseCreationParams`)
+
+**Solution**: Use `--no-tests --no-benchmarks` to build successfully:
+```bash
+./build.sh --no-tests --no-benchmarks
+```
+
+#### Runtime Startup Issues (Address Already in Use)
+If the server fails to start due to port conflicts:
+```bash
+# Check what's using port 8080
+lsof -i :8080
+
+# Use a different port
+export JDB_PORT=8081
+./jadevectordb
+```
+
+#### Runtime Crash: Duplicate Route Handlers
+There is a known issue where the application crashes on startup with the error:
+```
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  handler already exists for /v1/databases
+```
+
+**Cause**: API routes are being registered twice in `rest_api.cpp` - both via `app_->route_dynamic()` and `CROW_ROUTE()` methods.
+
+**Status**: This issue requires code fixes in the backend REST API implementation and is related to distributed system integration work.
+
+**Workaround**: The executable builds successfully but will crash on startup. The binary can be built with:
+```bash
+./build.sh --no-tests --no-benchmarks
+```
+But it will not run properly until the duplicate route handler issue is fixed in the code.
+
 ## Environment Variables
 
 You can control the build using environment variables:
