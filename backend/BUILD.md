@@ -15,7 +15,6 @@ JadeVectorDB uses a unified, self-contained build system that works consistently
 ### Local Build
 
 ```bash
-cd backend
 ./build.sh
 ```
 
@@ -25,14 +24,14 @@ The executable will be in `build/jadevectordb`.
 
 ```bash
 # From project root
-docker build -f Dockerfile -t jadevectordb:latest .
+docker build -t jadevectordb:latest .
 ```
 
 ### Run
 
 ```bash
 # Local
-cd backend/build
+cd build
 ./jadevectordb
 
 # Docker
@@ -205,7 +204,7 @@ git --version
 Install GCC 11+ or Clang 14+:
 ```bash
 # Ubuntu/Debian
-sudo apt-get install build-essential cmake git
+sudo apt-get update && sudo apt-get install -y build-essential cmake git
 
 # macOS
 brew install cmake git
@@ -226,7 +225,7 @@ To speed up:
 
 # Don't build gRPC (uses stubs instead)
 # This is the default, but explicitly:
-cmake .. -DBUILD_WITH_GRPC=OFF
+cmake -B build -DBUILD_WITH_GRPC=OFF
 ```
 
 ## Environment Variables
@@ -253,7 +252,7 @@ export VERBOSE=false                # true or false
 
 ### Development Image (with tests)
 ```bash
-docker build -f Dockerfile \
+docker build \
   --build-arg BUILD_TESTS=ON \
   --build-arg BUILD_BENCHMARKS=ON \
   -t jadevectordb:dev .
@@ -261,7 +260,7 @@ docker build -f Dockerfile \
 
 ### Production Image (minimal)
 ```bash
-docker build -f Dockerfile \
+docker build \
   --build-arg BUILD_TESTS=OFF \
   --build-arg BUILD_BENCHMARKS=OFF \
   -t jadevectordb:prod .
@@ -269,7 +268,7 @@ docker build -f Dockerfile \
 
 ### With gRPC Support
 ```bash
-docker build -f Dockerfile \
+docker build \
   --build-arg BUILD_WITH_GRPC=ON \
   -t jadevectordb:grpc .
 ```
@@ -335,7 +334,7 @@ The build system includes several optimizations:
 ## Support
 
 For build issues:
-1. Check this documentation
+1. Check this documentation and the quick reference guide in `BUILD_QUICK_REFERENCE.md`
 2. Review build logs
 3. Try a clean build: `./build.sh --clean`
 4. Open an issue on GitHub with:
@@ -343,3 +342,9 @@ For build issues:
    - Compiler version
    - Build command used
    - Complete error output
+
+## Additional Documentation
+
+- **Quick Reference:** `BUILD_QUICK_REFERENCE.md` - Common commands and examples
+- **Getting Started:** `README_BUILD.md` - Simple introduction to the build system
+- **Enhancement Summary:** `../docs/COMPLETE_BUILD_SYSTEM_SETUP.md` - Technical details about the build system improvements
