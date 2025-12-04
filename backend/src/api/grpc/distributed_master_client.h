@@ -5,6 +5,8 @@
 #include "lib/logging.h"
 #include "models/vector.h"
 #include "models/database.h"
+#include "similarity_search.h"
+#include "distributed_types.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -18,6 +20,9 @@
 #endif
 
 namespace jadevectordb {
+
+// Forward declarations
+struct ShardInfo;
 
 /**
  * @brief gRPC client for master node to communicate with worker nodes
@@ -77,7 +82,8 @@ private:
     bool initialized_;
 
 public:
-    explicit DistributedMasterClient(const RpcConfig& config = RpcConfig());
+    explicit DistributedMasterClient(const RpcConfig& config);
+    DistributedMasterClient();  // Default constructor
     ~DistributedMasterClient();
 
     // ===== Lifecycle =====

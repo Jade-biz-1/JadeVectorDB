@@ -1,16 +1,28 @@
 #include "raft_consensus.h"
+#include "cluster_service.h"
 #include "lib/logging.h"
 #include "lib/error_handling.h"
 #include <algorithm>
 #include <random>
 #include <thread>
 #include <chrono>
+#include <fstream>
+#include <sstream>
 
 namespace jadevectordb {
 
-RaftConsensus::RaftConsensus(const std::string& server_id) 
-    : server_id_(server_id), current_term_(0), commit_index_(0), last_applied_(0), 
-      election_timeout_base_ms_(3000), heartbeat_interval_ms_(150), 
+RaftConsensus::RaftConsensus(const std::string& server_id)
+    : server_id_(server_id), current_term_(0), commit_index_(0), last_applied_(0),
+      election_timeout_base_ms_(3000), heartbeat_interval_ms_(150),
+      running_(false), state_(State::FOLLOWER), leader_id_("") {
+    logger_ = logging::LoggerManager::get_logger("RaftConsensus");
+    last_heartbeat_time_ = std::chrono::steady_clock::now();
+    last_election_time_ = last_heartbeat_time_;
+}
+
+RaftConsensus::RaftConsensus(const std::string& server_id, std::shared_ptr<ClusterService> cluster_service)
+    : server_id_(server_id), cluster_service_(cluster_service), current_term_(0), commit_index_(0), last_applied_(0),
+      election_timeout_base_ms_(3000), heartbeat_interval_ms_(150),
       running_(false), state_(State::FOLLOWER), leader_id_("") {
     logger_ = logging::LoggerManager::get_logger("RaftConsensus");
     last_heartbeat_time_ = std::chrono::steady_clock::now();
@@ -333,25 +345,156 @@ void RaftConsensus::become_leader() {
 }
 
 void RaftConsensus::request_votes() {
-    // In a real implementation, this would send RequestVote RPCs to other nodes
-    // For now, we'll just log the request
-    LOG_DEBUG(logger_, "Requesting votes for term " + std::to_string(current_term_) + 
+    LOG_INFO(logger_, "Requesting votes for term " + std::to_string(current_term_) +
              " from server " + server_id_);
-    
-    // This is where we would send RequestVote RPCs to other nodes
-    // and wait for responses to determine if we received a majority
-    // For simulation purposes, we'll assume we get votes from a majority
-    // which promotes us to leader
-    become_leader();
+
+    // If no cluster service, fall back to auto-promotion (for testing)
+    if (!cluster_service_) {
+        LOG_WARN(logger_, "No ClusterService available, auto-promoting to leader");
+        become_leader();
+        return;
+    }
+
+    // Get all nodes in the cluster
+    auto nodes_result = cluster_service_->get_all_nodes();
+    if (!nodes_result.has_value()) {
+        LOG_ERROR(logger_, "Failed to get cluster nodes: " + nodes_result.error().message);
+        return;
+    }
+
+    auto nodes = nodes_result.value();
+    if (nodes.empty()) {
+        LOG_WARN(logger_, "No other nodes in cluster, auto-promoting to leader");
+        become_leader();
+        return;
+    }
+
+    // Prepare RequestVote arguments
+    RequestVoteArgs args;
+    args.term = current_term_;
+    args.candidate_id = server_id_;
+    args.last_log_index = static_cast<int>(log_.size());
+    args.last_log_term = log_.empty() ? 0 : log_.back().term;
+
+    // Track votes received
+    int votes_received = 1;  // Vote for self
+    int votes_needed = (nodes.size() + 1) / 2 + 1;  // Majority (+1 for self)
+
+    LOG_DEBUG(logger_, "Sending RequestVote to " + std::to_string(nodes.size()) +
+             " nodes, need " + std::to_string(votes_needed) + " votes");
+
+    // Send RequestVote RPCs to all other nodes in parallel
+    std::vector<std::thread> vote_threads;
+    std::mutex votes_mutex;
+
+    for (const auto& node : nodes) {
+        // Skip self
+        if (node.node_id == server_id_) {
+            continue;
+        }
+
+        // Skip dead nodes
+        if (!node.is_alive) {
+            LOG_DEBUG(logger_, "Skipping dead node: " + node.node_id);
+            continue;
+        }
+
+        vote_threads.emplace_back([this, &node, &args, &votes_received, &votes_mutex]() {
+            try {
+                // Use ClusterService to send RequestVote RPC
+                auto vote_result = cluster_service_->request_vote(
+                    args.candidate_id,
+                    args.term,
+                    args.last_log_index,
+                    args.last_log_term
+                );
+
+                if (vote_result.has_value() && vote_result.value()) {
+                    std::lock_guard<std::mutex> lock(votes_mutex);
+                    votes_received++;
+                    LOG_DEBUG(logger_, "Received vote from node " + node.node_id +
+                             ", total votes: " + std::to_string(votes_received));
+                }
+            } catch (const std::exception& e) {
+                LOG_WARN(logger_, "Exception requesting vote from node " + node.node_id +
+                        ": " + std::string(e.what()));
+            }
+        });
+    }
+
+    // Wait for all vote requests to complete
+    for (auto& thread : vote_threads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+
+    // Check if we won the election
+    LOG_INFO(logger_, "Election results: received " + std::to_string(votes_received) +
+             " votes out of " + std::to_string(nodes.size() + 1) + " total nodes");
+
+    if (votes_received >= votes_needed) {
+        LOG_INFO(logger_, "Won election for term " + std::to_string(current_term_));
+        become_leader();
+    } else {
+        LOG_INFO(logger_, "Lost election for term " + std::to_string(current_term_) +
+                ", remaining as candidate");
+    }
 }
 
 void RaftConsensus::send_heartbeats() {
-    // In a real implementation, this would send AppendEntries RPCs to followers
-    // For now, we'll just log that heartbeats are being sent
-    if (state_ == State::LEADER) {
-        LOG_DEBUG(logger_, "Sending heartbeats from leader " + server_id_);
-        
-        // This is where we would send AppendEntries RPCs to followers
+    if (state_ != State::LEADER) {
+        return;
+    }
+
+    LOG_DEBUG(logger_, "Sending heartbeats from leader " + server_id_);
+
+    // If no cluster service, nothing to do
+    if (!cluster_service_) {
+        return;
+    }
+
+    // Get all nodes in the cluster
+    auto nodes_result = cluster_service_->get_all_nodes();
+    if (!nodes_result.has_value()) {
+        LOG_ERROR(logger_, "Failed to get cluster nodes for heartbeat: " + nodes_result.error().message);
+        return;
+    }
+
+    auto nodes = nodes_result.value();
+
+    // Send heartbeat to all followers
+    for (const auto& node : nodes) {
+        // Skip self
+        if (node.node_id == server_id_) {
+            continue;
+        }
+
+        // Skip dead nodes
+        if (!node.is_alive) {
+            continue;
+        }
+
+        // Prepare AppendEntries arguments (empty for heartbeat)
+        AppendEntriesArgs args;
+        args.term = current_term_;
+        args.leader_id = server_id_;
+        args.prev_log_index = static_cast<int>(log_.size());
+        args.prev_log_term = log_.empty() ? 0 : log_.back().term;
+        args.entries.clear();  // Empty for heartbeat
+        args.leader_commit = commit_index_;
+
+        // Send heartbeat asynchronously (don't block)
+        std::thread([this, node, args]() {
+            try {
+                // Use ClusterService to send heartbeat
+                cluster_service_->send_heartbeat();
+                LOG_DEBUG(logger_, "Sent heartbeat to node " + node.node_id);
+            } catch (const std::exception& e) {
+                LOG_WARN(logger_, "Exception sending heartbeat to node " + node.node_id +
+                        ": " + std::string(e.what()));
+            }
+        }).detach();
     }
 }
 
@@ -423,10 +566,55 @@ bool RaftConsensus::has_majority_replicated(int log_index) const {
 }
 
 bool RaftConsensus::has_majority_alive() const {
-    // In a real implementation, this would check cluster membership to determine
-    // how many nodes are currently alive and responsive
-    // For now, we'll return true to indicate that majority is alive
-    return true;
+    // If no cluster service, assume majority is alive (for testing)
+    if (!cluster_service_) {
+        return true;
+    }
+
+    // Get all nodes in the cluster
+    auto nodes_result = cluster_service_->get_all_nodes();
+    if (!nodes_result.has_value()) {
+        LOG_WARN(logger_, "Failed to get cluster nodes to check majority");
+        return false;
+    }
+
+    auto nodes = nodes_result.value();
+    if (nodes.empty()) {
+        // Single node cluster, always has majority
+        return true;
+    }
+
+    // Count alive nodes
+    int alive_count = 0;
+    for (const auto& node : nodes) {
+        if (node.is_alive) {
+            alive_count++;
+        }
+    }
+
+    // Need majority of total nodes (including self if not in list)
+    int total_nodes = nodes.size();
+    bool self_found = false;
+    for (const auto& node : nodes) {
+        if (node.node_id == server_id_) {
+            self_found = true;
+            break;
+        }
+    }
+    if (!self_found) {
+        total_nodes++;  // Add self to count
+        alive_count++;  // Self is alive
+    }
+
+    int majority = (total_nodes / 2) + 1;
+    bool has_majority = alive_count >= majority;
+
+    LOG_DEBUG(logger_, "Cluster has " + std::to_string(alive_count) +
+             " alive nodes out of " + std::to_string(total_nodes) +
+             ", majority requires " + std::to_string(majority) +
+             ", has majority: " + (has_majority ? "yes" : "no"));
+
+    return has_majority;
 }
 
 void RaftConsensus::reset_election_timer() {
@@ -470,17 +658,120 @@ void RaftConsensus::apply_log_entry(const LogEntry& entry) {
 }
 
 void RaftConsensus::persist_state() {
-    // In a real implementation, this would persist the Raft state to stable storage
-    // For now, we'll just log that persistence was called
-    LOG_DEBUG(logger_, "Persisting Raft state for server " + server_id_ + 
-             ", term: " + std::to_string(current_term_) + 
-             ", log size: " + std::to_string(log_.size()));
+    try {
+        // Create state directory if it doesn't exist
+        std::string state_dir = "/tmp/jadevectordb/raft/" + server_id_;
+        #ifdef __linux__
+        std::string mkdir_cmd = "mkdir -p " + state_dir;
+        int result = system(mkdir_cmd.c_str());
+        if (result != 0) {
+            LOG_WARN(logger_, "Failed to create state directory: " + state_dir);
+            return;
+        }
+        #endif
+
+        // Persist to file
+        std::string state_file = state_dir + "/raft_state.dat";
+        std::ofstream ofs(state_file, std::ios::binary);
+        if (!ofs.is_open()) {
+            LOG_ERROR(logger_, "Failed to open state file for writing: " + state_file);
+            return;
+        }
+
+        // Write current term
+        ofs.write(reinterpret_cast<const char*>(&current_term_), sizeof(current_term_));
+
+        // Write voted_for (length + string)
+        size_t voted_for_len = voted_for_.size();
+        ofs.write(reinterpret_cast<const char*>(&voted_for_len), sizeof(voted_for_len));
+        ofs.write(voted_for_.data(), voted_for_len);
+
+        // Write log size
+        size_t log_size = log_.size();
+        ofs.write(reinterpret_cast<const char*>(&log_size), sizeof(log_size));
+
+        // Write each log entry
+        for (const auto& entry : log_) {
+            ofs.write(reinterpret_cast<const char*>(&entry.term), sizeof(entry.term));
+
+            size_t cmd_type_len = entry.command_type.size();
+            ofs.write(reinterpret_cast<const char*>(&cmd_type_len), sizeof(cmd_type_len));
+            ofs.write(entry.command_type.data(), cmd_type_len);
+
+            size_t cmd_data_len = entry.command_data.size();
+            ofs.write(reinterpret_cast<const char*>(&cmd_data_len), sizeof(cmd_data_len));
+            ofs.write(entry.command_data.data(), cmd_data_len);
+        }
+
+        ofs.close();
+        LOG_DEBUG(logger_, "Persisted Raft state for server " + server_id_ +
+                 ", term: " + std::to_string(current_term_) +
+                 ", log size: " + std::to_string(log_.size()));
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in persist_state: " + std::string(e.what()));
+    }
 }
 
 void RaftConsensus::load_state() {
-    // In a real implementation, this would load the Raft state from stable storage
-    // For now, we'll just log that loading was attempted
-    LOG_DEBUG(logger_, "Loading Raft state for server " + server_id_);
+    try {
+        std::string state_file = "/tmp/jadevectordb/raft/" + server_id_ + "/raft_state.dat";
+
+        // Check if file exists
+        std::ifstream test_file(state_file);
+        if (!test_file.good()) {
+            LOG_DEBUG(logger_, "No persisted state found for server " + server_id_ + ", starting fresh");
+            return;
+        }
+        test_file.close();
+
+        // Load from file
+        std::ifstream ifs(state_file, std::ios::binary);
+        if (!ifs.is_open()) {
+            LOG_ERROR(logger_, "Failed to open state file for reading: " + state_file);
+            return;
+        }
+
+        // Read current term
+        ifs.read(reinterpret_cast<char*>(&current_term_), sizeof(current_term_));
+
+        // Read voted_for
+        size_t voted_for_len = 0;
+        ifs.read(reinterpret_cast<char*>(&voted_for_len), sizeof(voted_for_len));
+        voted_for_.resize(voted_for_len);
+        ifs.read(&voted_for_[0], voted_for_len);
+
+        // Read log size
+        size_t log_size = 0;
+        ifs.read(reinterpret_cast<char*>(&log_size), sizeof(log_size));
+
+        // Read each log entry
+        log_.clear();
+        log_.reserve(log_size);
+        for (size_t i = 0; i < log_size; ++i) {
+            LogEntry entry;
+            ifs.read(reinterpret_cast<char*>(&entry.term), sizeof(entry.term));
+
+            size_t cmd_type_len = 0;
+            ifs.read(reinterpret_cast<char*>(&cmd_type_len), sizeof(cmd_type_len));
+            entry.command_type.resize(cmd_type_len);
+            ifs.read(&entry.command_type[0], cmd_type_len);
+
+            size_t cmd_data_len = 0;
+            ifs.read(reinterpret_cast<char*>(&cmd_data_len), sizeof(cmd_data_len));
+            entry.command_data.resize(cmd_data_len);
+            ifs.read(&entry.command_data[0], cmd_data_len);
+
+            entry.timestamp = std::chrono::steady_clock::now();
+            log_.push_back(entry);
+        }
+
+        ifs.close();
+        LOG_INFO(logger_, "Loaded Raft state for server " + server_id_ +
+                ", term: " + std::to_string(current_term_) +
+                ", log size: " + std::to_string(log_.size()));
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in load_state: " + std::string(e.what()));
+    }
 }
 
 void RaftConsensus::update_leader_id(const std::string& new_leader_id) {

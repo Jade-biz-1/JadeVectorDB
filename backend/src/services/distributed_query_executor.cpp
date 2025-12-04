@@ -84,7 +84,7 @@ DistributedQueryExecutor::DistributedQueryExecutor(
     partial_queries_(0),
     initialized_(false),
     shutdown_(false) {
-    logger_ = logging::get_logger("DistributedQueryExecutor");
+    logger_ = logging::LoggerManager::get_logger("DistributedQueryExecutor");
 }
 
 DistributedQueryExecutor::~DistributedQueryExecutor() {
@@ -99,7 +99,7 @@ DistributedQueryExecutor::~DistributedQueryExecutor() {
 
 Result<bool> DistributedQueryExecutor::initialize() {
     if (initialized_) {
-        return create_error(ErrorCode::INVALID_STATE, "Query executor already initialized");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_STATE, "Query executor already initialized"));
     }
 
     logger_->info("Initializing distributed query executor");
@@ -107,11 +107,11 @@ Result<bool> DistributedQueryExecutor::initialize() {
     logger_->info("  Global timeout: " + std::to_string(config_.global_query_timeout.count()) + "ms");
 
     if (!planner_) {
-        return create_error(ErrorCode::INVALID_ARGUMENT, "Query planner not provided");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_ARGUMENT, "Query planner not provided"));
     }
 
     if (!master_client_) {
-        return create_error(ErrorCode::INVALID_ARGUMENT, "Master client not provided");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_ARGUMENT, "Master client not provided"));
     }
 
     // Initialize thread pool
@@ -163,7 +163,7 @@ Result<SearchResults> DistributedQueryExecutor::execute_query(
     const std::unordered_map<std::string, std::string>& filters
 ) {
     if (!initialized_ || shutdown_) {
-        return create_error(ErrorCode::INVALID_STATE, "Query executor not available");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_STATE, "Query executor not available"));
     }
 
     logger_->info("Executing distributed query: db=" + database_id + ", top_k=" + std::to_string(top_k));
@@ -208,7 +208,7 @@ Result<SearchResults> DistributedQueryExecutor::execute_plan(const QueryPlan& pl
 
         default:
             unregister_query(plan.query_id);
-            return create_error(ErrorCode::INVALID_ARGUMENT, "Unknown execution strategy");
+            return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_ARGUMENT, "Unknown execution strategy"));
     }
 
     auto execution_end = std::chrono::steady_clock::now();
@@ -219,7 +219,7 @@ Result<SearchResults> DistributedQueryExecutor::execute_plan(const QueryPlan& pl
     if (active_query->cancelled) {
         unregister_query(plan.query_id);
         record_query_result(false, true, false);
-        return create_error(ErrorCode::CANCELLED, "Query was cancelled");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::CANCELLED, "Query was cancelled"));
     }
 
     // Validate results
@@ -292,7 +292,7 @@ Result<bool> DistributedQueryExecutor::cancel_query(const std::string& query_id)
 
     auto it = active_queries_.find(query_id);
     if (it == active_queries_.end()) {
-        return create_error(ErrorCode::NOT_FOUND, "Query not found: " + query_id);
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::NOT_FOUND, "Query not found: " + query_id));
     }
 
     it->second->cancelled = true;
@@ -349,12 +349,12 @@ DistributedQueryExecutor::ExecutorStats DistributedQueryExecutor::get_statistics
 
 Result<bool> DistributedQueryExecutor::update_config(const ExecutorConfig& new_config) {
     if (new_config.thread_pool_size < 1) {
-        return create_error(ErrorCode::INVALID_ARGUMENT, "Thread pool size must be at least 1");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_ARGUMENT, "Thread pool size must be at least 1"));
     }
 
     if (new_config.min_success_rate < 0.0 || new_config.min_success_rate > 1.0) {
-        return create_error(ErrorCode::INVALID_ARGUMENT,
-                          "min_success_rate must be between 0.0 and 1.0");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_ARGUMENT,
+                          "min_success_rate must be between 0.0 and 1.0"));
     }
 
     // Note: Changing thread pool size requires reinitialization
@@ -522,8 +522,7 @@ Result<SearchResults> DistributedQueryExecutor::merge_results(
     logger_->debug("Merging results from " + std::to_string(shard_results.size()) + " shards");
 
     SearchResults merged;
-    merged.database_id = plan.database_id;
-    merged.query_vector = plan.query_vector;
+    merged.success = true;
 
     if (shard_results.empty()) {
         return merged;
@@ -543,7 +542,7 @@ Result<SearchResults> DistributedQueryExecutor::merge_results(
     // Sort by score (descending)
     std::sort(all_results.begin(), all_results.end(),
               [](const SearchResult& a, const SearchResult& b) {
-                  return a.score > b.score;
+                  return a.similarity_score > b.similarity_score;
               });
 
     // Take top_k results
@@ -591,15 +590,15 @@ Result<bool> DistributedQueryExecutor::validate_shard_results(
     double success_rate = static_cast<double>(successful_shards) / shard_results.size();
 
     if (success_rate < config_.min_success_rate) {
-        return create_error(ErrorCode::INTERNAL_ERROR,
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INTERNAL_ERROR,
                           "Insufficient successful shards: " + std::to_string(successful_shards) +
-                          "/" + std::to_string(shard_results.size()));
+                          "/" + std::to_string(shard_results.size())));
     }
 
     if (successful_shards < plan.min_successful_shards) {
-        return create_error(ErrorCode::INTERNAL_ERROR,
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INTERNAL_ERROR,
                           "Below minimum successful shards: " + std::to_string(successful_shards) +
-                          "/" + std::to_string(plan.min_successful_shards));
+                          "/" + std::to_string(plan.min_successful_shards)));
     }
 
     return true;

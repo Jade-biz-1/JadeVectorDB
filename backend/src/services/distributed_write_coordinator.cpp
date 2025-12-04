@@ -22,7 +22,7 @@ DistributedWriteCoordinator::DistributedWriteCoordinator(
     total_replication_latency_ms_(0),
     initialized_(false),
     shutdown_(false) {
-    logger_ = logging::get_logger("DistributedWriteCoordinator");
+    logger_ = logging::LoggerManager::get_logger("DistributedWriteCoordinator");
 }
 
 DistributedWriteCoordinator::~DistributedWriteCoordinator() {
@@ -37,7 +37,7 @@ DistributedWriteCoordinator::~DistributedWriteCoordinator() {
 
 Result<bool> DistributedWriteCoordinator::initialize() {
     if (initialized_) {
-        return create_error(ErrorCode::INVALID_STATE, "Write coordinator already initialized");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_STATE, "Write coordinator already initialized"));
     }
 
     logger_->info("Initializing distributed write coordinator");
@@ -46,15 +46,15 @@ Result<bool> DistributedWriteCoordinator::initialize() {
     logger_->info("  Async workers: " + std::to_string(config_.async_worker_threads));
 
     if (!sharding_service_) {
-        return create_error(ErrorCode::INVALID_ARGUMENT, "ShardingService not provided");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_ARGUMENT, "ShardingService not provided"));
     }
 
     if (!replication_service_) {
-        return create_error(ErrorCode::INVALID_ARGUMENT, "ReplicationService not provided");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_ARGUMENT, "ReplicationService not provided"));
     }
 
     if (!master_client_) {
-        return create_error(ErrorCode::INVALID_ARGUMENT, "Master client not provided");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_ARGUMENT, "Master client not provided"));
     }
 
     // Start async replication workers if enabled
@@ -111,7 +111,7 @@ Result<bool> DistributedWriteCoordinator::shutdown_coordinator() {
 
 Result<WriteResult> DistributedWriteCoordinator::write_vector(const WriteRequest& request) {
     if (!initialized_ || shutdown_) {
-        return create_error(ErrorCode::INVALID_STATE, "Write coordinator not available");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_STATE, "Write coordinator not available"));
     }
 
     auto start = std::chrono::steady_clock::now();
@@ -231,7 +231,7 @@ Result<WriteResult> DistributedWriteCoordinator::write_vector(const WriteRequest
 
 Result<WriteResult> DistributedWriteCoordinator::batch_write_vectors(const BatchWriteRequest& request) {
     if (!initialized_ || shutdown_) {
-        return create_error(ErrorCode::INVALID_STATE, "Write coordinator not available");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_STATE, "Write coordinator not available"));
     }
 
     auto start = std::chrono::steady_clock::now();
@@ -450,11 +450,11 @@ void DistributedWriteCoordinator::reset_statistics() {
 
 Result<bool> DistributedWriteCoordinator::update_config(const CoordinatorConfig& new_config) {
     if (new_config.replication_factor < 1) {
-        return create_error(ErrorCode::INVALID_ARGUMENT, "Replication factor must be at least 1");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_ARGUMENT, "Replication factor must be at least 1"));
     }
 
     if (new_config.async_worker_threads < 1) {
-        return create_error(ErrorCode::INVALID_ARGUMENT, "Async worker threads must be at least 1");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_ARGUMENT, "Async worker threads must be at least 1"));
     }
 
     // Note: Changing async workers requires reinitialization
@@ -473,7 +473,7 @@ Result<std::string> DistributedWriteCoordinator::determine_target_shard(
     const std::string& vector_id
 ) {
     // Use sharding service to determine target shard
-    auto result = sharding_service_->get_shard_for_key(database_id + ":" + vector_id);
+    auto result = sharding_service_->get_shard_for_vector(vector_id, database_id);
 
     if (!result.has_value()) {
         logger_->warn("Failed to determine shard for vector: " + vector_id);
@@ -588,7 +588,7 @@ Result<bool> DistributedWriteCoordinator::replicate_async(
 
         if (replication_queue_.size() >= config_.async_queue_max_size) {
             logger_->warn("Async replication queue full, dropping task");
-            return create_error(ErrorCode::RESOURCE_EXHAUSTED, "Replication queue full");
+            return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::RESOURCE_EXHAUSTED, "Replication queue full"));
         }
 
         replication_queue_.push(task);

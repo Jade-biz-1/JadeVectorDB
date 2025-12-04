@@ -39,7 +39,7 @@ protected:
         db.description = "Test database for vector operations";
         db.vectorDimension = 3;
         
-        auto result = vector_storage_->db_layer_->create_database(db);
+        auto result = vector_storage_->get_db_layer_for_testing()->create_database(db);
         ASSERT_TRUE(result.has_value());
         test_database_id_ = result.value();
     }
@@ -47,7 +47,7 @@ protected:
     void TearDown() override {
         // Clean up test database
         if (!test_database_id_.empty()) {
-            vector_storage_->db_layer_->delete_database(test_database_id_);
+            vector_storage_->get_db_layer_for_testing()->delete_database(test_database_id_);
         }
         vector_storage_.reset();
     }
@@ -69,32 +69,32 @@ protected:
         db.description = "Test database for search operations";
         db.vectorDimension = 3;
         
-        auto result = search_service_->vector_storage_->db_layer_->create_database(db);
+        auto result = search_service_->get_vector_storage_for_testing()->get_db_layer_for_testing()->create_database(db);
         ASSERT_TRUE(result.has_value());
         test_database_id_ = result.value();
-        
+
         // Add some test vectors
         Vector v1;
         v1.id = "vector_1";
         v1.values = {0.1f, 0.2f, 0.3f};
-        
+
         Vector v2;
         v2.id = "vector_2";
         v2.values = {0.4f, 0.5f, 0.6f};
-        
+
         Vector v3;
         v3.id = "vector_3";
         v3.values = {0.7f, 0.8f, 0.9f};
-        
-        search_service_->vector_storage_->store_vector(test_database_id_, v1);
-        search_service_->vector_storage_->store_vector(test_database_id_, v2);
-        search_service_->vector_storage_->store_vector(test_database_id_, v3);
+
+        search_service_->get_vector_storage_for_testing()->store_vector(test_database_id_, v1);
+        search_service_->get_vector_storage_for_testing()->store_vector(test_database_id_, v2);
+        search_service_->get_vector_storage_for_testing()->store_vector(test_database_id_, v3);
     }
 
     void TearDown() override {
         // Clean up test database
         if (!test_database_id_.empty()) {
-            search_service_->vector_storage_->db_layer_->delete_database(test_database_id_);
+            search_service_->get_vector_storage_for_testing()->get_db_layer_for_testing()->delete_database(test_database_id_);
         }
         search_service_.reset();
     }
@@ -105,27 +105,27 @@ protected:
 
 // Database Service Tests
 TEST_F(DatabaseServiceTest, CreateDatabase) {
-    Database db;
-    db.name = "test_db";
-    db.description = "A test database";
-    db.vectorDimension = 128;
-    
-    auto result = db_service_->create_database(db);
+    DatabaseCreationParams params;
+    params.name = "test_db";
+    params.description = "A test database";
+    params.vectorDimension = 128;
+
+    auto result = db_service_->create_database(params);
     EXPECT_TRUE(result.has_value());
     EXPECT_FALSE(result.value().empty());  // Should return a valid database ID
 }
 
 TEST_F(DatabaseServiceTest, GetDatabase) {
     // Create a database first
-    Database db;
-    db.name = "get_test_db";
-    db.description = "A test database for get operation";
-    db.vectorDimension = 64;
-    
-    auto create_result = db_service_->create_database(db);
+    DatabaseCreationParams params;
+    params.name = "get_test_db";
+    params.description = "A test database for get operation";
+    params.vectorDimension = 64;
+
+    auto create_result = db_service_->create_database(params);
     ASSERT_TRUE(create_result.has_value());
     std::string db_id = create_result.value();
-    
+
     // Get the database
     auto get_result = db_service_->get_database(db_id);
     EXPECT_TRUE(get_result.has_value());
@@ -135,20 +135,20 @@ TEST_F(DatabaseServiceTest, GetDatabase) {
 
 TEST_F(DatabaseServiceTest, ListDatabases) {
     // Create multiple databases
-    Database db1;
-    db1.name = "list_test_db1";
-    db1.vectorDimension = 32;
-    
-    Database db2;
-    db2.name = "list_test_db2";
-    db2.vectorDimension = 64;
-    
-    auto result1 = db_service_->create_database(db1);
-    auto result2 = db_service_->create_database(db2);
-    
+    DatabaseCreationParams params1;
+    params1.name = "list_test_db1";
+    params1.vectorDimension = 32;
+
+    DatabaseCreationParams params2;
+    params2.name = "list_test_db2";
+    params2.vectorDimension = 64;
+
+    auto result1 = db_service_->create_database(params1);
+    auto result2 = db_service_->create_database(params2);
+
     ASSERT_TRUE(result1.has_value());
     ASSERT_TRUE(result2.has_value());
-    
+
     // List databases
     auto list_result = db_service_->list_databases();
     EXPECT_TRUE(list_result.has_value());
@@ -157,21 +157,21 @@ TEST_F(DatabaseServiceTest, ListDatabases) {
 
 TEST_F(DatabaseServiceTest, DeleteDatabase) {
     // Create a database
-    Database db;
-    db.name = "delete_test_db";
-    db.vectorDimension = 16;
-    
-    auto create_result = db_service_->create_database(db);
+    DatabaseCreationParams params;
+    params.name = "delete_test_db";
+    params.vectorDimension = 16;
+
+    auto create_result = db_service_->create_database(params);
     ASSERT_TRUE(create_result.has_value());
     std::string db_id = create_result.value();
-    
+
     // Verify it exists
     EXPECT_TRUE(db_service_->database_exists(db_id).value_or(false));
-    
+
     // Delete the database
     auto delete_result = db_service_->delete_database(db_id);
     EXPECT_TRUE(delete_result.has_value());
-    
+
     // Verify it no longer exists
     EXPECT_FALSE(db_service_->database_exists(db_id).value_or(false));
 }
