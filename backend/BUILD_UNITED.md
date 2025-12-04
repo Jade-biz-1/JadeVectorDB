@@ -403,13 +403,11 @@ sh 'cd backend && ./build.sh --type Release'
 
 ## 📚 Additional Documentation
 
-- Full documentation: [BUILD.md](BUILD.md)
-- Architecture: [../docs/architecture.md](../docs/architecture.md)
-- API docs: [../docs/api_documentation.md](../docs/api_documentation.md)
-- Build system enhancement: [../docs/BUILD_SYSTEM_ENHANCEMENT_SUMMARY.md](../docs/BUILD_SYSTEM_ENHANCEMENT_SUMMARY.md)
 - Quick Reference: [BUILD_QUICK_REFERENCE.md](BUILD_QUICK_REFERENCE.md) - Common commands and examples
 - Complete Guide: [BUILD.md](BUILD.md) - Full documentation with troubleshooting
-- Enhancement Summary: [../docs/BUILD_SYSTEM_ENHANCEMENT_SUMMARY.md](../docs/BUILD_SYSTEM_ENHANCEMENT_SUMMARY.md) - Technical details
+- Build System Overview: [../docs/COMPLETE_BUILD_SYSTEM_SETUP.md](../docs/COMPLETE_BUILD_SYSTEM_SETUP.md) - Complete setup guide
+- Architecture: [../docs/architecture.md](../docs/architecture.md)
+- API docs: [../docs/api_documentation.md](../docs/api_documentation.md)
 
 ## 📖 More Help
 

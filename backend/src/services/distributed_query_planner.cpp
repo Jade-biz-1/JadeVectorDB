@@ -12,7 +12,7 @@ DistributedQueryPlanner::DistributedQueryPlanner(
     total_queries_planned_(0),
     total_planning_time_ms_(0),
     initialized_(false) {
-    logger_ = logging::get_logger("DistributedQueryPlanner");
+    logger_ = logging::LoggerManager::get_logger("DistributedQueryPlanner");
     recent_executions_.reserve(100);
 }
 
@@ -28,13 +28,13 @@ DistributedQueryPlanner::~DistributedQueryPlanner() {
 
 Result<bool> DistributedQueryPlanner::initialize() {
     if (initialized_) {
-        return create_error(ErrorCode::INVALID_STATE, "Query planner already initialized");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_STATE, "Query planner already initialized"));
     }
 
     logger_->info("Initializing distributed query planner");
 
     if (!sharding_service_) {
-        return create_error(ErrorCode::INVALID_ARGUMENT, "ShardingService not provided");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_ARGUMENT, "ShardingService not provided"));
     }
 
     initialized_ = true;
@@ -301,13 +301,13 @@ DistributedQueryPlanner::AggregateStats DistributedQueryPlanner::get_aggregate_s
 Result<bool> DistributedQueryPlanner::update_config(const PlannerConfig& new_config) {
     // Validate config
     if (new_config.min_shard_success_rate < 0.0 || new_config.min_shard_success_rate > 1.0) {
-        return create_error(ErrorCode::INVALID_ARGUMENT,
-                          "min_shard_success_rate must be between 0.0 and 1.0");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_ARGUMENT,
+                          "min_shard_success_rate must be between 0.0 and 1.0"));
     }
 
     if (new_config.max_parallel_shards < 1) {
-        return create_error(ErrorCode::INVALID_ARGUMENT,
-                          "max_parallel_shards must be at least 1");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_ARGUMENT,
+                          "max_parallel_shards must be at least 1"));
     }
 
     config_ = new_config;
@@ -334,7 +334,11 @@ Result<std::vector<std::string>> DistributedQueryPlanner::determine_target_shard
         return std::vector<std::string>();
     }
 
-    std::vector<std::string> all_shards = shards_result.value();
+    // Extract shard IDs from ShardInfo objects
+    std::vector<std::string> all_shards;
+    for (const auto& shard_info : shards_result.value()) {
+        all_shards.push_back(shard_info.shard_id);
+    }
 
     // If no filters, all shards are relevant
     if (filters.empty()) {
@@ -364,7 +368,7 @@ Result<std::unordered_map<std::string, std::string>> DistributedQueryPlanner::ma
     }
 
     if (mapping.empty()) {
-        return create_error(ErrorCode::NOT_FOUND, "No workers found for shards");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::NOT_FOUND, "No workers found for shards"));
     }
 
     return mapping;

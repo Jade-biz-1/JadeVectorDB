@@ -180,8 +180,10 @@ void RestApiImpl::register_routes() {
             }
             return crow::response(405, "Method not allowed");
         });
-    handle_create_database();
-    handle_list_databases();
+    // NOTE: Routes already registered above via route_dynamic()
+    // Calling these would create duplicate route handlers
+    // handle_create_database();
+    // handle_list_databases();
     
     app_->route_dynamic("/v1/databases/<string>")
         ([this](const crow::request& req, std::string database_id) {
@@ -194,9 +196,10 @@ void RestApiImpl::register_routes() {
             }
             return crow::response(405, "Method not allowed");
         });
-    handle_get_database();
-    handle_update_database();
-    handle_delete_database();
+    // NOTE: Routes already registered above
+    // handle_get_database();
+    // handle_update_database();
+    // handle_delete_database();
     
     // Vector management endpoints
     app_->route_dynamic("/v1/databases/<string>/vectors")
@@ -222,9 +225,10 @@ void RestApiImpl::register_routes() {
             }
             return crow::response(405, "Method not allowed");
         });
-    handle_store_vector();
-    handle_batch_store_vectors();
-    handle_batch_get_vectors();
+    // NOTE: Routes already registered above
+    // handle_store_vector();
+    // handle_batch_store_vectors();
+    // handle_batch_get_vectors();
     
     app_->route_dynamic("/v1/databases/<string>/vectors/<string>")
         ([this](const crow::request& req, std::string database_id, std::string vector_id) {
@@ -237,9 +241,10 @@ void RestApiImpl::register_routes() {
             }
             return crow::response(405, "Method not allowed");
         });
-    handle_get_vector();
-    handle_update_vector();
-    handle_delete_vector();
+    // NOTE: Routes already registered above
+    // handle_get_vector();
+    // handle_update_vector();
+    // handle_delete_vector();
     
     // Search endpoints
     app_->route_dynamic("/v1/databases/<string>/search")
@@ -256,8 +261,9 @@ void RestApiImpl::register_routes() {
             }
             return crow::response(405, "Method not allowed");
         });
-    handle_similarity_search();
-    handle_advanced_search();
+    // NOTE: Routes already registered above
+    // handle_similarity_search();
+    // handle_advanced_search();
     
     // Index management endpoints
     app_->route_dynamic("/v1/databases/<string>/indexes")
@@ -278,10 +284,11 @@ void RestApiImpl::register_routes() {
             }
             return crow::response(405, "Method not allowed");
         });
-    handle_create_index();
-    handle_list_indexes();
-    handle_update_index();
-    handle_delete_index();
+    // NOTE: Routes already registered above
+    // handle_create_index();
+    // handle_list_indexes();
+    // handle_update_index();
+    // handle_delete_index();
     
     // Embedding generation endpoints
     app_->route_dynamic("/v1/embeddings/generate")
@@ -291,7 +298,8 @@ void RestApiImpl::register_routes() {
             }
             return crow::response(405, "Method not allowed");
         });
-    handle_generate_embedding();
+    // NOTE: Route already registered above
+    // handle_generate_embedding();
 
     // Security, authentication, and administration endpoints
     handle_authentication_routes();

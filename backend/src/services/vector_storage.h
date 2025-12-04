@@ -35,6 +35,8 @@ private:
     bool encryption_enabled_;
 
 public:
+    // Test accessor methods
+    DatabaseLayer* get_db_layer_for_testing() { return db_layer_.get(); }
     explicit VectorStorageService(
         std::unique_ptr<DatabaseLayer> db_layer = nullptr,
         std::shared_ptr<ShardingService> sharding_service = nullptr,

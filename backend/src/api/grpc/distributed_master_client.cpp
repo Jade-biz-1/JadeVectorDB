@@ -5,13 +5,22 @@
 
 namespace jadevectordb {
 
+DistributedMasterClient::DistributedMasterClient()
+    : config_(),
+      total_requests_(0),
+      failed_requests_(0),
+      total_request_time_ms_(0),
+      initialized_(false) {
+    logger_ = logging::LoggerManager::get_logger("DistributedMasterClient");
+}
+
 DistributedMasterClient::DistributedMasterClient(const RpcConfig& config)
     : config_(config),
       total_requests_(0),
       failed_requests_(0),
       total_request_time_ms_(0),
       initialized_(false) {
-    logger_ = logging::get_logger("DistributedMasterClient");
+    logger_ = logging::LoggerManager::get_logger("DistributedMasterClient");
 }
 
 DistributedMasterClient::~DistributedMasterClient() {
@@ -26,7 +35,7 @@ DistributedMasterClient::~DistributedMasterClient() {
 
 Result<bool> DistributedMasterClient::initialize() {
     if (initialized_) {
-        return create_error(ErrorCode::INVALID_STATE, "Client already initialized");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_STATE, "Client already initialized"));
     }
 
     logger_->info("Initializing distributed master client");
@@ -38,7 +47,7 @@ Result<bool> DistributedMasterClient::initialize() {
 
 Result<bool> DistributedMasterClient::shutdown() {
     if (!initialized_) {
-        return create_error(ErrorCode::INVALID_STATE, "Client not initialized");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INVALID_STATE, "Client not initialized"));
     }
 
     logger_->info("Shutting down distributed master client");
@@ -68,7 +77,7 @@ Result<bool> DistributedMasterClient::add_worker(
     std::lock_guard<std::mutex> lock(connections_mutex_);
 
     if (worker_connections_.find(worker_id) != worker_connections_.end()) {
-        return create_error(ErrorCode::ALREADY_EXISTS, "Worker already exists: " + worker_id);
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::ALREADY_EXISTS, "Worker already exists: " + worker_id));
     }
 
     auto connection = std::make_shared<WorkerConnection>();
@@ -82,12 +91,12 @@ Result<bool> DistributedMasterClient::add_worker(
 #ifdef BUILD_WITH_GRPC
     connection->channel = create_channel(host, port);
     if (!connection->channel) {
-        return create_error(ErrorCode::CONNECTION_ERROR, "Failed to create gRPC channel for worker: " + worker_id);
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::NETWORK_ERROR, "Failed to create gRPC channel for worker: " + worker_id));
     }
 
     connection->stub = distributed::DistributedService::NewStub(connection->channel);
     if (!connection->stub) {
-        return create_error(ErrorCode::CONNECTION_ERROR, "Failed to create gRPC stub for worker: " + worker_id);
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::NETWORK_ERROR, "Failed to create gRPC stub for worker: " + worker_id));
     }
 #endif
 
@@ -104,7 +113,7 @@ Result<bool> DistributedMasterClient::remove_worker(const std::string& worker_id
 
     auto it = worker_connections_.find(worker_id);
     if (it == worker_connections_.end()) {
-        return create_error(ErrorCode::NOT_FOUND, "Worker not found: " + worker_id);
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::NOT_FOUND, "Worker not found: " + worker_id));
     }
 
     worker_connections_.erase(it);
@@ -182,7 +191,7 @@ Result<DistributedMasterClient::SearchResponse> DistributedMasterClient::execute
     if (!status.ok()) {
         mark_worker_failed(worker_id);
         record_request(false, duration_ms);
-        return create_error(ErrorCode::RPC_ERROR, "RPC failed: " + status.error_message());
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::RPC_ERROR, "RPC failed: " + status.error_message()));)
     }
 
     mark_worker_success(worker_id);
@@ -208,7 +217,7 @@ Result<DistributedMasterClient::SearchResponse> DistributedMasterClient::execute
     return response;
 #else
     logger_->warn("gRPC not enabled, search operation not available");
-    return create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled");
+    return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled"));
 #endif
 }
 
@@ -250,7 +259,7 @@ Result<std::vector<DistributedMasterClient::SearchResponse>> DistributedMasterCl
                   std::to_string(worker_ids.size()) + " successful");
 
     if (responses.empty()) {
-        return create_error(ErrorCode::INTERNAL_ERROR, "All worker searches failed");
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::INTERNAL_ERROR, "All worker searches failed"));
     }
 
     return responses;
@@ -301,7 +310,7 @@ Result<DistributedMasterClient::WriteResponse> DistributedMasterClient::write_to
     if (!status.ok()) {
         mark_worker_failed(worker_id);
         record_request(false, duration_ms);
-        return create_error(ErrorCode::RPC_ERROR, "RPC failed: " + status.error_message());
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::RPC_ERROR, "RPC failed: " + status.error_message()));)
     }
 
     mark_worker_success(worker_id);
@@ -316,7 +325,7 @@ Result<DistributedMasterClient::WriteResponse> DistributedMasterClient::write_to
     return response;
 #else
     logger_->warn("gRPC not enabled, write operation not available");
-    return create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled");
+    return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled"));
 #endif
 }
 
@@ -366,7 +375,7 @@ Result<DistributedMasterClient::WriteResponse> DistributedMasterClient::batch_wr
     if (!status.ok()) {
         mark_worker_failed(worker_id);
         record_request(false, duration_ms);
-        return create_error(ErrorCode::RPC_ERROR, "RPC failed: " + status.error_message());
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::RPC_ERROR, "RPC failed: " + status.error_message()));)
     }
 
     mark_worker_success(worker_id);
@@ -381,7 +390,7 @@ Result<DistributedMasterClient::WriteResponse> DistributedMasterClient::batch_wr
     return response;
 #else
     logger_->warn("gRPC not enabled, batch write operation not available");
-    return create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled");
+    return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled"));
 #endif
 }
 
@@ -418,14 +427,14 @@ Result<bool> DistributedMasterClient::delete_from_shard(
 
     if (!status.ok()) {
         mark_worker_failed(worker_id);
-        return create_error(ErrorCode::RPC_ERROR, "RPC failed: " + status.error_message());
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::RPC_ERROR, "RPC failed: " + status.error_message()));)
     }
 
     mark_worker_success(worker_id);
     return grpc_response.success();
 #else
     logger_->warn("gRPC not enabled, delete operation not available");
-    return create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled");
+    return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled"));
 #endif
 }
 
@@ -479,7 +488,7 @@ Result<DistributedMasterClient::HealthCheckResponse> DistributedMasterClient::ch
     return response;
 #else
     logger_->warn("gRPC not enabled, health check not available");
-    return create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled");
+    return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled"));
 #endif
 }
 
@@ -527,7 +536,7 @@ Result<DistributedMasterClient::WorkerStatsResponse> DistributedMasterClient::ge
 
     if (!status.ok()) {
         mark_worker_failed(worker_id);
-        return create_error(ErrorCode::RPC_ERROR, "RPC failed: " + status.error_message());
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::RPC_ERROR, "RPC failed: " + status.error_message()));)
     }
 
     mark_worker_success(worker_id);
@@ -546,7 +555,7 @@ Result<DistributedMasterClient::WorkerStatsResponse> DistributedMasterClient::ge
     return response;
 #else
     logger_->warn("gRPC not enabled, stats operation not available");
-    return create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled");
+    return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled"));
 #endif
 }
 
@@ -588,14 +597,14 @@ Result<bool> DistributedMasterClient::assign_shard(
 
     if (!status.ok()) {
         mark_worker_failed(worker_id);
-        return create_error(ErrorCode::RPC_ERROR, "RPC failed: " + status.error_message());
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::RPC_ERROR, "RPC failed: " + status.error_message()));)
     }
 
     mark_worker_success(worker_id);
     return grpc_response.success();
 #else
     logger_->warn("gRPC not enabled, assign shard operation not available");
-    return create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled");
+    return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled"));
 #endif
 }
 
@@ -632,14 +641,14 @@ Result<bool> DistributedMasterClient::remove_shard(
 
     if (!status.ok()) {
         mark_worker_failed(worker_id);
-        return create_error(ErrorCode::RPC_ERROR, "RPC failed: " + status.error_message());
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::RPC_ERROR, "RPC failed: " + status.error_message()));)
     }
 
     mark_worker_success(worker_id);
     return grpc_response.success();
 #else
     logger_->warn("gRPC not enabled, remove shard operation not available");
-    return create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled");
+    return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled"));
 #endif
 }
 
@@ -670,7 +679,7 @@ Result<ShardInfo> DistributedMasterClient::get_shard_info(
 
     if (!status.ok()) {
         mark_worker_failed(worker_id);
-        return create_error(ErrorCode::RPC_ERROR, "RPC failed: " + status.error_message());
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::RPC_ERROR, "RPC failed: " + status.error_message()));)
     }
 
     mark_worker_success(worker_id);
@@ -685,7 +694,7 @@ Result<ShardInfo> DistributedMasterClient::get_shard_info(
     return info;
 #else
     logger_->warn("gRPC not enabled, get shard info operation not available");
-    return create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled");
+    return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::NOT_IMPLEMENTED, "gRPC not enabled"));
 #endif
 }
 
@@ -736,11 +745,11 @@ DistributedMasterClient::get_worker_connection(const std::string& worker_id) {
 
     auto it = worker_connections_.find(worker_id);
     if (it == worker_connections_.end()) {
-        return create_error(ErrorCode::NOT_FOUND, "Worker not found: " + worker_id);
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::NOT_FOUND, "Worker not found: " + worker_id));
     }
 
     if (!it->second->is_active) {
-        return create_error(ErrorCode::CONNECTION_ERROR, "Worker not active: " + worker_id);
+        return tl::make_unexpected(ErrorHandler::create_error(ErrorCode::NETWORK_ERROR, "Worker not active: " + worker_id));
     }
 
     return it->second;

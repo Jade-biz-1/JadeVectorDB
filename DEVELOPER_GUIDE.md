@@ -490,7 +490,7 @@ For further information about JadeVectorDB, consult these additional resources:
 - [Distributed Implementation Plan](DISTRIBUTED_SYSTEM_IMPLEMENTATION_PLAN.md) - Detailed distributed system architecture
 - [Deployment Guide](DOCKER_DEPLOYMENT.md) - Production deployment instructions
 - [Contributing Guidelines](CONTRIBUTING.md) - Guidelines for contributing to the project
-- [Consistency Report](CONSISTENCY_REPORT.md) - Report on distributed consistency models
+- [Consistency Report](docs/archive/CONSISTENCY_REPORT_2025-12-03.md) - Archived report on code consistency and implementation status
 
 ## Conclusion
 

@@ -12,6 +12,9 @@
 
 namespace jadevectordb {
 
+// Forward declarations
+class ClusterService;
+
 // Log entry for the Raft log
 struct LogEntry {
     int term;
@@ -74,7 +77,8 @@ public:
 
 private:
     std::shared_ptr<logging::Logger> logger_;
-    
+    std::shared_ptr<ClusterService> cluster_service_;  // For cluster membership and RPC
+
     // Raft state variables
     State state_;
     int current_term_;
@@ -107,6 +111,7 @@ private:
 
 public:
     explicit RaftConsensus(const std::string& server_id);
+    explicit RaftConsensus(const std::string& server_id, std::shared_ptr<ClusterService> cluster_service);
     ~RaftConsensus() = default;
     
     // Initialize Raft instance

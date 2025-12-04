@@ -7,7 +7,7 @@
 - `specs/002-check-if-we/spec.md`
 - `specs/002-check-if-we/architecture/architecture.md`
 - `docs/distributed_deployment_guide.md`
-- `CONSISTENCY_REPORT.md`
+- `docs/archive/CONSISTENCY_REPORT_2025-12-03.md` (archived)
 
 ---
 

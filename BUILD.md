@@ -21,6 +21,8 @@ cd backend
 
 The executable will be in `backend/build/jadevectordb`.
 
+**Note:** The build script must be run from the `backend/` directory.
+
 ### Docker Build
 
 ```bash
@@ -392,5 +394,5 @@ For build issues:
 
 - **Quick Reference:** `backend/BUILD_QUICK_REFERENCE.md` - Common commands and examples
 - **Getting Started:** `backend/README_BUILD.md` - Simple introduction to the build system
-- **Complete Guide:** `backend/BUILD.md` - Full documentation with detailed troubleshooting
-- **Enhancement Summary:** `docs/COMPLETE_BUILD_SYSTEM_SETUP.md` - Technical details about the build system improvements
+- **Detailed Backend Guide:** `backend/BUILD.md` - Backend-specific build documentation
+- **Build System Overview:** `docs/COMPLETE_BUILD_SYSTEM_SETUP.md` - Complete build system setup and features
