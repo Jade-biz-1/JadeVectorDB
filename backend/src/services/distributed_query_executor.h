@@ -6,6 +6,7 @@
 #include "models/vector.h"
 #include "distributed_query_planner.h"
 #include "api/grpc/distributed_master_client.h"
+#include "similarity_search.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -16,6 +17,20 @@
 #include <condition_variable>
 
 namespace jadevectordb {
+
+/**
+ * @brief Aggregated search results structure
+ */
+struct SearchResults {
+    std::vector<SearchResult> results;
+    int64_t total_time_ms{0};
+    int64_t total_vectors_scanned{0};
+    int shards_queried{0};
+    bool success{true};
+    std::string error_message;
+
+    SearchResults() = default;
+};
 
 /**
  * @brief Result from a single shard query

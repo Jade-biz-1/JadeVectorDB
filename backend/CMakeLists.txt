@@ -157,9 +157,32 @@ if(BUILD_WITH_GRPC)
         GIT_TAG v1.60.0
         GIT_SHALLOW TRUE
     )
+    # Disable gRPC tests and unnecessary components
     set(gRPC_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(gRPC_BUILD_CSHARP_EXT OFF CACHE BOOL "" FORCE)
+    set(gRPC_BUILD_GRPC_CSHARP_PLUGIN OFF CACHE BOOL "" FORCE)
+    set(gRPC_BUILD_GRPC_NODE_PLUGIN OFF CACHE BOOL "" FORCE)
+    set(gRPC_BUILD_GRPC_OBJECTIVE_C_PLUGIN OFF CACHE BOOL "" FORCE)
+    set(gRPC_BUILD_GRPC_PHP_PLUGIN OFF CACHE BOOL "" FORCE)
+    set(gRPC_BUILD_GRPC_PYTHON_PLUGIN OFF CACHE BOOL "" FORCE)
+    set(gRPC_BUILD_GRPC_RUBY_PLUGIN OFF CACHE BOOL "" FORCE)
+
+    # Disable installation to avoid export errors
     set(gRPC_INSTALL OFF CACHE BOOL "" FORCE)
+    set(gRPC_PROTOBUF_PROVIDER "module" CACHE STRING "" FORCE)
+    set(gRPC_ABSL_PROVIDER "module" CACHE STRING "" FORCE)
+    set(gRPC_SSL_PROVIDER "package" CACHE STRING "" FORCE)
+    set(gRPC_ZLIB_PROVIDER "package" CACHE STRING "" FORCE)
+
+    # Disable installation for protobuf and abseil (gRPC dependencies)
+    set(protobuf_INSTALL OFF CACHE BOOL "" FORCE)
+    set(protobuf_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(protobuf_BUILD_CONFORMANCE OFF CACHE BOOL "" FORCE)
+    set(protobuf_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(utf8_range_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+    set(ABSL_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+    set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)
+
     FetchContent_MakeAvailable(grpc)
     set(GRPC_AVAILABLE TRUE)
 else()
@@ -209,6 +232,9 @@ set(CORE_SOURCES
     src/services/lifecycle_service.cpp
     src/services/query_router.cpp
     src/services/distributed_service_manager.cpp
+    src/services/distributed_query_planner.cpp
+    src/services/distributed_query_executor.cpp
+    src/services/distributed_write_coordinator.cpp
     src/services/performance_benchmark.cpp
     src/services/security_audit_logger.cpp
     src/services/archival_service.cpp
@@ -248,6 +274,8 @@ set(API_SOURCES
     # src/api/rest/rest_api_apikey_handlers.cpp
     # src/api/rest/rest_api_security_handlers.cpp
     src/api/grpc/grpc_service_stub.cpp
+    src/api/grpc/distributed_worker_service.cpp
+    src/api/grpc/distributed_master_client.cpp
 )
 
 #############################################################################

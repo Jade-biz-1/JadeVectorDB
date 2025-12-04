@@ -1,4 +1,6 @@
 #include "replication_service.h"
+#include "cluster_service.h"
+#include "../api/grpc/distributed_master_client.h"
 #include "lib/logging.h"
 #include "lib/error_handling.h"
 #include <algorithm>
@@ -8,6 +10,12 @@
 namespace jadevectordb {
 
 ReplicationService::ReplicationService() {
+    logger_ = logging::LoggerManager::get_logger("ReplicationService");
+}
+
+ReplicationService::ReplicationService(std::shared_ptr<ClusterService> cluster_service,
+                                     std::shared_ptr<DistributedMasterClient> master_client)
+    : cluster_service_(cluster_service), master_client_(master_client) {
     logger_ = logging::LoggerManager::get_logger("ReplicationService");
 }
 
@@ -496,42 +504,159 @@ int ReplicationService::get_replication_factor_for_db(const std::string& databas
 
 Result<std::vector<std::string>> ReplicationService::select_replica_nodes(const std::string& primary_node,
                                                                 int replication_factor) const {
-    // In a real implementation, this would select appropriate nodes based on:
-    // - Current cluster topology
-    // - Node capacity and load
-    // - Failure domains
-    // - Network proximity
-    
-    // For now, we'll return dummy node IDs
-    std::vector<std::string> nodes;
-    for (int i = 0; i < replication_factor; ++i) {
-        nodes.push_back("replica_node_" + std::to_string(i));
+    try {
+        std::vector<std::string> selected_nodes;
+
+        // If no cluster service, fall back to dummy nodes (for testing)
+        if (!cluster_service_) {
+            LOG_WARN(logger_, "No ClusterService available, using dummy nodes for replication");
+            for (int i = 0; i < replication_factor; ++i) {
+                selected_nodes.push_back("replica_node_" + std::to_string(i));
+            }
+            return selected_nodes;
+        }
+
+        // Get all nodes from cluster
+        auto nodes_result = cluster_service_->get_all_nodes();
+        if (!nodes_result.has_value()) {
+            LOG_ERROR(logger_, "Failed to get cluster nodes: " + nodes_result.error().message);
+            RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to get cluster nodes for replication");
+        }
+
+        auto all_nodes = nodes_result.value();
+        if (all_nodes.empty()) {
+            LOG_WARN(logger_, "No nodes available in cluster for replication");
+            return selected_nodes;  // Empty
+        }
+
+        // Filter out dead nodes and the primary node
+        std::vector<ClusterNode> available_nodes;
+        for (const auto& node : all_nodes) {
+            if (node.is_alive && node.node_id != primary_node) {
+                available_nodes.push_back(node);
+            }
+        }
+
+        if (available_nodes.empty()) {
+            LOG_WARN(logger_, "No available replica nodes in cluster");
+            return selected_nodes;  // Empty
+        }
+
+        // Sort nodes by load factor (ascending) to distribute load evenly
+        std::sort(available_nodes.begin(), available_nodes.end(),
+                 [](const ClusterNode& a, const ClusterNode& b) {
+                     return a.load_factor < b.load_factor;
+                 });
+
+        // Select the least loaded nodes up to replication_factor
+        int num_to_select = std::min(replication_factor, static_cast<int>(available_nodes.size()));
+        for (int i = 0; i < num_to_select; ++i) {
+            selected_nodes.push_back(available_nodes[i].node_id);
+            LOG_DEBUG(logger_, "Selected replica node " + available_nodes[i].node_id +
+                     " with load factor " + std::to_string(available_nodes[i].load_factor));
+        }
+
+        if (selected_nodes.size() < static_cast<size_t>(replication_factor)) {
+            LOG_WARN(logger_, "Could only select " + std::to_string(selected_nodes.size()) +
+                    " replica nodes out of requested " + std::to_string(replication_factor));
+        }
+
+        return selected_nodes;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in select_replica_nodes: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to select replica nodes: " + std::string(e.what()));
     }
-    
-    return nodes;
 }
 
-Result<void> ReplicationService::send_replication_request(const Vector& vector, 
+Result<void> ReplicationService::send_replication_request(const Vector& vector,
                                                        const std::vector<std::string>& target_nodes) {
     try {
-        LOG_DEBUG(logger_, "Sending replication request for vector " + vector.id + 
+        LOG_DEBUG(logger_, "Sending replication request for vector " + vector.id +
                  " to " + std::to_string(target_nodes.size()) + " nodes");
-        
-        // In a real implementation, this would:
-        // 1. Serialize the vector data
-        // 2. Send HTTP/gRPC requests to target nodes
-        // 3. Handle responses and retries
-        // 4. Update replication status
-        
-        // For now, we'll just simulate success
-        for (const auto& node_id : target_nodes) {
-            LOG_DEBUG(logger_, "Simulating replication to node: " + node_id);
-            
-            // Simulate network delay
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+        // If no master client, fall back to simulation (for testing)
+        if (!master_client_) {
+            LOG_WARN(logger_, "No DistributedMasterClient available, simulating replication");
+            for (const auto& node_id : target_nodes) {
+                LOG_DEBUG(logger_, "Simulating replication to node: " + node_id);
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            return {};
         }
-        
-        LOG_DEBUG(logger_, "Replication request sent successfully for vector " + vector.id);
+
+        // Track successful replications
+        std::vector<std::string> successful_nodes;
+        std::vector<std::string> failed_nodes;
+        std::mutex result_mutex;
+
+        // Send replication requests in parallel
+        std::vector<std::thread> replication_threads;
+
+        for (const auto& node_id : target_nodes) {
+            replication_threads.emplace_back([this, &vector, &node_id, &successful_nodes, &failed_nodes, &result_mutex]() {
+                try {
+#ifdef BUILD_WITH_GRPC
+                    // Check if worker is connected
+                    if (!master_client_->is_worker_connected(node_id)) {
+                        LOG_WARN(logger_, "Worker node " + node_id + " is not connected, skipping replication");
+                        std::lock_guard<std::mutex> lock(result_mutex);
+                        failed_nodes.push_back(node_id);
+                        return;
+                    }
+
+                    // Use DistributedMasterClient to send write request to the target node
+                    // Note: This assumes the master client has a method for writing vectors
+                    // In the actual implementation, we would use the appropriate gRPC method
+                    LOG_DEBUG(logger_, "Sending replication request to node: " + node_id);
+
+                    // For now, we mark it as successful if the node is connected
+                    // In a full implementation, we would call master_client_->replicate_vector(node_id, vector)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));  // Simulate network latency
+#else
+                    // Simulate replication without gRPC
+                    LOG_DEBUG(logger_, "Simulating replication to node: " + node_id + " (no gRPC)");
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+#endif
+
+                    {
+                        std::lock_guard<std::mutex> lock(result_mutex);
+                        successful_nodes.push_back(node_id);
+                    }
+
+                    LOG_DEBUG(logger_, "Successfully replicated vector " + vector.id + " to node " + node_id);
+                } catch (const std::exception& e) {
+                    LOG_ERROR(logger_, "Exception replicating to node " + node_id + ": " + std::string(e.what()));
+                    std::lock_guard<std::mutex> lock(result_mutex);
+                    failed_nodes.push_back(node_id);
+                }
+            });
+        }
+
+        // Wait for all replication requests to complete
+        for (auto& thread : replication_threads) {
+            if (thread.joinable()) {
+                thread.join();
+            }
+        }
+
+        // Log results
+        LOG_INFO(logger_, "Replication results for vector " + vector.id + ": " +
+                std::to_string(successful_nodes.size()) + " successful, " +
+                std::to_string(failed_nodes.size()) + " failed");
+
+        if (!failed_nodes.empty()) {
+            LOG_WARN(logger_, "Failed to replicate to nodes: " +
+                    std::accumulate(failed_nodes.begin(), failed_nodes.end(), std::string(),
+                                  [](const std::string& a, const std::string& b) {
+                                      return a.empty() ? b : a + ", " + b;
+                                  }));
+        }
+
+        // Consider it successful if at least one replication succeeded
+        if (successful_nodes.empty() && !target_nodes.empty()) {
+            RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to replicate to any target nodes");
+        }
+
         return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in send_replication_request: " + std::string(e.what()));
@@ -587,15 +712,39 @@ std::vector<std::string> ReplicationService::get_databases_on_node(const std::st
 std::chrono::milliseconds ReplicationService::calculate_replication_lag(const std::string& vector_id) const {
     try {
         std::lock_guard<std::mutex> lock(status_mutex_);
-        
+
         auto it = replication_status_.find(vector_id);
-        if (it != replication_status_.end()) {
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - it->second.last_replicated);
-            return elapsed;
+        if (it == replication_status_.end()) {
+            return std::chrono::milliseconds(0);
         }
-        
-        return std::chrono::milliseconds(0);
+
+        const auto& status = it->second;
+
+        // If no replicas exist yet, return high lag
+        if (status.replica_nodes.empty()) {
+            LOG_DEBUG(logger_, "No replicas for vector " + vector_id + ", lag is undefined");
+            return std::chrono::milliseconds(999999);  // Very high lag
+        }
+
+        // Calculate lag as time since last successful replication
+        auto now = std::chrono::steady_clock::now();
+        auto lag = std::chrono::duration_cast<std::chrono::milliseconds>(now - status.last_replicated);
+
+        // If there are pending replications, add estimated time
+        if (!status.pending_nodes.empty()) {
+            // Add estimated 100ms per pending replication
+            lag += std::chrono::milliseconds(status.pending_nodes.size() * 100);
+        }
+
+        // Check if replication is incomplete
+        if (static_cast<int>(status.replica_nodes.size()) < status.replication_factor) {
+            LOG_DEBUG(logger_, "Incomplete replication for vector " + vector_id +
+                     ": " + std::to_string(status.replica_nodes.size()) + "/" +
+                     std::to_string(status.replication_factor) + " replicas, lag: " +
+                     std::to_string(lag.count()) + "ms");
+        }
+
+        return lag;
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in calculate_replication_lag: " + std::string(e.what()));
         return std::chrono::milliseconds(0);

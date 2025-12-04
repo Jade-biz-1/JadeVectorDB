@@ -17,25 +17,25 @@ class SimilaritySearchTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // Initialize services
-        db_layer_ = std::make_unique<DatabaseLayer>();
-        db_layer_->initialize();
-        
-        vector_storage_ = std::make_unique<VectorStorageService>(std::move(db_layer_));
-        vector_storage_->initialize();
-        
-        search_service_ = std::make_unique<SimilaritySearchService>(std::move(vector_storage_));
+        auto db_layer = std::make_unique<DatabaseLayer>();
+        db_layer->initialize();
+
+        auto vector_storage = std::make_unique<VectorStorageService>(std::move(db_layer));
+        vector_storage->initialize();
+
+        search_service_ = std::make_unique<SimilaritySearchService>(std::move(vector_storage));
         search_service_->initialize();
-        
+
         // Create a test database
         Database db;
         db.name = "search_test_db";
         db.description = "Test database for similarity search";
         db.vectorDimension = 4;
-        
-        auto result = search_service_->vector_storage_->db_layer_->create_database(db);
+
+        auto result = search_service_->get_vector_storage_for_testing()->get_db_layer_for_testing()->create_database(db);
         ASSERT_TRUE(result.has_value());
         test_database_id_ = result.value();
-        
+
         // Add some test vectors
         addTestVectors();
     }
@@ -43,7 +43,7 @@ protected:
     void TearDown() override {
         // Clean up test database
         if (!test_database_id_.empty()) {
-            search_service_->vector_storage_->db_layer_->delete_database(test_database_id_);
+            search_service_->get_vector_storage_for_testing()->get_db_layer_for_testing()->delete_database(test_database_id_);
         }
     }
 
@@ -52,31 +52,31 @@ protected:
         Vector v1;
         v1.id = "v1";
         v1.values = {1.0f, 0.0f, 0.0f, 0.0f};
-        search_service_->vector_storage_->store_vector(test_database_id_, v1);
-        
+        search_service_->get_vector_storage_for_testing()->store_vector(test_database_id_, v1);
+
         // Vector 2: [0.0, 1.0, 0.0, 0.0] - unit vector along y-axis (orthogonal to v1)
         Vector v2;
         v2.id = "v2";
         v2.values = {0.0f, 1.0f, 0.0f, 0.0f};
-        search_service_->vector_storage_->store_vector(test_database_id_, v2);
-        
+        search_service_->get_vector_storage_for_testing()->store_vector(test_database_id_, v2);
+
         // Vector 3: [0.7, 0.7, 0.0, 0.0] - similar to v1 (45-degree angle to x-axis)
         Vector v3;
         v3.id = "v3";
         v3.values = {0.7f, 0.7f, 0.0f, 0.0f};
-        search_service_->vector_storage_->store_vector(test_database_id_, v3);
-        
+        search_service_->get_vector_storage_for_testing()->store_vector(test_database_id_, v3);
+
         // Vector 4: [0.5, 0.5, 0.5, 0.5] - diagonal vector
         Vector v4;
         v4.id = "v4";
         v4.values = {0.5f, 0.5f, 0.5f, 0.5f};
-        search_service_->vector_storage_->store_vector(test_database_id_, v4);
-        
+        search_service_->get_vector_storage_for_testing()->store_vector(test_database_id_, v4);
+
         // Vector 5: [0.1, 0.2, 0.3, 0.4] - another test vector
         Vector v5;
         v5.id = "v5";
         v5.values = {0.1f, 0.2f, 0.3f, 0.4f};
-        search_service_->vector_storage_->store_vector(test_database_id_, v5);
+        search_service_->get_vector_storage_for_testing()->store_vector(test_database_id_, v5);
     }
 
     std::unique_ptr<SimilaritySearchService> search_service_;
@@ -253,8 +253,8 @@ TEST_F(SimilaritySearchTest, SearchWithMetadataFilters) {
     v2.metadata.owner = "user2";
     v2.metadata.category = "category2";
     
-    search_service_->vector_storage_->update_vector(test_database_id_, v1);
-    search_service_->vector_storage_->update_vector(test_database_id_, v2);
+    search_service_->get_vector_storage_for_testing()->update_vector(test_database_id_, v1);
+    search_service_->get_vector_storage_for_testing()->update_vector(test_database_id_, v2);
     
     Vector query;
     query.id = "query_filtered";

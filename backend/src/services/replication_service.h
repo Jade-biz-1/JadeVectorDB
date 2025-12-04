@@ -16,6 +16,13 @@
 
 namespace jadevectordb {
 
+// Forward declarations
+class ClusterService;
+class DistributedMasterClient;
+
+// Callback type for applying replicated vectors to local storage
+using VectorApplyCallback = std::function<Result<void>(const std::string&, const Vector&)>;
+
 // Represents replication status for a specific vector
 struct ReplicationStatus {
     std::string vector_id;
@@ -59,6 +66,9 @@ struct ReplicationConfig {
 class ReplicationService {
 private:
     std::shared_ptr<logging::Logger> logger_;
+    std::shared_ptr<ClusterService> cluster_service_;
+    std::shared_ptr<DistributedMasterClient> master_client_;
+    VectorApplyCallback apply_callback_;
     ReplicationConfig config_;
     std::unordered_map<std::string, ReplicationStatus> replication_status_; // vector_id -> status
     std::unordered_map<std::string, std::vector<std::string>> db_replicas_; // database_id -> node_ids
@@ -67,11 +77,16 @@ private:
     
 public:
     explicit ReplicationService();
+    explicit ReplicationService(std::shared_ptr<ClusterService> cluster_service,
+                               std::shared_ptr<DistributedMasterClient> master_client);
     ~ReplicationService() = default;
-    
+
     // Initialize the replication service with configuration
     bool initialize(const ReplicationConfig& config);
-    
+
+    // Set callback for applying replicated vectors to local storage
+    void set_apply_callback(VectorApplyCallback callback);
+
     // Replicate a vector to multiple nodes
     Result<void> replicate_vector(const Vector& vector, const Database& database);
     

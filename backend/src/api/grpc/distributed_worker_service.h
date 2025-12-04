@@ -8,6 +8,9 @@
 #include "services/similarity_search.h"
 #include "services/sharding_service.h"
 #include "services/cluster_service.h"
+#include "services/database_layer.h"
+#include "distributed_types.h"
+#include "distributed_query_executor.h"  // For SearchResults
 #include <memory>
 #include <string>
 #include <vector>
@@ -23,7 +26,7 @@
 namespace jadevectordb {
 
 // Forward declarations
-class VectorDatabase;
+class DatabaseLayer;
 class SimilaritySearchService;
 
 /**
@@ -45,7 +48,7 @@ private:
     int node_port_;
 
     // Core services
-    std::shared_ptr<VectorDatabase> vector_db_;
+    std::shared_ptr<DatabaseLayer> database_layer_;
     std::shared_ptr<SimilaritySearchService> search_service_;
     std::shared_ptr<ShardingService> sharding_service_;
     std::shared_ptr<ClusterService> cluster_service_;
@@ -75,7 +78,7 @@ public:
         const std::string& node_id,
         const std::string& host,
         int port,
-        std::shared_ptr<VectorDatabase> vector_db,
+        std::shared_ptr<DatabaseLayer> database_layer,
         std::shared_ptr<SimilaritySearchService> search_service,
         std::shared_ptr<ShardingService> sharding_service,
         std::shared_ptr<ClusterService> cluster_service
