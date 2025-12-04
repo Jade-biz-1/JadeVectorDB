@@ -105,16 +105,16 @@ class SimilaritySearchService {
 private:
     std::unique_ptr<VectorStorageService> vector_storage_;
     std::shared_ptr<logging::Logger> logger_;
-    
+
     // Vector operations for similarity computations (with CPU/GPU switching)
     std::shared_ptr<vector_ops::IVectorOperations> vector_ops_;
-    
+
     // Metrics for performance monitoring
     std::shared_ptr<Counter> search_requests_counter_;
     std::shared_ptr<Histogram> search_latency_histogram_;
     std::shared_ptr<Counter> search_results_counter_;
     std::shared_ptr<Gauge> active_searches_gauge_;
-    
+
     // Filtered search specific metrics
     std::shared_ptr<Counter> filtered_search_requests_counter_;
     std::shared_ptr<Histogram> filtered_search_latency_histogram_;
@@ -128,6 +128,8 @@ private:
     std::unique_ptr<MetadataFilter> metadata_filter_;
 
 public:
+    // Test accessor methods
+    VectorStorageService* get_vector_storage_for_testing() { return vector_storage_.get(); }
     explicit SimilaritySearchService(std::unique_ptr<VectorStorageService> vector_storage = nullptr);
     ~SimilaritySearchService() = default;
 
