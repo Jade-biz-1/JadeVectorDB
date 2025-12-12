@@ -87,6 +87,28 @@ struct SearchParams {
 };
 ```
 
+### Parameter Behavior
+
+#### include_vector_data Parameter
+
+Controls whether the actual vector values are included in search results:
+
+| Value | Behavior | Use Case |
+|-------|----------|----------|
+| `false` (default) | Only vector IDs and similarity scores returned | Normal searches, saves bandwidth |
+| `true` | Full vector values included in response | Debugging, vector analysis, re-ranking |
+
+**Response size impact**: Setting `include_vector_data=true` significantly increases response size. A 768-dimensional vector adds ~6KB per result.
+
+#### include_metadata Parameter
+
+Controls whether vector metadata is included in results:
+
+| Value | Behavior | Use Case |
+|-------|----------|----------|
+| `false` (default) | Only vector IDs and similarity scores | Simple similarity queries |
+| `true` | Full metadata object included | Displaying results, further filtering |
+
 ## Metadata Filtering
 
 The system supports filtering search results based on vector metadata using a flexible filtering system.

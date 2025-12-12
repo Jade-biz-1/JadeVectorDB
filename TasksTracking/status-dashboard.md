@@ -51,12 +51,12 @@
 | Task | Description | Priority | Assigned | Progress |
 |------|-------------|----------|----------|----------|
 | **CLEANUP** | AuthManager Consolidation (14 tasks) | CRITICAL | - | ✅ 100% (14/14) |
-| T229 | Update documentation for search API | MEDIUM | - | 0% |
+| T229 | Update documentation for search API | MEDIUM | - | ✅ Complete |
 | T231 | Backend tests for authentication flows | HIGH | - | ✅ Complete |
 | T232 | Backend tests for API key lifecycle | HIGH | - | ✅ Complete |
 | T233 | Frontend tests for authentication flows | MEDIUM | - | 0% |
-| T234 | Smoke/performance tests for search and auth | MEDIUM | - | 0% |
-| T235 | Coordinate security policy requirements | MEDIUM | - | 0% |
+| T234 | Smoke/performance tests for search and auth | MEDIUM | - | ✅ Complete |
+| T235 | Coordinate security policy requirements | MEDIUM | - | ✅ Complete |
 | T237 | Assign roles to default users | HIGH | - | ✅ Complete |
 | T238 | Mirror backend changes in simple API or deprecate | LOW | - | 0% |
 | T259 | Complete distributed worker service stubs | HIGH | 2025-12-12 | ✅ 100% |
