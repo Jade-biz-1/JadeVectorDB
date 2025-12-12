@@ -20,16 +20,17 @@ struct ShardInfo {
     std::string database_id;
     int shard_number;           // Sequential number of the shard
     std::string node_id;       // ID of the node that hosts this shard
-    std::string status;        // "active", "migrating", "offline", etc.
+    std::string status;        // "active", "migrating", "offline", "syncing", etc.
     size_t record_count;       // Number of vectors in this shard
     size_t size_bytes;         // Size of the shard in bytes
     std::string hash_range_start; // For range-based sharding
     std::string hash_range_end;   // For range-based sharding
+    int64_t version;           // Version number for replication/sync tracking
     
-    ShardInfo() : shard_number(0), record_count(0), size_bytes(0) {}
+    ShardInfo() : shard_number(0), record_count(0), size_bytes(0), version(0) {}
     ShardInfo(const std::string& id, const std::string& db_id, int num)
         : shard_id(id), database_id(db_id), shard_number(num), status("active"), 
-          record_count(0), size_bytes(0) {}
+          record_count(0), size_bytes(0), version(0) {}
 };
 
 // Configuration for sharding strategy
