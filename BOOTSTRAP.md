@@ -122,6 +122,91 @@ cd backend && ./build.sh --no-tests --no-benchmarks
 
 ---
 
+## 📐 CRITICAL: Specification & Architecture Documents
+
+**⚠️ READ THESE BEFORE MAKING ANY DESIGN DECISIONS!**
+
+The `specs/002-check-if-we/` folder contains **foundational documents** that define the architecture, research decisions, and implementation plan for JadeVectorDB. These documents should be consulted BEFORE:
+- Adding new features
+- Making architectural decisions
+- Implementing distributed system components
+- Choosing algorithms or data structures
+
+### Core Specification Documents:
+
+| Document | Purpose | When to Read |
+|----------|---------|--------------|
+| `specs/002-check-if-we/spec.md` | **Master specification** (1162 lines) - Complete feature requirements, user stories, acceptance criteria | Before implementing any new feature |
+| `specs/002-check-if-we/architecture/architecture.md` | **System architecture** - Master-worker pattern, component interactions, data flow diagrams | Before making any structural changes |
+| `specs/002-check-if-we/plan.md` | **Implementation plan** - Tech stack, constitution check, project structure | Before adding dependencies or changing structure |
+| `specs/002-check-if-we/research.md` | **Technical research decisions** - Indexing algorithms, embedding models, distributed patterns | Before implementing algorithms |
+| `specs/002-check-if-we/data-model.md` | **Data model specification** - Entity definitions, relationships | Before modifying data structures |
+| `specs/002-check-if-we/IMPLEMENTATION_PLAN_SUMMARY.md` | **Phase summary** - 196 tasks across 12 phases, dependencies | For understanding task relationships |
+
+### Research Documents (specs/002-check-if-we/research/):
+
+These contain detailed technical research. **Consult before implementing related features:**
+
+| Research Doc | Topic | Key Decisions |
+|--------------|-------|---------------|
+| `001-vector-indexing-algorithms.md` | HNSW, IVF, LSH algorithms | IVF+PQ for distributed, HNSW for single-node |
+| `002-embedding-models-integration.md` | Embedding providers | Hugging Face, Ollama, OpenAI integration |
+| `003-distributed-systems-patterns.md` | Distributed architecture | Master-worker, Raft consensus, sharding |
+| `004-performance-optimization.md` | SIMD, caching, batching | Performance best practices |
+| `005-industry-comparisons.md` | Comparison with Pinecone, Weaviate, etc. | Feature parity goals |
+| `006-security-implementations.md` | Auth, encryption, access control | Security requirements |
+| `007-infrastructure-considerations.md` | Deployment, containerization | Docker, K8s patterns |
+| `008-monitoring-and-observability.md` | Metrics, logging, alerting | Monitoring strategy |
+| `009-data-migration.md` | Data import/export | Migration patterns |
+| `010-cpp-implementation-considerations.md` | C++ best practices | Memory management, RAII |
+| `011-advanced-data-structures-algorithms.md` | Data structures | Skip lists, B+ trees |
+| `012-serialization-memory-management.md` | FlatBuffers, Arrow | Serialization choices |
+| `013-cpp-testing-strategies.md` | Testing approaches | Google Test patterns |
+
+### API Contracts:
+
+| Contract | Purpose |
+|----------|---------|
+| `specs/002-check-if-we/contracts/vector-db-api.yaml` | OpenAPI specification for REST API |
+| `specs/002-check-if-we/contracts/examples.json` | API request/response examples |
+
+### Checklists:
+
+| Checklist | Purpose |
+|-----------|---------|
+| `specs/002-check-if-we/checklists/requirements.md` | Feature requirements checklist |
+
+### Key Architecture Decisions (from research):
+
+1. **Indexing Algorithms**: 
+   - Distributed: IVF with Product Quantization (PQ)
+   - Single-node: HNSW for speed/accuracy
+   - Configurable per database
+
+2. **Embedding Providers** (pluggable architecture):
+   - Hugging Face (direct loading)
+   - Ollama (local API)
+   - OpenAI/Gemini (external API)
+
+3. **Distributed Architecture**:
+   - Master-worker pattern
+   - Raft consensus for leader election
+   - Hash/range-based sharding
+   - Eventual/strong consistency configurable
+
+4. **Performance Goals**:
+   - Sub-50ms search for 1M vectors
+   - 10,000+ vectors/second ingestion
+   - 99.9% availability
+
+5. **Tech Stack**:
+   - C++20 for backend (mandatory)
+   - gRPC for inter-service communication
+   - FlatBuffers for serialization
+   - Next.js + shadcn for frontend
+
+---
+
 ## 📁 Project Structure
 
 ```

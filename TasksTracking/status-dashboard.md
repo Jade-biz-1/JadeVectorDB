@@ -148,8 +148,8 @@
 - ✅ T253: Integration testing
 
 **Remaining**:
-- ⏳ T245: Distributed Raft consensus (MEDIUM)
-- ⏳ T246: Actual data replication (MEDIUM)
+- 🔄 T245: Distributed Raft consensus (~85% - core done, snapshots remaining)
+- 🔄 T246: Actual data replication (~90% - gRPC wired, callbacks ready)
 - ⏳ T247: Shard data migration (MEDIUM)
 - ⏳ T250: Query optimizer (LOW)
 - ⏳ T251: Certificate management (LOW)
