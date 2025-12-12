@@ -37,6 +37,55 @@ protected:
     
     std::unique_ptr<DatabaseService> db_service_;
     std::unique_ptr<VectorStorageService> vector_service_;
+
+    // Helper function to convert Database to DatabaseCreationParams
+    DatabaseCreationParams to_creation_params(const Database& db) {
+        DatabaseCreationParams params;
+        params.name = db.name;
+        params.description = db.description;
+        params.vectorDimension = db.vectorDimension;
+        params.indexType = db.indexType;
+        params.indexParameters = db.indexParameters;
+        params.sharding = db.sharding;
+        params.replication = db.replication;
+        params.embeddingModels = db.embeddingModels;
+        params.metadataSchema = db.metadataSchema;
+        if (db.retentionPolicy) {
+            params.retentionPolicy = std::make_unique<Database::RetentionPolicy>(*db.retentionPolicy);
+        }
+        params.accessControl = db.accessControl;
+        return params;
+    }
+    
+    // Helper function to convert Database to DatabaseUpdateParams
+    DatabaseUpdateParams to_update_params(const Database& db) {
+        DatabaseUpdateParams params;
+        params.name = db.name;
+        params.description = db.description;
+        params.vectorDimension = db.vectorDimension;
+        params.indexType = db.indexType;
+        // Note: indexParameters type mismatch (map vs unordered_map)
+        std::unordered_map<std::string, std::string> idx_params;
+        for (const auto& [k, v] : db.indexParameters) {
+            idx_params[k] = v;
+        }
+        params.indexParameters = idx_params;
+        params.sharding = db.sharding;
+        params.replication = db.replication;
+        params.embeddingModels = db.embeddingModels;
+        // Note: metadataSchema type mismatch (map vs unordered_map)
+        std::unordered_map<std::string, std::string> meta_schema;
+        for (const auto& [k, v] : db.metadataSchema) {
+            meta_schema[k] = v;
+        }
+        params.metadataSchema = meta_schema;
+        if (db.retentionPolicy) {
+            params.retentionPolicy = std::make_unique<Database::RetentionPolicy>(*db.retentionPolicy);
+        }
+        params.accessControl = db.accessControl;
+        return params;
+    }
+
 };
 
 // Test database creation and retrieval
@@ -48,7 +97,7 @@ TEST_F(DatabaseApiIntegrationTest, CreateAndGetDatabase) {
     new_db.vectorDimension = 128;
     new_db.indexType = "HNSW";
     
-    auto create_result = db_service_->create_database(new_db);
+    auto create_result = db_service_->create_database(to_creation_params(new_db));
     ASSERT_TRUE(create_result.has_value());
     std::string db_id = create_result.value();
     
@@ -75,7 +124,7 @@ TEST_F(DatabaseApiIntegrationTest, ListDatabases) {
         new_db.description = "Test database " + std::to_string(i);
         new_db.vectorDimension = 64 + i * 64; // 64, 128, 192
         
-        auto create_result = db_service_->create_database(new_db);
+        auto create_result = db_service_->create_database(to_creation_params(new_db));
         ASSERT_TRUE(create_result.has_value());
         created_db_ids.push_back(create_result.value());
     }
@@ -110,7 +159,7 @@ TEST_F(DatabaseApiIntegrationTest, UpdateDatabase) {
     initial_db.description = "Initial description";
     initial_db.vectorDimension = 128;
     
-    auto create_result = db_service_->create_database(initial_db);
+    auto create_result = db_service_->create_database(to_creation_params(initial_db));
     ASSERT_TRUE(create_result.has_value());
     std::string db_id = create_result.value();
     
@@ -125,7 +174,7 @@ TEST_F(DatabaseApiIntegrationTest, UpdateDatabase) {
     updated_db.description = "Updated description";
     updated_db.vectorDimension = 256;
     
-    auto update_result = db_service_->update_database(db_id, updated_db);
+    auto update_result = db_service_->update_database(db_id, to_update_params(updated_db));
     ASSERT_TRUE(update_result.has_value());
     
     // Retrieve the database again to verify the update
@@ -146,7 +195,7 @@ TEST_F(DatabaseApiIntegrationTest, DeleteDatabase) {
     new_db.description = "Database for deletion test";
     new_db.vectorDimension = 128;
     
-    auto create_result = db_service_->create_database(new_db);
+    auto create_result = db_service_->create_database(to_creation_params(new_db));
     ASSERT_TRUE(create_result.has_value());
     std::string db_id = create_result.value();
     
@@ -181,7 +230,7 @@ TEST_F(DatabaseApiIntegrationTest, DatabaseWithVectors) {
     vectors_db.description = "Database for testing vectors";
     vectors_db.vectorDimension = 3;  // 3-dimensional vectors
     
-    auto create_result = db_service_->create_database(vectors_db);
+    auto create_result = db_service_->create_database(to_creation_params(vectors_db));
     ASSERT_TRUE(create_result.has_value());
     std::string db_id = create_result.value();
     
@@ -192,8 +241,8 @@ TEST_F(DatabaseApiIntegrationTest, DatabaseWithVectors) {
         Vector v;
         v.id = "vector_" + std::to_string(i);
         v.values = {static_cast<float>(i), static_cast<float>(i+1), static_cast<float>(i+2)};
-        v.metadata["test_id"] = i;
-        v.metadata["category"] = "test_vector";
+        v.metadata.custom["test_id"] = i;
+        v.metadata.custom["category"] = "test_vector";
         
         test_vectors.push_back(v);
     }
@@ -265,7 +314,7 @@ TEST_F(DatabaseApiIntegrationTest, MultipleDatabasesWithDifferentConfigs) {
         db.vectorDimension = config.vectorDimension;
         db.indexType = config.indexType;
         
-        auto create_result = db_service_->create_database(db);
+        auto create_result = db_service_->create_database(to_creation_params(db));
         ASSERT_TRUE(create_result.has_value()) << "Failed to create database: " << db.name;
         
         created_dbs.push_back({create_result.value(), db});
@@ -303,7 +352,7 @@ TEST_F(DatabaseApiIntegrationTest, DatabaseValidation) {
     invalid_db.description = "Database with invalid config";
     invalid_db.vectorDimension = 0;  // Invalid dimension
     
-    auto create_result = db_service_->create_database(invalid_db);
+    auto create_result = db_service_->create_database(to_creation_params(invalid_db));
     EXPECT_FALSE(create_result.has_value());
     
     // Test creating a database with valid but large dimensions
@@ -312,7 +361,7 @@ TEST_F(DatabaseApiIntegrationTest, DatabaseValidation) {
     large_db.description = "Database with large dimensions";
     large_db.vectorDimension = 4096;  // This is at the upper limit from spec
     
-    create_result = db_service_->create_database(large_db);
+    create_result = db_service_->create_database(to_creation_params(large_db));
     ASSERT_TRUE(create_result.has_value());
     
     std::string large_db_id = create_result.value();

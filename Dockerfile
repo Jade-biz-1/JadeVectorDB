@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y \
     ninja-build \
     pkg-config \
     libboost-all-dev \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Verify installations

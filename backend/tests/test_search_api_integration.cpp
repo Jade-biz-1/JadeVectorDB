@@ -14,6 +14,55 @@
 #include "lib/error_handling.h"
 #include "lib/logging.h"
 
+
+// Helper function to convert Database to DatabaseCreationParams
+static DatabaseCreationParams to_creation_params(const Database& db) {
+    DatabaseCreationParams params;
+    params.name = db.name;
+    params.description = db.description;
+    params.vectorDimension = db.vectorDimension;
+    params.indexType = db.indexType;
+    params.indexParameters = db.indexParameters;
+    params.sharding = db.sharding;
+    params.replication = db.replication;
+    params.embeddingModels = db.embeddingModels;
+    params.metadataSchema = db.metadataSchema;
+    if (db.retentionPolicy) {
+        params.retentionPolicy = std::make_unique<Database::RetentionPolicy>(*db.retentionPolicy);
+    }
+    params.accessControl = db.accessControl;
+    return params;
+}
+
+// Helper function to convert Database to DatabaseUpdateParams
+static DatabaseUpdateParams to_update_params(const Database& db) {
+    DatabaseUpdateParams params;
+    params.name = db.name;
+    params.description = db.description;
+    params.vectorDimension = db.vectorDimension;
+    params.indexType = db.indexType;
+    std::unordered_map<std::string, std::string> idx_params;
+    for (const auto& [k, v] : db.indexParameters) {
+        idx_params[k] = v;
+    }
+    params.indexParameters = idx_params;
+    params.sharding = db.sharding;
+    params.replication = db.replication;
+    params.embeddingModels = db.embeddingModels;
+    std::unordered_map<std::string, std::string> meta_schema;
+    for (const auto& [k, v] : db.metadataSchema) {
+        meta_schema[k] = v;
+    }
+    params.metadataSchema = meta_schema;
+    if (db.retentionPolicy) {
+        params.retentionPolicy = std::make_unique<Database::RetentionPolicy>(*db.retentionPolicy);
+    }
+    params.accessControl = db.accessControl;
+    return params;
+}
+
+
+
 using namespace jadevectordb;
 using ::testing::Return;
 using ::testing::_;
@@ -39,7 +88,7 @@ protected:
         test_db.description = "Test database for search integration testing";
         test_db.indexType = "HNSW";
         
-        auto create_result = db_service_->create_database(test_db);
+        auto create_result = db_service_->create_database(to_creation_params(test_db));
         ASSERT_TRUE(create_result.has_value());
         db_id_ = create_result.value();
         
@@ -61,54 +110,54 @@ protected:
         Vector v1;
         v1.id = "vector_A";
         v1.values = {1.0f, 0.0f, 0.0f, 0.0f};
-        v1.metadata["category"] = "finance";
-        v1.metadata["score"] = 0.95f;
-        v1.metadata["tags"] = nlohmann::json::array({"investment", "trading"});
+        v1.metadata.custom["category"] = "finance";
+        v1.metadata.custom["score"] = 0.95f;
+        v1.metadata.custom["tags"] = nlohmann::json::array({"investment", "trading"});
         test_vectors.push_back(v1);
         
         // Vector B - very similar to A
         Vector v2;
         v2.id = "vector_B";
         v2.values = {0.9f, 0.1f, 0.0f, 0.0f};
-        v2.metadata["category"] = "finance";
-        v2.metadata["score"] = 0.85f;
-        v2.metadata["tags"] = nlohmann::json::array({"investment", "banking"});
+        v2.metadata.custom["category"] = "finance";
+        v2.metadata.custom["score"] = 0.85f;
+        v2.metadata.custom["tags"] = nlohmann::json::array({"investment", "banking"});
         test_vectors.push_back(v2);
         
         // Vector C - somewhat similar to A
         Vector v3;
         v3.id = "vector_C";
         v3.values = {0.7f, 0.3f, 0.0f, 0.0f};
-        v3.metadata["category"] = "technology";
-        v3.metadata["score"] = 0.75f;
-        v3.metadata["tags"] = nlohmann::json::array({"ai", "ml"});
+        v3.metadata.custom["category"] = "technology";
+        v3.metadata.custom["score"] = 0.75f;
+        v3.metadata.custom["tags"] = nlohmann::json::array({"ai", "ml"});
         test_vectors.push_back(v3);
         
         // Vector D - less similar to A
         Vector v4;
         v4.id = "vector_D";
         v4.values = {0.5f, 0.5f, 0.0f, 0.0f};
-        v4.metadata["category"] = "healthcare";
-        v4.metadata["score"] = 0.65f;
-        v4.metadata["tags"] = nlohmann::json::array({"research", "clinical"});
+        v4.metadata.custom["category"] = "healthcare";
+        v4.metadata.custom["score"] = 0.65f;
+        v4.metadata.custom["tags"] = nlohmann::json::array({"research", "clinical"});
         test_vectors.push_back(v4);
         
         // Vector E - quite different from A
         Vector v5;
         v5.id = "vector_E";
         v5.values = {0.0f, 1.0f, 0.0f, 0.0f};
-        v5.metadata["category"] = "technology";
-        v5.metadata["score"] = 0.55f;
-        v5.metadata["tags"] = nlohmann::json::array({"ai", "research"});
+        v5.metadata.custom["category"] = "technology";
+        v5.metadata.custom["score"] = 0.55f;
+        v5.metadata.custom["tags"] = nlohmann::json::array({"ai", "research"});
         test_vectors.push_back(v5);
         
         // Vector F - orthogonal to A
         Vector v6;
         v6.id = "vector_F";
         v6.values = {0.0f, 0.0f, 1.0f, 0.0f};
-        v6.metadata["category"] = "finance";
-        v6.metadata["score"] = 0.45f;
-        v6.metadata["tags"] = nlohmann::json::array({"trading", "cryptocurrency"});
+        v6.metadata.custom["category"] = "finance";
+        v6.metadata.custom["score"] = 0.45f;
+        v6.metadata.custom["tags"] = nlohmann::json::array({"trading", "cryptocurrency"});
         test_vectors.push_back(v6);
         
         // Store all test vectors
@@ -356,12 +405,12 @@ TEST_F(SearchApiIntegrationTest, SearchWithMetadataInclusion) {
     
     // Check specific metadata
     EXPECT_EQ(search_results[0].vector_data.id, "vector_A");
-    EXPECT_EQ(search_results[0].vector_data.metadata["category"].get<std::string>(), "finance");
-    EXPECT_FLOAT_EQ(search_results[0].vector_data.metadata["score"].get<float>(), 0.95f);
+    EXPECT_EQ(search_results[0].vector_data.metadata.custom["category"].get<std::string>(), "finance");
+    EXPECT_FLOAT_EQ(search_results[0].vector_data.metadata.custom["score"].get<float>(), 0.95f);
     
     EXPECT_EQ(search_results[1].vector_data.id, "vector_B");
-    EXPECT_EQ(search_results[1].vector_data.metadata["category"].get<std::string>(), "finance");
-    EXPECT_FLOAT_EQ(search_results[1].vector_data.metadata["score"].get<float>(), 0.85f);
+    EXPECT_EQ(search_results[1].vector_data.metadata.custom["category"].get<std::string>(), "finance");
+    EXPECT_FLOAT_EQ(search_results[1].vector_data.metadata.custom["score"].get<float>(), 0.85f);
 }
 
 // Test K-nearest neighbor (KNN) search
