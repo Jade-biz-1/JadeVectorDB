@@ -107,13 +107,13 @@
 **Completion Details**: Updated users.js to use new usersApi with full CRUD operations and enriched metadata display. Created comprehensive api-keys.js page with create/list/revoke functionality, authentication checks, and metadata display (key_id, description, permissions, dates). Search page already supports metadata. See frontend/T228_IMPLEMENTATION_SUMMARY.md for details and optional audit log viewer implementation.
 
 ### T229: Update documentation for new search API contract
-**[P] Next Session Task**
+**[\u2713] COMPLETE**
 **File**: `docs/api_documentation.md`, `docs/search_functionality.md`, `README.md`
 **Dependencies**: T044 (Search endpoint)
 **Description**: Document updated search response schema (score, nested vector) and authentication lifecycle
-**Status**: [ ] PENDING
+**Status**: [\u2713] COMPLETE
 **Priority**: MEDIUM
-**Estimated Effort**: 1 day
+**Completion Details**: Added Authentication Lifecycle section to api_documentation.md with flow diagram, default users table, and token expiration info. Enhanced search_functionality.md with parameter behavior documentation for include_vector_data and include_metadata parameters.
 
 ### T230: Add backend tests for search serialization
 **[P] Next Session Task**
@@ -161,22 +161,24 @@ Added to CMakeLists.txt. See backend/tests/T230_TEST_IMPLEMENTATION_SUMMARY.md f
 **Estimated Effort**: 2-3 days
 
 ### T234: Introduce smoke/performance tests for search and auth
-**[P] Next Session Task**
-**File**: `scripts/smoke_tests.sh`, `property-tests/test_auth_performance.cpp`
+**[\u2713] COMPLETE**
+**File**: `scripts/smoke_tests.sh`, `scripts/performance_tests.sh`
 **Dependencies**: T219, T044
 **Description**: Create smoke/performance test scripts exercising /v1/databases/{id}/search and authentication endpoints
-**Status**: [ ] PENDING
+**Status**: [\u2713] COMPLETE
 **Priority**: MEDIUM
-**Estimated Effort**: 1-2 days
+**Completion Details**: Created two comprehensive test scripts:
+- `smoke_tests.sh`: 12 tests covering health check, login (valid/invalid), protected endpoints, database operations, search with parameters, API key lifecycle, and logout flow
+- `performance_tests.sh`: Latency and throughput benchmarks for login, user list, database list, and token validation endpoints with configurable iterations and threshold checking
 
 ### T235: Coordinate security policy requirements
-**[P] Next Session Task**
+**[\u2713] COMPLETE**
 **File**: `docs/security_policy.md`
 **Dependencies**: T219, T221
 **Description**: Document password hashing policy, audit retention windows, and API key rotation requirements before finalizing handlers
-**Status**: [ ] PENDING
+**Status**: [\u2713] COMPLETE
 **Priority**: MEDIUM
-**Estimated Effort**: 1 day
+**Completion Details**: Created comprehensive security_policy.md with password requirements (bcrypt, min length, strong password rules), token/session management (expiry times, lifecycle), account protection (brute force, lockout), API key security (rotation schedule, best practices), audit logging (events, retention), data encryption (AES-256-GCM), and production recommendations.
 
 ### T236: Implement environment-specific default user seeding
 **[P] Next Session Task**

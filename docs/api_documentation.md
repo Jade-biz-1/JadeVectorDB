@@ -14,6 +14,30 @@ Authorization: Bearer {jwt-token}
 Authorization: Bearer {api-key}
 ```
 
+### Authentication Lifecycle
+
+**1. User Registration** → **2. Login** → **3. Token-based Access** → **4. Token Refresh/Logout**
+
+| Step | Endpoint | Description |
+|------|----------|-------------|
+| Register | `POST /v1/auth/register` | Create user account with username/password |
+| Login | `POST /v1/auth/login` | Authenticate and receive JWT token |
+| Access | Any protected endpoint | Include token in `Authorization: Bearer {token}` header |
+| Logout | `POST /v1/auth/logout` | Invalidate current session token |
+
+**Token Expiration**: JWT tokens expire after 24 hours by default. Users must re-authenticate after expiration.
+
+**API Keys**: For machine-to-machine access, use API keys instead of JWT tokens. API keys don't expire unless revoked.
+
+**Default Users (Development/Test only)**:
+| Username | Password | Roles |
+|----------|----------|-------|
+| admin | Admin@123456 | admin, developer, user |
+| dev | Developer@123 | developer, user |
+| test | Tester@123456 | tester, user |
+
+*Note: Default users are only seeded when `JADE_ENV` is set to `development`, `test`, or `local`.*
+
 ### Authentication Endpoints
 
 #### POST /v1/auth/register
