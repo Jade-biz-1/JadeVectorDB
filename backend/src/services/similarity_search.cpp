@@ -11,7 +11,8 @@ namespace jadevectordb {
 SimilaritySearchService::SimilaritySearchService(std::unique_ptr<VectorStorageService> vector_storage)
     : vector_storage_(std::move(vector_storage)),
       logger_(logging::LoggerManager::get_logger("SimilaritySearchService")),
-      metadata_filter_(std::make_unique<MetadataFilter>()) {
+      metadata_filter_(std::make_unique<MetadataFilter>()),
+      query_optimizer_(std::make_unique<QueryOptimizer>()) {
     
     // Initialize vector operations with CPU as default (will try GPU if available)
     vector_ops_ = vector_ops::VectorOperationsFactory::create_operations(hardware::DeviceType::CPU);
@@ -88,6 +89,10 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
         return tl::make_unexpected(validation_result.error());
     }
     
+    // Generate query plan using optimizer
+    QueryOptimizationPlan query_plan = query_optimizer_->generate_query_plan(database_id, query_vector, params);
+    LOG_DEBUG(logger_, "Generated query plan: " + query_plan.reasoning);
+    
     auto start_time = std::chrono::high_resolution_clock::now();
     if (active_searches_gauge_) {
         active_searches_gauge_->increment();
@@ -95,6 +100,8 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
     if (search_requests_counter_) {
         search_requests_counter_->increment();
     }
+    
+    size_t vectors_scanned = 0;
     
     try {
         // Retrieve all vectors from the database
@@ -107,6 +114,7 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
         }
         
         const auto& all_vector_ids = all_vectors_result.value();
+        vectors_scanned = all_vector_ids.size();
         
         // Retrieve vectors in batches to manage memory
         std::vector<SearchResult> results;
@@ -126,14 +134,18 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
             
             const auto& batch_vectors = batch_result.value();
             
-            // Apply metadata filters if specified in params
+            // Apply filter pushdown if query plan suggests it
             std::vector<Vector> filtered_batch = batch_vectors;
-            if (!params.filter_tags.empty() || !params.filter_owner.empty() || 
-                !params.filter_category.empty() || 
-                params.filter_min_score > 0.0f || params.filter_max_score < 1.0f) {
+            if (query_plan.use_filter_pushdown && 
+                (!params.filter_tags.empty() || !params.filter_owner.empty() || 
+                 !params.filter_category.empty() || 
+                 params.filter_min_score > 0.0f || params.filter_max_score < 1.0f)) {
                 
                 auto filter_start = std::chrono::high_resolution_clock::now();
+                
+                // Apply filters in optimized order
                 filtered_batch = apply_metadata_filters(batch_vectors, params);
+                
                 auto filter_end = std::chrono::high_resolution_clock::now();
                 
                 if (filter_application_time_histogram_) {
@@ -174,6 +186,12 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
         }
         
         auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+        
+        // Record query execution for optimizer learning
+        query_optimizer_->record_query_execution(database_id, query_plan, duration_ms, 
+                                                vectors_scanned, final_results.size());
+        
         if (active_searches_gauge_) {
             active_searches_gauge_->decrement();
         }

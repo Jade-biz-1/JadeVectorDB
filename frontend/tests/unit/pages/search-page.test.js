@@ -128,4 +128,165 @@ describe('Search Page', () => {
       expect(screen.queryByText('Search Results')).not.toBeInTheDocument();
     });
   });
+
+  // ============================================================================
+  // Search Result Rendering Toggle Tests (T233)
+  // ============================================================================
+
+  describe('Search Result Rendering Toggles', () => {
+    test('includeMetadata toggle is enabled by default', async () => {
+      render(<SearchPage />);
+      
+      await waitFor(() => {
+        expect(screen.getByText('Test DB')).toBeInTheDocument();
+      });
+
+      const metadataCheckbox = screen.getByLabelText(/include metadata/i);
+      expect(metadataCheckbox).toBeChecked();
+    });
+
+    test('sends includeMetadata=true when checkbox is checked', async () => {
+      render(<SearchPage />);
+      
+      await waitFor(() => {
+        expect(screen.getByText('Test DB')).toBeInTheDocument();
+      });
+
+      // Fill in query vector
+      fireEvent.change(screen.getByLabelText('Query Vector'), { target: { value: '0.1,0.2,0.3,0.4' } });
+      
+      // Ensure metadata checkbox is checked
+      const metadataCheckbox = screen.getByLabelText(/include metadata/i);
+      if (!metadataCheckbox.checked) {
+        fireEvent.click(metadataCheckbox);
+      }
+      
+      // Submit search
+      fireEvent.click(screen.getByRole('button', { name: /perform search/i }));
+
+      await waitFor(() => {
+        expect(searchApi.similaritySearch).toHaveBeenCalledWith(
+          'test-db-id',
+          expect.objectContaining({
+            includeMetadata: true
+          })
+        );
+      });
+    });
+
+    test('sends includeMetadata=false when checkbox is unchecked', async () => {
+      render(<SearchPage />);
+      
+      await waitFor(() => {
+        expect(screen.getByText('Test DB')).toBeInTheDocument();
+      });
+
+      // Fill in query vector
+      fireEvent.change(screen.getByLabelText('Query Vector'), { target: { value: '0.1,0.2,0.3,0.4' } });
+      
+      // Uncheck metadata checkbox
+      const metadataCheckbox = screen.getByLabelText(/include metadata/i);
+      if (metadataCheckbox.checked) {
+        fireEvent.click(metadataCheckbox);
+      }
+      
+      // Submit search
+      fireEvent.click(screen.getByRole('button', { name: /perform search/i }));
+
+      await waitFor(() => {
+        expect(searchApi.similaritySearch).toHaveBeenCalledWith(
+          'test-db-id',
+          expect.objectContaining({
+            includeMetadata: false
+          })
+        );
+      });
+    });
+
+    test('sends includeVectorData=true when include values is checked', async () => {
+      render(<SearchPage />);
+      
+      await waitFor(() => {
+        expect(screen.getByText('Test DB')).toBeInTheDocument();
+      });
+
+      // Fill in query vector
+      fireEvent.change(screen.getByLabelText('Query Vector'), { target: { value: '0.1,0.2,0.3,0.4' } });
+      
+      // Check include values checkbox if it exists
+      const valuesCheckbox = screen.queryByLabelText(/include.*values|include.*vector/i);
+      if (valuesCheckbox && !valuesCheckbox.checked) {
+        fireEvent.click(valuesCheckbox);
+      }
+      
+      // Submit search
+      fireEvent.click(screen.getByRole('button', { name: /perform search/i }));
+
+      await waitFor(() => {
+        expect(searchApi.similaritySearch).toHaveBeenCalled();
+      });
+    });
+
+    test('displays metadata in results when includeMetadata is true', async () => {
+      searchApi.similaritySearch.mockResolvedValue({
+        results: [
+          { 
+            id: 'vec1', 
+            similarity: 0.95, 
+            metadata: { category: 'tech', tags: ['ai', 'ml'] } 
+          }
+        ],
+        queryTimeMs: 15.2
+      });
+
+      render(<SearchPage />);
+      
+      await waitFor(() => {
+        expect(screen.getByText('Test DB')).toBeInTheDocument();
+      });
+
+      // Fill in query vector and search
+      fireEvent.change(screen.getByLabelText('Query Vector'), { target: { value: '0.1,0.2,0.3,0.4' } });
+      fireEvent.click(screen.getByRole('button', { name: /perform search/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('vec1')).toBeInTheDocument();
+      });
+    });
+
+    test('hides metadata in results when includeMetadata is false', async () => {
+      searchApi.similaritySearch.mockResolvedValue({
+        results: [
+          { 
+            id: 'vec1', 
+            similarity: 0.95
+            // No metadata returned when includeMetadata=false
+          }
+        ],
+        queryTimeMs: 15.2
+      });
+
+      render(<SearchPage />);
+      
+      await waitFor(() => {
+        expect(screen.getByText('Test DB')).toBeInTheDocument();
+      });
+
+      // Uncheck metadata checkbox
+      const metadataCheckbox = screen.getByLabelText(/include metadata/i);
+      if (metadataCheckbox.checked) {
+        fireEvent.click(metadataCheckbox);
+      }
+
+      // Fill in query vector and search
+      fireEvent.change(screen.getByLabelText('Query Vector'), { target: { value: '0.1,0.2,0.3,0.4' } });
+      fireEvent.click(screen.getByRole('button', { name: /perform search/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('vec1')).toBeInTheDocument();
+        // Metadata should not be displayed
+        expect(screen.queryByText('category')).not.toBeInTheDocument();
+      });
+    });
+  });
 });

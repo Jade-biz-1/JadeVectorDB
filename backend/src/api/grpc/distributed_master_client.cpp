@@ -822,7 +822,360 @@ void DistributedMasterClient::mark_worker_success(const std::string& worker_id) 
     }
 }
 
-// Remaining RPC operations (replication, Raft) omitted for brevity
-// Similar pattern to above implementations
+// ============================================================================
+// Replication Operations
+// ============================================================================
+
+Result<DistributedMasterClient::ReplicationResponse> DistributedMasterClient::replicate_data(
+    const std::string& target_worker_id,
+    const ReplicationRequest& request
+) {
+    auto start_time = std::chrono::steady_clock::now();
+
+    auto connection_result = get_worker_connection(target_worker_id);
+    if (!connection_result.has_value()) {
+        record_request(false, 0);
+        return tl::make_unexpected(connection_result.error());
+    }
+
+    auto connection = connection_result.value();
+
+#ifdef BUILD_WITH_GRPC
+    try {
+        distributed::ReplicationRequest grpc_request;
+        grpc_request.set_shard_id(request.shard_id);
+        grpc_request.set_source_node_id(request.source_node_id);
+        grpc_request.set_replication_type(
+            request.replication_type == ReplicationType::FULL 
+                ? distributed::REPLICATION_FULL 
+                : distributed::REPLICATION_INCREMENTAL
+        );
+        grpc_request.set_from_version(request.from_version);
+        grpc_request.set_to_version(request.to_version);
+
+        // Add vectors to the request
+        for (const auto& vector : request.vectors) {
+            auto* proto_vector = grpc_request.add_vectors();
+            proto_vector->set_vector_id(vector.id);
+            for (const auto& val : vector.values) {
+                proto_vector->add_values(val);
+            }
+            proto_vector->set_version(vector.version);
+            proto_vector->set_timestamp(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()
+                ).count()
+            );
+            // Add metadata
+            if (!vector.metadata.source.empty()) {
+                (*proto_vector->mutable_metadata())["source"] = vector.metadata.source;
+            }
+            if (!vector.metadata.category.empty()) {
+                (*proto_vector->mutable_metadata())["category"] = vector.metadata.category;
+            }
+        }
+
+        auto context = create_context(config_.request_timeout);
+        distributed::ReplicationResponse grpc_response;
+        
+        auto status = connection->stub->ReplicateData(context.get(), grpc_request, &grpc_response);
+
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start_time
+        ).count();
+
+        if (!status.ok()) {
+            logger_->error("ReplicateData RPC failed for worker " + target_worker_id + ": " + status.error_message());
+            record_request(false, duration);
+            mark_worker_failed(target_worker_id);
+            return tl::make_unexpected(ErrorHandler::create_error(
+                ErrorCode::NETWORK_ERROR,
+                "ReplicateData failed: " + status.error_message()
+            ));
+        }
+
+        record_request(true, duration);
+        mark_worker_success(target_worker_id);
+
+        ReplicationResponse response;
+        response.shard_id = grpc_response.shard_id();
+        response.success = grpc_response.success();
+        response.vectors_replicated = grpc_response.vectors_replicated();
+        response.replication_lag_ms = grpc_response.replication_lag_ms();
+        response.current_version = grpc_response.current_version();
+
+        return response;
+
+    } catch (const std::exception& e) {
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start_time
+        ).count();
+        record_request(false, duration);
+        mark_worker_failed(target_worker_id);
+        return tl::make_unexpected(ErrorHandler::create_error(
+            ErrorCode::SERVICE_ERROR,
+            "Exception in replicate_data: " + std::string(e.what())
+        ));
+    }
+#else
+    // Non-gRPC fallback: simulate replication
+    logger_->debug("Simulating replicate_data to worker " + target_worker_id + " (no gRPC)");
+    
+    ReplicationResponse response;
+    response.shard_id = request.shard_id;
+    response.success = true;
+    response.vectors_replicated = static_cast<int32_t>(request.vectors.size());
+    response.replication_lag_ms = 0;
+    response.current_version = request.to_version;
+    
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start_time
+    ).count();
+    record_request(true, duration);
+    
+    return response;
+#endif
+}
+
+Result<bool> DistributedMasterClient::sync_shard(
+    const std::string& target_worker_id,
+    const std::string& shard_id,
+    const std::string& source_worker_id,
+    int64_t target_version
+) {
+    auto connection_result = get_worker_connection(target_worker_id);
+    if (!connection_result.has_value()) {
+        return tl::make_unexpected(connection_result.error());
+    }
+
+#ifdef BUILD_WITH_GRPC
+    try {
+        distributed::SyncShardRequest grpc_request;
+        grpc_request.set_shard_id(shard_id);
+        grpc_request.set_source_node_id(source_worker_id);
+        grpc_request.set_target_version(target_version);
+
+        auto context = create_context(config_.request_timeout * 2);  // Double timeout for sync
+        distributed::SyncShardResponse grpc_response;
+
+        auto status = connection_result.value()->stub->SyncShard(context.get(), grpc_request, &grpc_response);
+
+        if (!status.ok()) {
+            logger_->error("SyncShard RPC failed: " + status.error_message());
+            mark_worker_failed(target_worker_id);
+            return tl::make_unexpected(ErrorHandler::create_error(
+                ErrorCode::NETWORK_ERROR,
+                "SyncShard failed: " + status.error_message()
+            ));
+        }
+
+        mark_worker_success(target_worker_id);
+        return grpc_response.success();
+
+    } catch (const std::exception& e) {
+        mark_worker_failed(target_worker_id);
+        return tl::make_unexpected(ErrorHandler::create_error(
+            ErrorCode::SERVICE_ERROR,
+            "Exception in sync_shard: " + std::string(e.what())
+        ));
+    }
+#else
+    logger_->debug("Simulating sync_shard (no gRPC)");
+    return true;
+#endif
+}
+
+// ============================================================================
+// Raft Consensus Operations
+// ============================================================================
+
+Result<DistributedMasterClient::VoteResponse> DistributedMasterClient::request_vote(
+    const std::string& target_worker_id,
+    const VoteRequest& request
+) {
+    auto connection_result = get_worker_connection(target_worker_id);
+    if (!connection_result.has_value()) {
+        return tl::make_unexpected(connection_result.error());
+    }
+
+#ifdef BUILD_WITH_GRPC
+    try {
+        distributed::RequestVoteRequest grpc_request;
+        grpc_request.set_term(request.term);
+        grpc_request.set_candidate_id(request.candidate_id);
+        grpc_request.set_last_log_index(request.last_log_index);
+        grpc_request.set_last_log_term(request.last_log_term);
+
+        auto context = create_context(std::chrono::milliseconds(500));  // Short timeout for voting
+        distributed::RequestVoteResponse grpc_response;
+
+        auto status = connection_result.value()->stub->RequestVote(context.get(), grpc_request, &grpc_response);
+
+        if (!status.ok()) {
+            logger_->warn("RequestVote RPC failed for " + target_worker_id + ": " + status.error_message());
+            mark_worker_failed(target_worker_id);
+            return tl::make_unexpected(ErrorHandler::create_error(
+                ErrorCode::NETWORK_ERROR,
+                "RequestVote failed: " + status.error_message()
+            ));
+        }
+
+        mark_worker_success(target_worker_id);
+
+        VoteResponse response;
+        response.term = grpc_response.term();
+        response.vote_granted = grpc_response.vote_granted();
+        response.voter_id = target_worker_id;
+
+        return response;
+
+    } catch (const std::exception& e) {
+        mark_worker_failed(target_worker_id);
+        return tl::make_unexpected(ErrorHandler::create_error(
+            ErrorCode::SERVICE_ERROR,
+            "Exception in request_vote: " + std::string(e.what())
+        ));
+    }
+#else
+    logger_->debug("Simulating request_vote (no gRPC)");
+    VoteResponse response;
+    response.term = request.term;
+    response.vote_granted = true;  // Always grant in simulation
+    response.voter_id = target_worker_id;
+    return response;
+#endif
+}
+
+Result<DistributedMasterClient::AppendEntriesResponse> DistributedMasterClient::append_entries(
+    const std::string& target_worker_id,
+    const AppendEntriesRequest& request
+) {
+    auto connection_result = get_worker_connection(target_worker_id);
+    if (!connection_result.has_value()) {
+        return tl::make_unexpected(connection_result.error());
+    }
+
+#ifdef BUILD_WITH_GRPC
+    try {
+        distributed::AppendEntriesRequest grpc_request;
+        grpc_request.set_term(request.term);
+        grpc_request.set_leader_id(request.leader_id);
+        grpc_request.set_prev_log_index(request.prev_log_index);
+        grpc_request.set_prev_log_term(request.prev_log_term);
+        grpc_request.set_leader_commit(request.leader_commit_index);
+
+        // Add log entries
+        for (const auto& entry : request.entries) {
+            auto* proto_entry = grpc_request.add_entries();
+            proto_entry->set_term(entry.term);
+            proto_entry->set_index(entry.index);
+            proto_entry->set_command_type(entry.command_type);
+            proto_entry->set_command_data(entry.command_data);
+        }
+
+        auto context = create_context(std::chrono::milliseconds(300));  // Short timeout for heartbeats
+        distributed::AppendEntriesResponse grpc_response;
+
+        auto status = connection_result.value()->stub->AppendEntries(context.get(), grpc_request, &grpc_response);
+
+        if (!status.ok()) {
+            logger_->debug("AppendEntries RPC failed for " + target_worker_id + ": " + status.error_message());
+            mark_worker_failed(target_worker_id);
+            return tl::make_unexpected(ErrorHandler::create_error(
+                ErrorCode::NETWORK_ERROR,
+                "AppendEntries failed: " + status.error_message()
+            ));
+        }
+
+        mark_worker_success(target_worker_id);
+
+        AppendEntriesResponse response;
+        response.term = grpc_response.term();
+        response.success = grpc_response.success();
+        response.follower_id = target_worker_id;
+        response.match_index = grpc_response.match_index();
+
+        return response;
+
+    } catch (const std::exception& e) {
+        mark_worker_failed(target_worker_id);
+        return tl::make_unexpected(ErrorHandler::create_error(
+            ErrorCode::SERVICE_ERROR,
+            "Exception in append_entries: " + std::string(e.what())
+        ));
+    }
+#else
+    logger_->debug("Simulating append_entries (no gRPC)");
+    AppendEntriesResponse response;
+    response.term = request.term;
+    response.success = true;
+    response.follower_id = target_worker_id;
+    response.match_index = request.prev_log_index + static_cast<int64_t>(request.entries.size());
+    return response;
+#endif
+}
+
+Result<DistributedMasterClient::InstallSnapshotResponse> DistributedMasterClient::install_snapshot(
+    const std::string& target_worker_id,
+    const InstallSnapshotRequest& request
+) {
+    auto connection_result = get_worker_connection(target_worker_id);
+    if (!connection_result.has_value()) {
+        return tl::make_unexpected(connection_result.error());
+    }
+
+#ifdef BUILD_WITH_GRPC
+    try {
+        distributed::InstallSnapshotRequest grpc_request;
+        grpc_request.set_term(request.term);
+        grpc_request.set_leader_id(request.leader_id);
+        grpc_request.set_last_included_index(request.last_included_index);
+        grpc_request.set_last_included_term(request.last_included_term);
+        grpc_request.set_offset(request.offset);
+        grpc_request.set_data(request.data.data(), request.data.size());
+        grpc_request.set_done(request.done);
+
+        auto context = create_context(config_.default_timeout);
+        distributed::InstallSnapshotResponse grpc_response;
+
+        auto status = connection_result.value()->stub->InstallSnapshot(context.get(), grpc_request, &grpc_response);
+
+        if (!status.ok()) {
+            logger_->debug("InstallSnapshot RPC failed for " + target_worker_id + ": " + status.error_message());
+            mark_worker_failed(target_worker_id);
+            return tl::make_unexpected(ErrorHandler::create_error(
+                ErrorCode::NETWORK_ERROR,
+                "InstallSnapshot failed: " + status.error_message()
+            ));
+        }
+
+        mark_worker_success(target_worker_id);
+
+        InstallSnapshotResponse response;
+        response.term = grpc_response.term();
+        response.success = grpc_response.success();
+        response.follower_id = grpc_response.follower_id();
+
+        logger_->debug("InstallSnapshot to " + target_worker_id + " completed, success=" + 
+                      std::to_string(response.success));
+
+        return response;
+
+    } catch (const std::exception& e) {
+        mark_worker_failed(target_worker_id);
+        return tl::make_unexpected(ErrorHandler::create_error(
+            ErrorCode::SERVICE_ERROR,
+            "Exception in install_snapshot: " + std::string(e.what())
+        ));
+    }
+#else
+    logger_->debug("Simulating install_snapshot (no gRPC)");
+    InstallSnapshotResponse response;
+    response.term = request.term;
+    response.success = true;
+    response.follower_id = target_worker_id;
+    return response;
+#endif
+}
 
 } // namespace jadevectordb

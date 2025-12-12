@@ -415,6 +415,180 @@ describe('Authentication Flows - Comprehensive Tests', () => {
         expect(apiKeyApi.listKeys).toHaveBeenCalledTimes(2); // Initial load + refresh
       });
     });
+
+    // ============================================================================
+    // API Key Revocation UX Tests (T233)
+    // ============================================================================
+
+    test('revokes API key successfully', async () => {
+      const existingKeys = [
+        {
+          keyId: 'key-to-revoke',
+          name: 'Key to Revoke',
+          createdAt: new Date().toISOString(),
+          permissions: ['read', 'write']
+        }
+      ];
+
+      apiKeyApi.listKeys.mockResolvedValueOnce({ apiKeys: existingKeys });
+      apiKeyApi.revokeKey.mockResolvedValueOnce({ success: true, message: 'API key revoked' });
+      apiKeyApi.listKeys.mockResolvedValueOnce({ apiKeys: [] }); // After revocation
+
+      // Set up authenticated state
+      mockLocalStorage.store = {
+        'jadevectordb_authenticated': 'true',
+        'jadevectordb_api_key': 'test-token'
+      };
+
+      render(<AuthManagement />);
+
+      // Wait for keys to load
+      await waitFor(() => {
+        expect(screen.getByText('Key to Revoke')).toBeInTheDocument();
+      });
+
+      // Find and click revoke button
+      const revokeButton = screen.getByRole('button', { name: /revoke/i });
+      fireEvent.click(revokeButton);
+
+      await waitFor(() => {
+        expect(apiKeyApi.revokeKey).toHaveBeenCalledWith('key-to-revoke');
+        expect(global.alert).toHaveBeenCalledWith('API key revoked successfully');
+      });
+    });
+
+    test('shows confirmation before revoking API key', async () => {
+      const existingKeys = [
+        {
+          keyId: 'key-123',
+          name: 'Important Key',
+          createdAt: new Date().toISOString(),
+          permissions: ['read']
+        }
+      ];
+
+      apiKeyApi.listKeys.mockResolvedValueOnce({ apiKeys: existingKeys });
+
+      mockLocalStorage.store = {
+        'jadevectordb_authenticated': 'true',
+        'jadevectordb_api_key': 'test-token'
+      };
+
+      // Mock window.confirm
+      const originalConfirm = window.confirm;
+      window.confirm = jest.fn(() => false); // User cancels
+
+      render(<AuthManagement />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Important Key')).toBeInTheDocument();
+      });
+
+      const revokeButton = screen.getByRole('button', { name: /revoke/i });
+      fireEvent.click(revokeButton);
+
+      // Should not call revokeKey if user cancels
+      expect(apiKeyApi.revokeKey).not.toHaveBeenCalled();
+
+      window.confirm = originalConfirm;
+    });
+
+    test('handles API key revocation failure', async () => {
+      const existingKeys = [
+        {
+          keyId: 'key-123',
+          name: 'Protected Key',
+          createdAt: new Date().toISOString(),
+          permissions: ['read']
+        }
+      ];
+
+      apiKeyApi.listKeys.mockResolvedValueOnce({ apiKeys: existingKeys });
+      apiKeyApi.revokeKey.mockRejectedValueOnce(new Error('Cannot revoke this key'));
+
+      mockLocalStorage.store = {
+        'jadevectordb_authenticated': 'true',
+        'jadevectordb_api_key': 'test-token'
+      };
+
+      render(<AuthManagement />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Protected Key')).toBeInTheDocument();
+      });
+
+      const revokeButton = screen.getByRole('button', { name: /revoke/i });
+      fireEvent.click(revokeButton);
+
+      await waitFor(() => {
+        expect(global.alert).toHaveBeenCalledWith('Error revoking API key: Cannot revoke this key');
+      });
+    });
+
+    test('refreshes API key list after successful revocation', async () => {
+      const existingKeys = [
+        { keyId: 'key-1', name: 'Key 1', createdAt: new Date().toISOString(), permissions: ['read'] },
+        { keyId: 'key-2', name: 'Key 2', createdAt: new Date().toISOString(), permissions: ['read'] }
+      ];
+
+      apiKeyApi.listKeys.mockResolvedValueOnce({ apiKeys: existingKeys });
+      apiKeyApi.revokeKey.mockResolvedValueOnce({ success: true });
+      apiKeyApi.listKeys.mockResolvedValueOnce({ 
+        apiKeys: [{ keyId: 'key-2', name: 'Key 2', createdAt: new Date().toISOString(), permissions: ['read'] }]
+      });
+
+      mockLocalStorage.store = {
+        'jadevectordb_authenticated': 'true',
+        'jadevectordb_api_key': 'test-token'
+      };
+
+      render(<AuthManagement />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Key 1')).toBeInTheDocument();
+        expect(screen.getByText('Key 2')).toBeInTheDocument();
+      });
+
+      // Revoke first key
+      const revokeButtons = screen.getAllByRole('button', { name: /revoke/i });
+      fireEvent.click(revokeButtons[0]);
+
+      await waitFor(() => {
+        expect(apiKeyApi.listKeys).toHaveBeenCalledTimes(2); // Initial + refresh
+      });
+    });
+
+    test('disables revoke button during revocation', async () => {
+      const existingKeys = [
+        { keyId: 'key-1', name: 'Key 1', createdAt: new Date().toISOString(), permissions: ['read'] }
+      ];
+
+      apiKeyApi.listKeys.mockResolvedValueOnce({ apiKeys: existingKeys });
+      apiKeyApi.revokeKey.mockImplementation(() => 
+        new Promise(resolve => setTimeout(() => resolve({ success: true }), 100))
+      );
+
+      mockLocalStorage.store = {
+        'jadevectordb_authenticated': 'true',
+        'jadevectordb_api_key': 'test-token'
+      };
+
+      render(<AuthManagement />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Key 1')).toBeInTheDocument();
+      });
+
+      const revokeButton = screen.getByRole('button', { name: /revoke/i });
+      fireEvent.click(revokeButton);
+
+      // Button should be disabled during revocation
+      expect(revokeButton).toBeDisabled();
+
+      await waitFor(() => {
+        expect(apiKeyApi.revokeKey).toHaveBeenCalled();
+      });
+    });
   });
 
   // ============================================================================
