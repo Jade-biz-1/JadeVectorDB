@@ -46,7 +46,7 @@ Hands-on command-line exercises for practical, production-ready skills.
 - ✅ Verification tools to check your work
 - 🚀 Production best practices
 
-**Start here:** [CLI Tutorial README](./cli/README.md)
+**Start here:** [CLI Tutorial README](./cli/docs/README.md)
 
 ---
 
@@ -167,11 +167,11 @@ CLI Tutorial (All Exercises) → Deployment Documentation → Monitoring & Scali
 ### Documentation
 - **API Documentation:** [`/docs/api_documentation.md`](../docs/api_documentation.md)
 - **Architecture Guide:** [`/docs/architecture.md`](../docs/architecture.md)
-- **CLI Documentation:** [`/cli/README.md`](../cli/README.md)
+- **CLI Documentation:** [`/cli/docs/README.md`](../cli/docs/README.md)
 
 ### Troubleshooting
 - **Web Tutorial Issues:** Check browser console and [web/README.md](./web/README.md)
-- **CLI Tutorial Issues:** See [cli/README.md](./cli/README.md) troubleshooting section
+- **CLI Tutorial Issues:** See [cli/docs/README.md](./cli/docs/README.md) troubleshooting section
 - **General Issues:** Refer to main [README.md](../README.md)
 
 ### Community

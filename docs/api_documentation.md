@@ -32,9 +32,9 @@ Authorization: Bearer {api-key}
 **Default Users (Development/Test only)**:
 | Username | Password | Roles |
 |----------|----------|-------|
-| admin | Admin@123456 | admin, developer, user |
-| dev | Developer@123 | developer, user |
-| test | Tester@123456 | tester, user |
+| admin | admin123 | admin, developer, user |
+| dev | dev123 | developer, user |
+| test | test123 | tester, user |
 
 *Note: Default users are only seeded when `JADE_ENV` is set to `development`, `test`, or `local`.*
 
@@ -829,6 +829,70 @@ The API implements rate limiting per API key with default limits:
 - Vector operations: 1000 requests per minute
 - Search operations: 500 requests per minute
 - Embedding generation: 10 requests per minute
+
+### Distributed System Management
+
+#### GET /v1/cluster/status
+- **Description**: Get cluster status and member information
+- **Authentication**: Required
+- **Permissions**: cluster:read
+- **Response**:
+```json
+{
+  "cluster_id": "string",
+  "nodes": [
+    {
+      "node_id": "string",
+      "address": "string",
+      "status": "active|inactive",
+      "role": "master|worker",
+      "health": "healthy|degraded|unhealthy"
+    }
+  ],
+  "total_nodes": "integer",
+  "healthy_nodes": "integer"
+}
+```
+
+#### GET /v1/performance/metrics
+- **Description**: Get performance metrics for the system
+- **Authentication**: Required
+- **Permissions**: metrics:read
+- **Response**:
+```json
+{
+  "cpu_usage": "float",
+  "memory_usage": "float",
+  "disk_usage": "float",
+  "query_latency_p50": "float",
+  "query_latency_p95": "float",
+  "query_latency_p99": "float",
+  "queries_per_second": "float",
+  "timestamp": "timestamp"
+}
+```
+
+#### GET /v1/alerts
+- **Description**: Get active alerts and notifications
+- **Authentication**: Required
+- **Permissions**: alerts:read
+- **Response**:
+```json
+{
+  "alerts": [
+    {
+      "alert_id": "string",
+      "severity": "info|warning|error|critical",
+      "message": "string",
+      "timestamp": "timestamp",
+      "acknowledged": "boolean"
+    }
+  ],
+  "total_alerts": "integer"
+}
+```
+
+*Note: Cluster, performance, and alert endpoints are currently stub implementations and will be fully implemented in future releases.*
 
 ## SDKs and Client Libraries
 

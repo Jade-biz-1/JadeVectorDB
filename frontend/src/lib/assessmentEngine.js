@@ -141,6 +141,9 @@ export class AssessmentEngine {
     };
 
     try {
+      if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+        return false;
+      }
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(progress));
       return true;
     } catch (error) {
@@ -154,6 +157,9 @@ export class AssessmentEngine {
    */
   loadProgress() {
     try {
+      if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+        return null;
+      }
       const progress = localStorage.getItem(this.STORAGE_KEY);
       return progress ? JSON.parse(progress) : null;
     } catch (error) {
@@ -167,6 +173,9 @@ export class AssessmentEngine {
    */
   clearProgress() {
     try {
+      if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+        return false;
+      }
       localStorage.removeItem(this.STORAGE_KEY);
       return true;
     } catch (error) {
@@ -180,6 +189,9 @@ export class AssessmentEngine {
    */
   saveResults(moduleId, scoreData, timeSpent) {
     try {
+      if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+        return false;
+      }
       const results = this.loadAllResults();
 
       const result = {
@@ -209,6 +221,10 @@ export class AssessmentEngine {
    */
   loadAllResults() {
     try {
+      // Check if running in browser environment
+      if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+        return {};
+      }
       const results = localStorage.getItem(this.RESULTS_KEY);
       return results ? JSON.parse(results) : {};
     } catch (error) {
@@ -416,6 +432,9 @@ export class AssessmentEngine {
    */
   clearAllResults() {
     try {
+      if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+        return false;
+      }
       localStorage.removeItem(this.RESULTS_KEY);
       return true;
     } catch (error) {
