@@ -1,7 +1,7 @@
 // frontend/src/lib/api.js
 
-// Base API configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/v1';
+// Base API configuration - use proxy to avoid CORS
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 const DEFAULT_HEADERS = {
   'Content-Type': 'application/json',
 };
@@ -17,15 +17,15 @@ const handleResponse = async (response) => {
 
 // Utility function to add auth headers
 const getAuthHeaders = () => {
-  const apiKey = localStorage.getItem('jadevectordb_api_key');
-  if (!apiKey) {
-    console.warn('No API key found in localStorage');
+  const token = localStorage.getItem('jadevectordb_auth_token');
+  if (!token) {
+    console.warn('No auth token found in localStorage');
     return DEFAULT_HEADERS;
   }
-  
+
   return {
     ...DEFAULT_HEADERS,
-    'X-API-Key': apiKey,
+    'Authorization': `Bearer ${token}`,
   };
 };
 
@@ -272,58 +272,6 @@ export const lifecycleApi = {
     const response = await fetch(`${API_BASE_URL}/databases/${databaseId}/lifecycle/status`, {
       method: 'GET',
       headers: getAuthHeaders(),
-    });
-    return handleResponse(response);
-  },
-};
-
-// API Service for Authentication
-export const authApi = {
-  // Register new user
-  register: async (username, password, roles = ['user']) => {
-    const response = await fetch(`${API_BASE_URL}/auth/register`, {
-      method: 'POST',
-      headers: DEFAULT_HEADERS,
-      body: JSON.stringify({ username, password, roles }),
-    });
-    return handleResponse(response);
-  },
-
-  // Login
-  login: async (username, password) => {
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
-      method: 'POST',
-      headers: DEFAULT_HEADERS,
-      body: JSON.stringify({ username, password }),
-    });
-    return handleResponse(response);
-  },
-
-  // Logout
-  logout: async () => {
-    const response = await fetch(`${API_BASE_URL}/auth/logout`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-    });
-    return handleResponse(response);
-  },
-
-  // Forgot password
-  forgotPassword: async (username, email) => {
-    const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
-      method: 'POST',
-      headers: DEFAULT_HEADERS,
-      body: JSON.stringify({ username, email }),
-    });
-    return handleResponse(response);
-  },
-
-  // Reset password
-  resetPassword: async (token, newPassword) => {
-    const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
-      method: 'POST',
-      headers: DEFAULT_HEADERS,
-      body: JSON.stringify({ token, newPassword }),
     });
     return handleResponse(response);
   },

@@ -12,6 +12,53 @@
 #include "lib/error_handling.h"
 
 using namespace jadevectordb;
+
+// Helper function to convert Database to DatabaseCreationParams
+static DatabaseCreationParams to_creation_params(const Database& db) {
+    DatabaseCreationParams params;
+    params.name = db.name;
+    params.description = db.description;
+    params.vectorDimension = db.vectorDimension;
+    params.indexType = db.indexType;
+    params.indexParameters = db.indexParameters;
+    params.sharding = db.sharding;
+    params.replication = db.replication;
+    params.embeddingModels = db.embeddingModels;
+    params.metadataSchema = db.metadataSchema;
+    if (db.retentionPolicy) {
+        params.retentionPolicy = std::make_unique<Database::RetentionPolicy>(*db.retentionPolicy);
+    }
+    params.accessControl = db.accessControl;
+    return params;
+}
+
+// Helper function to convert Database to DatabaseUpdateParams
+static DatabaseUpdateParams to_update_params(const Database& db) {
+    DatabaseUpdateParams params;
+    params.name = db.name;
+    params.description = db.description;
+    params.vectorDimension = db.vectorDimension;
+    params.indexType = db.indexType;
+    std::unordered_map<std::string, std::string> idx_params;
+    for (const auto& [k, v] : db.indexParameters) {
+        idx_params[k] = v;
+    }
+    params.indexParameters = idx_params;
+    params.sharding = db.sharding;
+    params.replication = db.replication;
+    params.embeddingModels = db.embeddingModels;
+    std::unordered_map<std::string, std::string> meta_schema;
+    for (const auto& [k, v] : db.metadataSchema) {
+        meta_schema[k] = v;
+    }
+    params.metadataSchema = meta_schema;
+    if (db.retentionPolicy) {
+        params.retentionPolicy = std::make_unique<Database::RetentionPolicy>(*db.retentionPolicy);
+    }
+    params.accessControl = db.accessControl;
+    return params;
+}
+
 using ::testing::Return;
 using ::testing::_;
 
@@ -33,7 +80,7 @@ protected:
         test_db.vectorDimension = 4;
         test_db.description = "Test database for integration testing";
         
-        auto create_result = db_service_->create_database(test_db);
+        auto create_result = db_service_->create_database(to_creation_params(test_db));
         ASSERT_TRUE(create_result.has_value());
         db_id_ = create_result.value();
     }
@@ -56,9 +103,9 @@ TEST_F(VectorApiIntegrationTest, StoreAndRetrieveVector) {
     Vector v1;
     v1.id = "vector_1";
     v1.values = {1.0f, 0.1f, 0.2f, 0.3f};
-    v1.metadata["category"] = "finance";
-    v1.metadata["score"] = 0.95f;
-    v1.metadata["tags"] = nlohmann::json::array({"investment", "trading"});
+    v1.metadata.custom["category"] = "finance";
+    v1.metadata.custom["score"] = 0.95f;
+    v1.metadata.custom["tags"] = nlohmann::json::array({"investment", "trading"});
     
     auto store_result = vector_service_->store_vector(db_id_, v1);
     ASSERT_TRUE(store_result.has_value());
@@ -66,9 +113,9 @@ TEST_F(VectorApiIntegrationTest, StoreAndRetrieveVector) {
     Vector v2;
     v2.id = "vector_2";
     v2.values = {0.1f, 1.0f, 0.2f, 0.8f};
-    v2.metadata["category"] = "technology";
-    v2.metadata["score"] = 0.75f;
-    v2.metadata["tags"] = nlohmann::json::array({"ai", "ml"});
+    v2.metadata.custom["category"] = "technology";
+    v2.metadata.custom["score"] = 0.75f;
+    v2.metadata.custom["tags"] = nlohmann::json::array({"ai", "ml"});
     
     store_result = vector_service_->store_vector(db_id_, v2);
     ASSERT_TRUE(store_result.has_value());
@@ -83,8 +130,8 @@ TEST_F(VectorApiIntegrationTest, StoreAndRetrieveVector) {
     for (size_t i = 0; i < v1.values.size(); ++i) {
         EXPECT_FLOAT_EQ(retrieved_v1.values[i], v1.values[i]);
     }
-    EXPECT_EQ(retrieved_v1.metadata["category"].get<std::string>(), "finance");
-    EXPECT_FLOAT_EQ(retrieved_v1.metadata["score"].get<float>(), 0.95f);
+    EXPECT_EQ(retrieved_v1.metadata.custom["category"].get<std::string>(), "finance");
+    EXPECT_FLOAT_EQ(retrieved_v1.metadata.custom["score"].get<float>(), 0.95f);
     
     retrieve_result = vector_service_->retrieve_vector(db_id_, v2.id);
     ASSERT_TRUE(retrieve_result.has_value());
@@ -95,8 +142,8 @@ TEST_F(VectorApiIntegrationTest, StoreAndRetrieveVector) {
     for (size_t i = 0; i < v2.values.size(); ++i) {
         EXPECT_FLOAT_EQ(retrieved_v2.values[i], v2.values[i]);
     }
-    EXPECT_EQ(retrieved_v2.metadata["category"].get<std::string>(), "technology");
-    EXPECT_FLOAT_EQ(retrieved_v2.metadata["score"].get<float>(), 0.75f);
+    EXPECT_EQ(retrieved_v2.metadata.custom["category"].get<std::string>(), "technology");
+    EXPECT_FLOAT_EQ(retrieved_v2.metadata.custom["score"].get<float>(), 0.75f);
 }
 
 // Test batch vector operations integration
@@ -108,9 +155,9 @@ TEST_F(VectorApiIntegrationTest, BatchVectorOperations) {
         Vector v;
         v.id = "batch_vector_" + std::to_string(i);
         v.values = {static_cast<float>(i), static_cast<float>(i+1), static_cast<float>(i+2), static_cast<float>(i+3)};
-        v.metadata["category"] = (i % 2 == 0) ? "finance" : "technology";
-        v.metadata["score"] = 0.5f + (static_cast<float>(i) * 0.1f);
-        v.metadata["tags"] = nlohmann::json::array({"tag" + std::to_string(i)});
+        v.metadata.custom["category"] = (i % 2 == 0) ? "finance" : "technology";
+        v.metadata.custom["score"] = 0.5f + (static_cast<float>(i) * 0.1f);
+        v.metadata.custom["tags"] = nlohmann::json::array({"tag" + std::to_string(i)});
         test_vectors.push_back(v);
     }
     
@@ -153,9 +200,9 @@ TEST_F(VectorApiIntegrationTest, UpdateVector) {
     Vector initial_vector;
     initial_vector.id = "update_test_vector";
     initial_vector.values = {1.0f, 0.1f, 0.2f, 0.3f};
-    initial_vector.metadata["category"] = "finance";
-    initial_vector.metadata["score"] = 0.95f;
-    initial_vector.metadata["tags"] = nlohmann::json::array({"investment", "trading"});
+    initial_vector.metadata.custom["category"] = "finance";
+    initial_vector.metadata.custom["score"] = 0.95f;
+    initial_vector.metadata.custom["tags"] = nlohmann::json::array({"investment", "trading"});
     
     auto store_result = vector_service_->store_vector(db_id_, initial_vector);
     ASSERT_TRUE(store_result.has_value());
@@ -164,15 +211,15 @@ TEST_F(VectorApiIntegrationTest, UpdateVector) {
     auto retrieve_result = vector_service_->retrieve_vector(db_id_, initial_vector.id);
     ASSERT_TRUE(retrieve_result.has_value());
     Vector retrieved_vector = retrieve_result.value();
-    EXPECT_EQ(retrieved_vector.metadata["category"].get<std::string>(), "finance");
-    EXPECT_FLOAT_EQ(retrieved_vector.metadata["score"].get<float>(), 0.95f);
+    EXPECT_EQ(retrieved_vector.metadata.custom["category"].get<std::string>(), "finance");
+    EXPECT_FLOAT_EQ(retrieved_vector.metadata.custom["score"].get<float>(), 0.95f);
     
     // Update the vector with new values
     Vector updated_vector = initial_vector;
     updated_vector.values = {0.9f, 0.2f, 0.1f, 0.4f};
-    updated_vector.metadata["category"] = "technology";
-    updated_vector.metadata["score"] = 0.85f;
-    updated_vector.metadata["tags"] = nlohmann::json::array({"ai", "ml"});
+    updated_vector.metadata.custom["category"] = "technology";
+    updated_vector.metadata.custom["score"] = 0.85f;
+    updated_vector.metadata.custom["tags"] = nlohmann::json::array({"ai", "ml"});
     
     auto update_result = vector_service_->update_vector(db_id_, updated_vector);
     ASSERT_TRUE(update_result.has_value());
@@ -181,8 +228,8 @@ TEST_F(VectorApiIntegrationTest, UpdateVector) {
     retrieve_result = vector_service_->retrieve_vector(db_id_, initial_vector.id);
     ASSERT_TRUE(retrieve_result.has_value());
     retrieved_vector = retrieve_result.value();
-    EXPECT_EQ(retrieved_vector.metadata["category"].get<std::string>(), "technology");
-    EXPECT_FLOAT_EQ(retrieved_vector.metadata["score"].get<float>(), 0.85f);
+    EXPECT_EQ(retrieved_vector.metadata.custom["category"].get<std::string>(), "technology");
+    EXPECT_FLOAT_EQ(retrieved_vector.metadata.custom["score"].get<float>(), 0.85f);
     EXPECT_EQ(retrieved_vector.values.size(), updated_vector.values.size());
     for (size_t i = 0; i < updated_vector.values.size(); ++i) {
         EXPECT_FLOAT_EQ(retrieved_vector.values[i], updated_vector.values[i]);
@@ -195,9 +242,9 @@ TEST_F(VectorApiIntegrationTest, DeleteVector) {
     Vector test_vector;
     test_vector.id = "delete_test_vector";
     test_vector.values = {1.0f, 0.1f, 0.2f, 0.3f};
-    test_vector.metadata["category"] = "finance";
-    test_vector.metadata["score"] = 0.95f;
-    test_vector.metadata["tags"] = nlohmann::json::array({"investment", "trading"});
+    test_vector.metadata.custom["category"] = "finance";
+    test_vector.metadata.custom["score"] = 0.95f;
+    test_vector.metadata.custom["tags"] = nlohmann::json::array({"investment", "trading"});
     
     auto store_result = vector_service_->store_vector(db_id_, test_vector);
     ASSERT_TRUE(store_result.has_value());
@@ -240,8 +287,8 @@ TEST_F(VectorApiIntegrationTest, VectorCountAndIdListing) {
         Vector v;
         v.id = "count_test_vector_" + std::to_string(i);
         v.values = {static_cast<float>(i), static_cast<float>(i+1), static_cast<float>(i+2), static_cast<float>(i+3)};
-        v.metadata["category"] = "test";
-        v.metadata["score"] = 0.5f + (static_cast<float>(i) * 0.1f);
+        v.metadata.custom["category"] = "test";
+        v.metadata.custom["score"] = 0.5f + (static_cast<float>(i) * 0.1f);
         test_vectors.push_back(v);
     }
     
@@ -280,9 +327,9 @@ TEST_F(VectorApiIntegrationTest, VectorValidation) {
     Vector valid_vector;
     valid_vector.id = "valid_vector";
     valid_vector.values = {1.0f, 0.1f, 0.2f, 0.3f};
-    valid_vector.metadata["category"] = "finance";
-    valid_vector.metadata["score"] = 0.95f;
-    valid_vector.metadata["tags"] = nlohmann::json::array({"investment", "trading"});
+    valid_vector.metadata.custom["category"] = "finance";
+    valid_vector.metadata.custom["score"] = 0.95f;
+    valid_vector.metadata.custom["tags"] = nlohmann::json::array({"investment", "trading"});
     
     // Validation should pass for a valid vector
     auto result = vector_service_->validate_vector(db_id_, valid_vector);
@@ -292,9 +339,9 @@ TEST_F(VectorApiIntegrationTest, VectorValidation) {
     Vector invalid_vector;
     invalid_vector.id = "invalid_vector";
     invalid_vector.values = {1.0f, 0.1f, 0.2f}; // Only 3 dimensions, but database expects 4
-    invalid_vector.metadata["category"] = "finance";
-    invalid_vector.metadata["score"] = 0.95f;
-    invalid_vector.metadata["tags"] = nlohmann::json::array({"investment", "trading"});
+    invalid_vector.metadata.custom["category"] = "finance";
+    invalid_vector.metadata.custom["score"] = 0.95f;
+    invalid_vector.metadata.custom["tags"] = nlohmann::json::array({"investment", "trading"});
     
     // Validation should fail for an invalid vector
     result = vector_service_->validate_vector(db_id_, invalid_vector);
@@ -304,9 +351,9 @@ TEST_F(VectorApiIntegrationTest, VectorValidation) {
     Vector invalid_vector2;
     invalid_vector2.id = ""; // Empty ID
     invalid_vector2.values = {1.0f, 0.1f, 0.2f, 0.3f};
-    invalid_vector2.metadata["category"] = "finance";
-    invalid_vector2.metadata["score"] = 0.95f;
-    invalid_vector2.metadata["tags"] = nlohmann::json::array({"investment", "trading"});
+    invalid_vector2.metadata.custom["category"] = "finance";
+    invalid_vector2.metadata.custom["score"] = 0.95f;
+    invalid_vector2.metadata.custom["tags"] = nlohmann::json::array({"investment", "trading"});
     
     // Validation should fail for an invalid vector
     result = vector_service_->validate_vector(db_id_, invalid_vector2);

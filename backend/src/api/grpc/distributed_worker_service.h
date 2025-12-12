@@ -142,6 +142,7 @@ public:
         int64_t uptime_seconds;
         ResourceUsage resource_usage;
         std::vector<ShardStatus> shard_statuses;
+        std::string shard_state;  // Overall shard state: "healthy", "degraded", "critical"
     };
 
     Result<HealthInfo> get_health();

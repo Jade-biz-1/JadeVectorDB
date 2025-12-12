@@ -11,7 +11,7 @@
 #include <deque>
 
 #include "logging.h"
-#include "auth.h"
+// REMOVED: #include "auth.h" - migrated to AuthenticationService
 
 namespace jadevectordb {
 
@@ -67,8 +67,8 @@ private:
     std::ofstream audit_file_stream_;
     size_t max_file_size_;
     size_t current_file_size_;
-    AuthManager* auth_manager_;
-    
+    // REMOVED: AuthManager* auth_manager_ - migrated to AuthenticationService
+
     // Configuration for audit logging
     bool audit_enabled_;
     bool log_user_operations_;

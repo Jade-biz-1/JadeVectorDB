@@ -2,7 +2,7 @@
 // This file contains T219 implementations: register, login, logout, forgot password, reset password
 
 #include "api/rest/rest_api.h"
-#include "lib/auth.h"
+// REMOVED: #include "lib/auth.h" - migrated to AuthenticationService
 #include "services/authentication_service.h"
 #include <crow/json.h>
 #include <chrono>
