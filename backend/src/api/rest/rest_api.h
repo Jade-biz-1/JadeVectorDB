@@ -45,6 +45,7 @@ namespace jadevectordb {
 
 // Forward declarations
 class RestApiImpl;
+class DistributedServiceManager;
 
 class RestApiService {
 private:
@@ -57,7 +58,7 @@ private:
     std::shared_ptr<logging::Logger> logger_;
 
 public:
-    explicit RestApiService(int port = 8080);
+    explicit RestApiService(int port = 8080, std::shared_ptr<DistributedServiceManager> distributed_service_manager = nullptr);
     ~RestApiService();
     
     // Start the REST API server
@@ -76,6 +77,13 @@ private:
     void run_server();
 };
 
+// Forward declarations
+class DistributedServiceManager;
+class ShardingService;
+class ReplicationService;
+class QueryRouter;
+class ClusterService;
+
 // The actual implementation class for REST API
 class RestApiImpl {
 private:
@@ -91,6 +99,13 @@ private:
     std::unique_ptr<AuthenticationService> authentication_service_;
     std::shared_ptr<SecurityAuditLogger> security_audit_logger_;
     AuthenticationConfig authentication_config_;
+    
+    // Distributed services (shared from DistributedServiceManager)
+    std::shared_ptr<DistributedServiceManager> distributed_service_manager_;
+    std::shared_ptr<ShardingService> sharding_service_;
+    std::shared_ptr<ReplicationService> replication_service_;
+    std::shared_ptr<QueryRouter> query_router_;
+    ClusterService* cluster_service_;  // Raw pointer from manager
 
     struct PasswordResetToken {
         std::string token;
@@ -120,7 +135,7 @@ private:
     int server_port_;
     
 public:
-    explicit RestApiImpl();
+    explicit RestApiImpl(std::shared_ptr<DistributedServiceManager> distributed_service_manager = nullptr);
     ~RestApiImpl();
     
     // Initialize the web server framework
