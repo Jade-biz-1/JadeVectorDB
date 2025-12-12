@@ -11,6 +11,55 @@
 #include "models/database.h"
 #include "lib/error_handling.h"
 
+
+// Helper function to convert Database to DatabaseCreationParams
+static DatabaseCreationParams to_creation_params(const Database& db) {
+    DatabaseCreationParams params;
+    params.name = db.name;
+    params.description = db.description;
+    params.vectorDimension = db.vectorDimension;
+    params.indexType = db.indexType;
+    params.indexParameters = db.indexParameters;
+    params.sharding = db.sharding;
+    params.replication = db.replication;
+    params.embeddingModels = db.embeddingModels;
+    params.metadataSchema = db.metadataSchema;
+    if (db.retentionPolicy) {
+        params.retentionPolicy = std::make_unique<Database::RetentionPolicy>(*db.retentionPolicy);
+    }
+    params.accessControl = db.accessControl;
+    return params;
+}
+
+// Helper function to convert Database to DatabaseUpdateParams
+static DatabaseUpdateParams to_update_params(const Database& db) {
+    DatabaseUpdateParams params;
+    params.name = db.name;
+    params.description = db.description;
+    params.vectorDimension = db.vectorDimension;
+    params.indexType = db.indexType;
+    std::unordered_map<std::string, std::string> idx_params;
+    for (const auto& [k, v] : db.indexParameters) {
+        idx_params[k] = v;
+    }
+    params.indexParameters = idx_params;
+    params.sharding = db.sharding;
+    params.replication = db.replication;
+    params.embeddingModels = db.embeddingModels;
+    std::unordered_map<std::string, std::string> meta_schema;
+    for (const auto& [k, v] : db.metadataSchema) {
+        meta_schema[k] = v;
+    }
+    params.metadataSchema = meta_schema;
+    if (db.retentionPolicy) {
+        params.retentionPolicy = std::make_unique<Database::RetentionPolicy>(*db.retentionPolicy);
+    }
+    params.accessControl = db.accessControl;
+    return params;
+}
+
+
+
 using namespace jadevectordb;
 using ::testing::Return;
 using ::testing::_;
@@ -82,7 +131,7 @@ TEST_F(CoreServicesComprehensiveTest, DatabaseServiceOperationsTest) {
     EXPECT_CALL(*mock_db_layer_, create_database(_))
         .WillOnce(Return(Result<std::string>{"test_db_id"}));
     
-    auto create_result = database_service_->create_database(new_db);
+    auto create_result = database_service_->create_database(to_creation_params(new_db));
     EXPECT_TRUE(create_result.has_value());
     EXPECT_EQ(create_result.value(), "test_db_id");
     
@@ -196,7 +245,7 @@ TEST_F(CoreServicesComprehensiveTest, ServiceInteractionTest) {
     EXPECT_CALL(*mock_db_layer_, create_database(_))
         .WillOnce(Return(Result<std::string>{"integration_test_db_id"}));
     
-    auto db_result = database_service_->create_database(db_config);
+    auto db_result = database_service_->create_database(to_creation_params(db_config));
     ASSERT_TRUE(db_result.has_value());
     std::string db_id = db_result.value();
     

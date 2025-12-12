@@ -79,8 +79,8 @@ private:
     std::vector<AlertRule> alert_rules_;
     std::vector<ActiveAlert> active_alerts_;
     std::unordered_map<std::string, std::chrono::system_clock::time_point> rule_last_evaluated_;
-    
-    std::mutex alert_mutex_;
+
+    mutable std::mutex alert_mutex_;
     
 public:
     explicit AlertService(std::shared_ptr<MetricsService> metrics_service = nullptr);

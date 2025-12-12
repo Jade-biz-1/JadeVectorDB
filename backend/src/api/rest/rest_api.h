@@ -30,12 +30,12 @@ namespace jadevectordb {
     class SimilaritySearchService;
     class IndexService;
     class LifecycleService;
-    class AuthManager;
+    // class AuthManager;  // REMOVED: Migrated to AuthenticationService
     class ShardingService;
     class ReplicationService;
     class QueryRouter;
-    struct User;
-    struct ApiKey;
+    // struct User;  // REMOVED: Part of AuthManager
+    // struct ApiKey;  // REMOVED: Part of AuthManager
     struct SecurityEvent;
 }
 
@@ -87,7 +87,7 @@ private:
     std::unique_ptr<SimilaritySearchService> similarity_search_service_;
     std::unique_ptr<IndexService> index_service_;
     std::unique_ptr<LifecycleService> lifecycle_service_;
-    AuthManager* auth_manager_;  // Singleton - not owned
+    // AuthManager* auth_manager_;  // REMOVED: Migrated to AuthenticationService
     std::unique_ptr<AuthenticationService> authentication_service_;
     std::shared_ptr<SecurityAuditLogger> security_audit_logger_;
     AuthenticationConfig authentication_config_;
@@ -252,8 +252,7 @@ public:
     // Initialize distributed services
     void initialize_distributed_services();
     std::string generate_secure_token() const;
-    crow::json::wvalue serialize_user(const User& user) const;
-    crow::json::wvalue serialize_api_key(const ApiKey& key) const;
+    // REMOVED: serialize_user and serialize_api_key (used AuthManager types)
     crow::json::wvalue serialize_alert(const AlertRecord& record) const;
     crow::json::wvalue serialize_audit_event(const SecurityEvent& event) const;
     std::string to_iso_string(const std::chrono::system_clock::time_point& time_point) const;

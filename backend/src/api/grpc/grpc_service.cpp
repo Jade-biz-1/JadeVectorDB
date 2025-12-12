@@ -24,14 +24,15 @@ public:
         db_service_ = std::make_unique<DatabaseService>();
         vector_storage_service_ = std::make_unique<VectorStorageService>();
         similarity_search_service_ = std::make_unique<SimilaritySearchService>();
-        auth_manager_ = AuthManager::get_instance();  // Assuming singleton pattern
+        // REMOVED: auth_manager_ - migrated to AuthenticationService
+        // TODO: Add AuthenticationService if needed for gRPC authentication
     }
 
 private:
     std::unique_ptr<DatabaseService> db_service_;
     std::unique_ptr<VectorStorageService> vector_storage_service_;
     std::unique_ptr<SimilaritySearchService> similarity_search_service_;
-    AuthManager* auth_manager_;  // Using singleton instance
+    // REMOVED: AuthManager* auth_manager_ - migrated to AuthenticationService
 };
 
 

@@ -2,7 +2,6 @@
 // This file contains T220 implementations: create, list, get, update, delete users
 
 #include "api/rest/rest_api.h"
-#include "lib/auth.h"
 #include "services/authentication_service.h"
 #include <crow/json.h>
 #include <chrono>
@@ -115,8 +114,8 @@ crow::response RestApiImpl::handle_list_users_request(const crow::request& req) 
     try {
         LOG_INFO(logger_, "Received list users request");
 
-        // Get list of users from AuthManager
-        auto users_result = auth_manager_->list_users();
+        // Get list of users from AuthenticationService
+        auto users_result = authentication_service_->list_users();
 
         if (!users_result.has_value()) {
             LOG_ERROR(logger_, "Failed to list users: " +
@@ -170,8 +169,8 @@ crow::response RestApiImpl::handle_get_user_request(const crow::request& req, co
     try {
         LOG_INFO(logger_, "Received get user request for ID: " + user_id);
 
-        // Get user from AuthManager
-        auto user_result = auth_manager_->get_user(user_id);
+        // Get user from AuthenticationService
+        auto user_result = authentication_service_->get_user(user_id);
 
         if (!user_result.has_value()) {
             LOG_WARN(logger_, "User not found: " + user_id);
@@ -221,30 +220,31 @@ crow::response RestApiImpl::handle_update_user_request(const crow::request& req,
         }
 
         // Check if user exists
-        auto user_result = auth_manager_->get_user(user_id);
+        auto user_result = authentication_service_->get_user(user_id);
         if (!user_result.has_value()) {
             LOG_WARN(logger_, "User not found for update: " + user_id);
             return crow::response(404, "{\"error\":\"User not found\"}");
         }
 
-        // Update username and/or email using update_user_details
-        if (body_json.has("username") || body_json.has("email")) {
-            std::optional<std::string> new_username_opt;
-            std::optional<std::string> new_email_opt;
-
-            if (body_json.has("username")) {
-                new_username_opt = body_json["username"].s();
-            }
-            if (body_json.has("email")) {
-                new_email_opt = body_json["email"].s();
-            }
-
-            // Empty roles vector since we update roles separately
-            std::vector<std::string> empty_roles;
-            auto update_result = auth_manager_->update_user_details(
-                user_id, new_username_opt, new_email_opt, empty_roles);
+        // Update username if provided
+        if (body_json.has("username")) {
+            std::string new_username = body_json["username"].s();
+            auto update_result = authentication_service_->update_username(user_id, new_username);
             if (!update_result.has_value()) {
-                LOG_ERROR(logger_, "Failed to update user details: " +
+                LOG_ERROR(logger_, "Failed to update username: " +
+                         ErrorHandler::format_error(update_result.error()));
+                crow::json::wvalue error_response;
+                error_response["error"] = update_result.error().message;
+                return crow::response(400, error_response);
+            }
+        }
+
+        // Update email if provided
+        if (body_json.has("email")) {
+            std::string new_email = body_json["email"].s();
+            auto update_result = authentication_service_->update_email(user_id, new_email);
+            if (!update_result.has_value()) {
+                LOG_ERROR(logger_, "Failed to update email: " +
                          ErrorHandler::format_error(update_result.error()));
                 crow::json::wvalue error_response;
                 error_response["error"] = update_result.error().message;
@@ -258,7 +258,7 @@ crow::response RestApiImpl::handle_update_user_request(const crow::request& req,
             for (size_t i = 0; i < body_json["roles"].size(); i++) {
                 new_roles.push_back(body_json["roles"][i].s());
             }
-            auto update_result = auth_manager_->update_user(user_id, new_roles);
+            auto update_result = authentication_service_->update_roles(user_id, new_roles);
             if (!update_result.has_value()) {
                 LOG_ERROR(logger_, "Failed to update roles: " +
                          ErrorHandler::format_error(update_result.error()));
@@ -271,10 +271,13 @@ crow::response RestApiImpl::handle_update_user_request(const crow::request& req,
         // Update active status if provided
         if (body_json.has("is_active")) {
             bool is_active = body_json["is_active"].b();
-            if (is_active) {
-                auth_manager_->activate_user(user_id);
-            } else {
-                auth_manager_->deactivate_user(user_id);
+            auto status_result = authentication_service_->set_user_active_status(user_id, is_active);
+            if (!status_result.has_value()) {
+                LOG_ERROR(logger_, "Failed to update active status: " +
+                         ErrorHandler::format_error(status_result.error()));
+                crow::json::wvalue error_response;
+                error_response["error"] = status_result.error().message;
+                return crow::response(400, error_response);
             }
         }
 
@@ -290,7 +293,7 @@ crow::response RestApiImpl::handle_update_user_request(const crow::request& req,
         }
 
         // Get updated user
-        auto updated_user_result = auth_manager_->get_user(user_id);
+        auto updated_user_result = authentication_service_->get_user(user_id);
         if (!updated_user_result.has_value()) {
             return crow::response(500, "{\"error\":\"Failed to retrieve updated user\"}");
         }
@@ -324,7 +327,7 @@ crow::response RestApiImpl::handle_delete_user_request(const crow::request& req,
         LOG_INFO(logger_, "Received delete user request for ID: " + user_id);
 
         // Check if user exists
-        auto user_result = auth_manager_->get_user(user_id);
+        auto user_result = authentication_service_->get_user(user_id);
         if (!user_result.has_value()) {
             LOG_WARN(logger_, "User not found for deletion: " + user_id);
             return crow::response(404, "{\"error\":\"User not found\"}");
@@ -333,7 +336,7 @@ crow::response RestApiImpl::handle_delete_user_request(const crow::request& req,
         std::string username = user_result.value().username;
 
         // Delete user (soft delete by deactivating)
-        auto delete_result = auth_manager_->deactivate_user(user_id);
+        auto delete_result = authentication_service_->set_user_active_status(user_id, false);
         if (!delete_result.has_value()) {
             LOG_ERROR(logger_, "Failed to delete user " + user_id + ": " +
                      ErrorHandler::format_error(delete_result.error()));
