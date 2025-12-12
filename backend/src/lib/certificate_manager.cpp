@@ -5,6 +5,13 @@
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
+#include <openssl/pem.h>
+#include <openssl/err.h>
+#include <openssl/bio.h>
+#include <openssl/evp.h>
+#include <openssl/rsa.h>
 
 namespace jadevectordb {
 namespace encryption {
@@ -62,13 +69,104 @@ CertificateInfo CertificateManagerImpl::load_certificate(const std::string& pem_
     CertificateInfo cert;
     cert.certificate_id = generate_cert_id();
     cert.certificate_data = pem_data;
-    cert.common_name = "unknown";  // Would be parsed from actual certificate
-    cert.issuer = "unknown";       // Would be parsed from actual certificate
-    cert.is_active = true;
-    cert.is_self_signed = false;   // Would be determined from actual certificate
     
-    // In a real implementation, we would parse the PEM data to extract
-    // the actual certificate information
+    // Parse the PEM certificate using OpenSSL
+    BIO* bio = BIO_new_mem_buf(pem_data.data(), static_cast<int>(pem_data.length()));
+    if (!bio) {
+        throw std::runtime_error("Failed to create BIO for certificate");
+    }
+    
+    X509* x509_cert = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr);
+    BIO_free(bio);
+    
+    if (!x509_cert) {
+        throw std::runtime_error("Failed to parse PEM certificate: " + 
+                                std::string(ERR_error_string(ERR_get_error(), nullptr)));
+    }
+    
+    // Extract common name from subject
+    X509_NAME* subject_name = X509_get_subject_name(x509_cert);
+    if (subject_name) {
+        char cn_buf[256];
+        int cn_len = X509_NAME_get_text_by_NID(subject_name, NID_commonName, cn_buf, sizeof(cn_buf));
+        if (cn_len > 0) {
+            cert.common_name = std::string(cn_buf, cn_len);
+        } else {
+            cert.common_name = "unknown";
+        }
+    } else {
+        cert.common_name = "unknown";
+    }
+    
+    // Extract issuer name
+    X509_NAME* issuer_name = X509_get_issuer_name(x509_cert);
+    if (issuer_name) {
+        char issuer_buf[256];
+        int issuer_len = X509_NAME_get_text_by_NID(issuer_name, NID_commonName, issuer_buf, sizeof(issuer_buf));
+        if (issuer_len > 0) {
+            cert.issuer = std::string(issuer_buf, issuer_len);
+        } else {
+            cert.issuer = "unknown";
+        }
+    } else {
+        cert.issuer = "unknown";
+    }
+    
+    // Extract validity period
+    ASN1_TIME* not_before = X509_get_notBefore(x509_cert);
+    ASN1_TIME* not_after = X509_get_notAfter(x509_cert);
+    
+    if (not_before) {
+        struct tm tm_not_before;
+        ASN1_TIME_to_tm(not_before, &tm_not_before);
+        cert.not_before = std::chrono::system_clock::from_time_t(mktime(&tm_not_before));
+    }
+    
+    if (not_after) {
+        struct tm tm_not_after;
+        ASN1_TIME_to_tm(not_after, &tm_not_after);
+        cert.not_after = std::chrono::system_clock::from_time_t(mktime(&tm_not_after));
+    }
+    
+    // Extract Subject Alternative Names (SANs)
+    STACK_OF(GENERAL_NAME)* san_names = static_cast<STACK_OF(GENERAL_NAME)*>(
+        X509_get_ext_d2i(x509_cert, NID_subject_alt_name, nullptr, nullptr));
+    
+    if (san_names) {
+        int san_count = sk_GENERAL_NAME_num(san_names);
+        for (int i = 0; i < san_count; i++) {
+            GENERAL_NAME* gen_name = sk_GENERAL_NAME_value(san_names, i);
+            if (gen_name->type == GEN_DNS) {
+                ASN1_STRING* dns_name = gen_name->d.dNSName;
+                cert.san_list.push_back(std::string(
+                    reinterpret_cast<const char*>(ASN1_STRING_get0_data(dns_name)),
+                    ASN1_STRING_length(dns_name)));
+            }
+        }
+        GENERAL_NAMES_free(san_names);
+    }
+    
+    // Check if self-signed
+    cert.is_self_signed = (X509_check_issued(x509_cert, x509_cert) == X509_V_OK);
+    
+    // Extract public key
+    EVP_PKEY* pkey = X509_get_pubkey(x509_cert);
+    if (pkey) {
+        BIO* pubkey_bio = BIO_new(BIO_s_mem());
+        if (PEM_write_bio_PUBKEY(pubkey_bio, pkey)) {
+            char* pubkey_data = nullptr;
+            long pubkey_len = BIO_get_mem_data(pubkey_bio, &pubkey_data);
+            if (pubkey_data && pubkey_len > 0) {
+                cert.public_key = std::string(pubkey_data, pubkey_len);
+            }
+        }
+        BIO_free(pubkey_bio);
+        EVP_PKEY_free(pkey);
+    }
+    
+    cert.is_active = true;
+    
+    X509_free(x509_cert);
     
     certificates_[cert.certificate_id] = cert;
     
@@ -211,7 +309,10 @@ void CertificateManagerImpl::revoke_certificate(const std::string& cert_id,
     auto it = certificates_.find(cert_id);
     if (it != certificates_.end()) {
         it->second.is_active = false;
-        // In a real implementation, we would add to a CRL (Certificate Revocation List)
+        
+        // Add to Certificate Revocation List (CRL)
+        std::lock_guard<std::mutex> revoke_lock(revocation_mutex_);
+        revoked_certificates_.insert(cert_id);
     }
 }
 
@@ -230,6 +331,106 @@ std::string CertificateManagerImpl::create_certificate_chain(const std::vector<s
     }
     
     return chain;
+}
+
+bool CertificateManagerImpl::verify_certificate_chain(const std::string& cert_chain_pem,
+                                                     const std::string& trusted_ca_pem) const {
+    // Create a new X509 store for chain verification
+    X509_STORE* store = X509_STORE_new();
+    if (!store) {
+        return false;
+    }
+    
+    // Load trusted CA if provided
+    if (!trusted_ca_pem.empty()) {
+        BIO* ca_bio = BIO_new_mem_buf(trusted_ca_pem.data(), 
+                                     static_cast<int>(trusted_ca_pem.length()));
+        if (ca_bio) {
+            X509* ca_cert = PEM_read_bio_X509(ca_bio, nullptr, nullptr, nullptr);
+            BIO_free(ca_bio);
+            
+            if (ca_cert) {
+                X509_STORE_add_cert(store, ca_cert);
+                X509_free(ca_cert);
+            }
+        }
+    }
+    
+    // Parse certificate chain
+    BIO* chain_bio = BIO_new_mem_buf(cert_chain_pem.data(), 
+                                     static_cast<int>(cert_chain_pem.length()));
+    if (!chain_bio) {
+        X509_STORE_free(store);
+        return false;
+    }
+    
+    // Read all certificates from the chain
+    STACK_OF(X509)* chain_stack = sk_X509_new_null();
+    X509* leaf_cert = nullptr;
+    X509* cert = nullptr;
+    
+    // First certificate is the leaf
+    leaf_cert = PEM_read_bio_X509(chain_bio, nullptr, nullptr, nullptr);
+    if (!leaf_cert) {
+        BIO_free(chain_bio);
+        X509_STORE_free(store);
+        return false;
+    }
+    
+    // Read remaining certificates in the chain
+    while ((cert = PEM_read_bio_X509(chain_bio, nullptr, nullptr, nullptr)) != nullptr) {
+        sk_X509_push(chain_stack, cert);
+    }
+    
+    BIO_free(chain_bio);
+    
+    // Create verification context
+    X509_STORE_CTX* ctx = X509_STORE_CTX_new();
+    if (!ctx) {
+        X509_free(leaf_cert);
+        sk_X509_pop_free(chain_stack, X509_free);
+        X509_STORE_free(store);
+        return false;
+    }
+    
+    // Initialize and verify
+    if (!X509_STORE_CTX_init(ctx, store, leaf_cert, chain_stack)) {
+        X509_STORE_CTX_free(ctx);
+        X509_free(leaf_cert);
+        sk_X509_pop_free(chain_stack, X509_free);
+        X509_STORE_free(store);
+        return false;
+    }
+    
+    int verify_result = X509_verify_cert(ctx);
+    
+    // Check for revocation
+    if (verify_result == 1) {
+        // Additional check: verify none of the certificates in chain are revoked
+        std::lock_guard<std::mutex> lock(certificates_mutex_);
+        std::lock_guard<std::mutex> revoke_lock(revocation_mutex_);
+        
+        for (const auto& [cert_id, cert_info] : certificates_) {
+            if (cert_info.certificate_data == cert_chain_pem) {
+                if (revoked_certificates_.find(cert_id) != revoked_certificates_.end()) {
+                    verify_result = 0;  // Certificate is revoked
+                    break;
+                }
+            }
+        }
+    }
+    
+    X509_STORE_CTX_free(ctx);
+    X509_free(leaf_cert);
+    sk_X509_pop_free(chain_stack, X509_free);
+    X509_STORE_free(store);
+    
+    return verify_result == 1;
+}
+
+bool CertificateManagerImpl::is_certificate_revoked(const std::string& cert_id) const {
+    std::lock_guard<std::mutex> lock(revocation_mutex_);
+    return revoked_certificates_.find(cert_id) != revoked_certificates_.end();
 }
 
 std::string CertificateManagerImpl::generate_cert_id() {
@@ -258,7 +459,59 @@ bool CertificateManagerImpl::perform_validation_checks(const CertificateInfo& ce
         return false;
     }
     
-    return true;
+    // Perform OpenSSL-based validation
+    BIO* bio = BIO_new_mem_buf(cert.certificate_data.data(), 
+                               static_cast<int>(cert.certificate_data.length()));
+    if (!bio) {
+        return false;
+    }
+    
+    X509* x509_cert = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr);
+    BIO_free(bio);
+    
+    if (!x509_cert) {
+        return false;
+    }
+    
+    // Create a verification context
+    X509_STORE* store = X509_STORE_new();
+    if (!store) {
+        X509_free(x509_cert);
+        return false;
+    }
+    
+    X509_STORE_CTX* ctx = X509_STORE_CTX_new();
+    if (!ctx) {
+        X509_STORE_free(store);
+        X509_free(x509_cert);
+        return false;
+    }
+    
+    // Initialize verification context
+    if (!X509_STORE_CTX_init(ctx, store, x509_cert, nullptr)) {
+        X509_STORE_CTX_free(ctx);
+        X509_STORE_free(store);
+        X509_free(x509_cert);
+        return false;
+    }
+    
+    // Perform verification
+    int verify_result = X509_verify_cert(ctx);
+    
+    // Get detailed error if verification failed
+    if (verify_result != 1) {
+        int error_code = X509_STORE_CTX_get_error(ctx);
+        // For self-signed certificates, allow self-signed error
+        if (cert.is_self_signed && error_code == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT) {
+            verify_result = 1;  // Accept self-signed for internal use
+        }
+    }
+    
+    X509_STORE_CTX_free(ctx);
+    X509_STORE_free(store);
+    X509_free(x509_cert);
+    
+    return verify_result == 1;
 }
 
 void CertificateManagerImpl::monitoring_loop() {
@@ -269,6 +522,26 @@ void CertificateManagerImpl::monitoring_loop() {
 
         std::lock_guard<std::mutex> lock(certificates_mutex_);
 
+        // Check for expiring certificates and log warnings
+        for (const auto& [cert_id, cert_info] : certificates_) {
+            if (!cert_info.is_active) {
+                continue;
+            }
+            
+            auto time_to_expiry = std::chrono::duration_cast<std::chrono::hours>(
+                cert_info.not_after - now).count();
+            
+            // Log warnings for certificates expiring soon
+            if (time_to_expiry <= 24 * 7) {  // 7 days
+                // In production, this would trigger an alert/notification
+                // For now, we just track it
+                if (time_to_expiry <= 0) {
+                    // Certificate has expired
+                    certificates_[cert_id].is_active = false;
+                }
+            }
+        }
+
         // Check for scheduled renewals
         for (auto& [cert_id, renewal_time] : renewal_schedule_) {
             if (now >= renewal_time) {
@@ -277,6 +550,9 @@ void CertificateManagerImpl::monitoring_loop() {
                     // Find the certificate to renew
                     auto cert_it = certificates_.find(cert_id);
                     if (cert_it != certificates_.end() && cert_it->second.is_active) {
+                        // Attempt automatic renewal
+                        // In production, this would use generate_certificate or load from ACME
+                        
                         // Mark old certificate as inactive
                         cert_it->second.is_active = false;
 

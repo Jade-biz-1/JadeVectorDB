@@ -104,6 +104,22 @@ namespace encryption {
          * @return Combined certificate chain
          */
         virtual std::string create_certificate_chain(const std::vector<std::string>& cert_ids) const = 0;
+        
+        /**
+         * @brief Verify a certificate chain
+         * @param cert_chain_pem PEM-encoded certificate chain
+         * @param trusted_ca_pem PEM-encoded trusted CA certificate (optional)
+         * @return True if chain is valid, false otherwise
+         */
+        virtual bool verify_certificate_chain(const std::string& cert_chain_pem,
+                                             const std::string& trusted_ca_pem = "") const = 0;
+        
+        /**
+         * @brief Check certificate revocation status
+         * @param cert_id ID of the certificate to check
+         * @return True if revoked, false otherwise
+         */
+        virtual bool is_certificate_revoked(const std::string& cert_id) const = 0;
     };
 
     /**
@@ -116,6 +132,8 @@ namespace encryption {
         std::map<std::string, CertificateInfo> certificates_;
         std::map<std::string, std::chrono::system_clock::time_point> renewal_schedule_;
         std::mutex certificates_mutex_;
+        std::atomic<bool> running_{true};
+        std::thread monitoring_thread_;
         
     public:
         CertificateManagerImpl();
@@ -144,7 +162,16 @@ namespace encryption {
         
         std::string create_certificate_chain(const std::vector<std::string>& cert_ids) const override;
         
+        bool verify_certificate_chain(const std::string& cert_chain_pem,
+                                     const std::string& trusted_ca_pem = "") const override;
+        
+        bool is_certificate_revoked(const std::string& cert_id) const override;
+        
     private:
+        // Certificate Revocation List (CRL)
+        mutable std::set<std::string> revoked_certificates_;
+        mutable std::mutex revocation_mutex_;
+        
         // Helper method to generate a unique certificate ID
         std::string generate_cert_id();
         

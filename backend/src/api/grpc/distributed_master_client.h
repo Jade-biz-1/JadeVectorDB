@@ -345,6 +345,28 @@ public:
         const AppendEntriesRequest& request
     );
 
+    struct InstallSnapshotRequest {
+        int64_t term;
+        std::string leader_id;
+        int64_t last_included_index;
+        int64_t last_included_term;
+        int64_t offset;
+        std::vector<uint8_t> data;
+        bool done;
+    };
+
+    struct InstallSnapshotResponse {
+        int64_t term;
+        bool success;
+        std::string follower_id;
+    };
+
+    // Install snapshot to a worker
+    Result<InstallSnapshotResponse> install_snapshot(
+        const std::string& worker_id,
+        const InstallSnapshotRequest& request
+    );
+
     // ===== Statistics & Monitoring =====
 
     struct ClientStatistics {

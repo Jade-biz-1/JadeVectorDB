@@ -20,16 +20,43 @@ struct ShardInfo {
     std::string database_id;
     int shard_number;           // Sequential number of the shard
     std::string node_id;       // ID of the node that hosts this shard
-    std::string status;        // "active", "migrating", "offline", etc.
+    std::string status;        // "active", "migrating", "offline", "syncing", etc.
     size_t record_count;       // Number of vectors in this shard
     size_t size_bytes;         // Size of the shard in bytes
     std::string hash_range_start; // For range-based sharding
     std::string hash_range_end;   // For range-based sharding
+    int64_t version;           // Version number for replication/sync tracking
+    int64_t data_version{0};   // Data version for sync operations
     
-    ShardInfo() : shard_number(0), record_count(0), size_bytes(0) {}
+    ShardInfo() : shard_number(0), record_count(0), size_bytes(0), version(0), data_version(0) {}
     ShardInfo(const std::string& id, const std::string& db_id, int num)
         : shard_id(id), database_id(db_id), shard_number(num), status("active"), 
-          record_count(0), size_bytes(0) {}
+          record_count(0), size_bytes(0), version(0), data_version(0) {}
+};
+
+// Migration status for tracking progress
+struct MigrationStatus {
+    std::string migration_id;
+    std::string shard_id;
+    std::string source_node_id;
+    std::string target_node_id;
+    std::string status;        // "pending", "in_progress", "completed", "failed", "rolled_back"
+    size_t total_vectors;
+    size_t transferred_vectors;
+    size_t total_bytes;
+    size_t transferred_bytes;
+    std::string error_message;
+    int64_t started_at;
+    int64_t completed_at;
+    
+    MigrationStatus() : total_vectors(0), transferred_vectors(0), 
+                        total_bytes(0), transferred_bytes(0),
+                        started_at(0), completed_at(0) {}
+    
+    double progress_percent() const {
+        if (total_vectors == 0) return 100.0;
+        return (static_cast<double>(transferred_vectors) / total_vectors) * 100.0;
+    }
 };
 
 // Configuration for sharding strategy
@@ -100,6 +127,18 @@ public:
     // Migrate data from one shard to another (for rebalancing)
     Result<bool> migrate_shard(const std::string& shard_id, const std::string& target_node_id);
     
+    // Get migration status for a shard
+    Result<MigrationStatus> get_migration_status(const std::string& shard_id) const;
+    
+    // Cancel an ongoing migration
+    Result<bool> cancel_migration(const std::string& shard_id);
+    
+    // Rollback a failed migration
+    Result<bool> rollback_migration(const std::string& shard_id);
+    
+    // Verify migration completed successfully
+    Result<bool> verify_migration(const std::string& shard_id);
+    
     // Get current sharding configuration
     ShardingConfig get_config() const;
     
@@ -130,8 +169,25 @@ public:
                                      size_t size_bytes);
 
 private:
+    // Active migrations tracking
+    std::unordered_map<std::string, MigrationStatus> active_migrations_;
+    mutable std::mutex migrations_mutex_;
+    
     // Initialize hash function based on configuration
     void initialize_hash_function();
+    
+    // Extract vectors from source shard for migration
+    Result<std::vector<Vector>> extract_vectors_from_shard(const std::string& shard_id);
+    
+    // Transfer vectors to target node
+    Result<bool> transfer_vectors_to_node(const std::string& target_node_id, 
+                                         const std::vector<Vector>& vectors,
+                                         const std::string& shard_id);
+    
+    // Update migration progress
+    void update_migration_progress(const std::string& shard_id, 
+                                   size_t transferred_vectors, 
+                                   size_t transferred_bytes);
 
     // Hash-based sharding implementation
     Result<ShardInfo> hash_based_sharding(const Vector& vector, const Database& database) const;

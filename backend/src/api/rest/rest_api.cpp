@@ -15,6 +15,7 @@
 #include "services/sharding_service.h"
 #include "services/replication_service.h"
 #include "services/query_router.h"
+#include "services/distributed_service_manager.h"
 #include <chrono>
 #include <thread>
 #include <random>
@@ -50,11 +51,11 @@ struct LifecycleConfig {
 // RestApiService Implementation
 // ============================================================================
 
-RestApiService::RestApiService(int port) 
+RestApiService::RestApiService(int port, std::shared_ptr<DistributedServiceManager> distributed_service_manager) 
     : port_(port), running_(false) {
     logger_ = logging::LoggerManager::get_logger("RestApiService");
     server_address_ = "0.0.0.0:" + std::to_string(port_);
-    api_impl_ = std::make_unique<RestApiImpl>();
+    api_impl_ = std::make_unique<RestApiImpl>(distributed_service_manager);
 }
 
 RestApiService::~RestApiService() {
@@ -83,6 +84,11 @@ void RestApiService::stop() {
         LOG_INFO(logger_, "Stopping REST API server");
         running_ = false;
         
+        // Stop the Crow app first to unblock the server thread
+        if (api_impl_) {
+            api_impl_->stop_server();
+        }
+        
         if (server_thread_ && server_thread_->joinable()) {
             server_thread_->join();
         }
@@ -105,8 +111,23 @@ void RestApiService::run_server() {
 // RestApiImpl Implementation
 // ============================================================================
 
-RestApiImpl::RestApiImpl() {
+RestApiImpl::RestApiImpl(std::shared_ptr<DistributedServiceManager> distributed_service_manager) 
+    : distributed_service_manager_(distributed_service_manager) {
     logger_ = logging::LoggerManager::get_logger("RestApiImpl");
+}
+
+RestApiImpl::~RestApiImpl() {
+    // Ensure Crow app is stopped before destruction
+    if (app_) {
+        try {
+            app_->stop();
+        } catch (...) {
+            // Ignore exceptions during shutdown
+        }
+        // Give Crow threads time to finish
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        app_.reset();
+    }
 }
 
 bool RestApiImpl::initialize(int port) {
@@ -173,6 +194,13 @@ void RestApiImpl::start_server() {
     if (app_) {
         LOG_INFO(logger_, "Starting Crow server on port " << server_port_);
         app_->port(server_port_).multithreaded().run();
+    }
+}
+
+void RestApiImpl::stop_server() {
+    if (app_) {
+        LOG_INFO(logger_, "Stopping Crow server");
+        app_->stop();
     }
 }
 
@@ -2066,31 +2094,31 @@ void RestApiImpl::setup_response_serialization() {
 }
 
 void RestApiImpl::initialize_distributed_services() {
-    // Create distributed services
-    auto sharding_service = std::make_shared<ShardingService>();
-    auto replication_service = std::make_shared<ReplicationService>();
-    auto query_router = std::make_shared<QueryRouter>();
+    // Use distributed services from DistributedServiceManager (avoid duplicates)
+    if (!distributed_service_manager_) {
+        LOG_WARN(logger_, "DistributedServiceManager not provided, skipping distributed services initialization");
+        return;
+    }
 
-    // Set up sharding configuration
-    ShardingConfig sharding_config;
-    sharding_config.strategy = "hash";
-    sharding_config.num_shards = 4;  // Default to 4 shards
-    sharding_config.replication_factor = 1;  // Default replication
+    // Get shared instances from the manager
+    sharding_service_ = distributed_service_manager_->get_sharding_service();
+    replication_service_ = distributed_service_manager_->get_replication_service();
+    query_router_ = distributed_service_manager_->get_query_router();
+    cluster_service_ = distributed_service_manager_->get_cluster_service();
 
-    sharding_service->initialize(sharding_config);
+    if (!sharding_service_ || !replication_service_ || !query_router_) {
+        LOG_WARN(logger_, "One or more distributed services not available from manager");
+        return;
+    }
 
-    // Set up replication configuration
-    ReplicationConfig repl_config;
-    repl_config.default_replication_factor = 1;  // Default to 1 for now
-    repl_config.synchronous_replication = false;
-    replication_service->initialize(repl_config);
+    LOG_INFO(logger_, "Using distributed services from DistributedServiceManager");
 
     // Initialize the vector storage service with distributed services
     if (vector_storage_service_) {
         auto result = vector_storage_service_->initialize_distributed(
-            sharding_service,
-            query_router,
-            replication_service
+            sharding_service_,
+            query_router_,
+            replication_service_
         );
 
         if (!result.has_value()) {

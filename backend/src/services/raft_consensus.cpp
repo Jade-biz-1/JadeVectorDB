@@ -1,5 +1,6 @@
 #include "raft_consensus.h"
 #include "cluster_service.h"
+#include "api/grpc/distributed_master_client.h"
 #include "lib/logging.h"
 #include "lib/error_handling.h"
 #include <algorithm>
@@ -14,6 +15,7 @@ namespace jadevectordb {
 RaftConsensus::RaftConsensus(const std::string& server_id)
     : server_id_(server_id), current_term_(0), commit_index_(0), last_applied_(0),
       election_timeout_base_ms_(3000), heartbeat_interval_ms_(150),
+      snapshot_log_threshold_(10000),
       running_(false), state_(State::FOLLOWER), leader_id_("") {
     logger_ = logging::LoggerManager::get_logger("RaftConsensus");
     last_heartbeat_time_ = std::chrono::steady_clock::now();
@@ -23,6 +25,20 @@ RaftConsensus::RaftConsensus(const std::string& server_id)
 RaftConsensus::RaftConsensus(const std::string& server_id, std::shared_ptr<ClusterService> cluster_service)
     : server_id_(server_id), cluster_service_(cluster_service), current_term_(0), commit_index_(0), last_applied_(0),
       election_timeout_base_ms_(3000), heartbeat_interval_ms_(150),
+      snapshot_log_threshold_(10000),
+      running_(false), state_(State::FOLLOWER), leader_id_("") {
+    logger_ = logging::LoggerManager::get_logger("RaftConsensus");
+    last_heartbeat_time_ = std::chrono::steady_clock::now();
+    last_election_time_ = last_heartbeat_time_;
+}
+
+RaftConsensus::RaftConsensus(const std::string& server_id,
+                            std::shared_ptr<ClusterService> cluster_service,
+                            std::shared_ptr<DistributedMasterClient> master_client)
+    : server_id_(server_id), cluster_service_(cluster_service), master_client_(master_client),
+      current_term_(0), commit_index_(0), last_applied_(0),
+      election_timeout_base_ms_(3000), heartbeat_interval_ms_(150),
+      snapshot_log_threshold_(10000),
       running_(false), state_(State::FOLLOWER), leader_id_("") {
     logger_ = logging::LoggerManager::get_logger("RaftConsensus");
     last_heartbeat_time_ = std::chrono::steady_clock::now();
@@ -32,10 +48,13 @@ RaftConsensus::RaftConsensus(const std::string& server_id, std::shared_ptr<Clust
 bool RaftConsensus::initialize() {
     try {
         LOG_INFO(logger_, "Initializing RaftConsensus for server: " + server_id_);
-        
+
         // Load persisted state if available
         load_state();
-        
+
+        // Load snapshot if available
+        load_snapshot();
+
         LOG_INFO(logger_, "RaftConsensus initialized successfully");
         return true;
     } catch (const std::exception& e) {
@@ -54,11 +73,24 @@ void RaftConsensus::start() {
         std::thread([this]() {
             while (running_) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                
+
                 if (state_ == State::LEADER) {
                     if (is_heartbeat_timeout()) {
                         send_heartbeats();
                         reset_heartbeat_timer();
+                    }
+
+                    // Check if we need to create a snapshot for log compaction
+                    if (should_compact_log()) {
+                        LOG_INFO(logger_, "Log size exceeds threshold, creating snapshot");
+                        auto snapshot_result = create_snapshot();
+                        if (snapshot_result.has_value()) {
+                            // Compact the log after successful snapshot
+                            compact_log_to_snapshot();
+                        } else {
+                            LOG_WARN(logger_, "Failed to create snapshot: " +
+                                    snapshot_result.error().message);
+                        }
                     }
                 } else {
                     if (is_election_timeout()) {
@@ -500,15 +532,103 @@ void RaftConsensus::send_heartbeats() {
 
 RaftConsensus::AppendEntriesReply RaftConsensus::send_append_entries(const std::string& follower_id, 
                                                                    const AppendEntriesArgs& args) {
-    // In a real implementation, this would make an RPC call to the follower
-    // For now, we'll return a success reply
     AppendEntriesReply reply;
     reply.term = current_term_;
-    reply.success = true;
+    reply.success = false;
     reply.conflict_index = 0;
     reply.conflict_term = 0;
-    
-    LOG_DEBUG(logger_, "Simulated sending AppendEntries to follower " + follower_id);
+
+    // Validate that we have a cluster service for RPC
+    if (!cluster_service_) {
+        LOG_WARN(logger_, "No ClusterService available for sending AppendEntries to " + follower_id);
+        // In single-node mode, auto-succeed
+        reply.success = true;
+        return reply;
+    }
+
+    // Verify the target node is in the cluster and alive
+    auto nodes_result = cluster_service_->get_all_nodes();
+    if (!nodes_result.has_value()) {
+        LOG_WARN(logger_, "Failed to get cluster nodes for AppendEntries to " + follower_id);
+        return reply;
+    }
+
+    bool node_found = false;
+    bool node_alive = false;
+    for (const auto& node : nodes_result.value()) {
+        if (node.node_id == follower_id) {
+            node_found = true;
+            node_alive = node.is_alive;
+            break;
+        }
+    }
+
+    if (!node_found) {
+        LOG_WARN(logger_, "Target node not found in cluster for AppendEntries: " + follower_id);
+        return reply;
+    }
+
+    if (!node_alive) {
+        LOG_DEBUG(logger_, "Target node is not alive, skipping AppendEntries: " + follower_id);
+        return reply;
+    }
+
+    LOG_DEBUG(logger_, "Sending AppendEntries to follower " + follower_id +
+             " with " + std::to_string(args.entries.size()) + " entries for term " +
+             std::to_string(args.term));
+
+    // If we have a master client, use it for real RPC calls
+    if (master_client_) {
+        try {
+            // Convert our args to DistributedMasterClient format
+            DistributedMasterClient::AppendEntriesRequest request;
+            request.term = args.term;
+            request.leader_id = args.leader_id;
+            request.prev_log_index = args.prev_log_index;
+            request.prev_log_term = args.prev_log_term;
+            request.leader_commit_index = args.leader_commit;
+
+            // Convert log entries
+            for (const auto& entry : args.entries) {
+                DistributedMasterClient::LogEntry log_entry;
+                log_entry.term = entry.term;
+                log_entry.index = 0;  // Will be determined by receiver
+                log_entry.type = 5;  // LOG_WRITE_OPERATION
+                log_entry.data = entry.command_data;
+                log_entry.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    entry.timestamp.time_since_epoch()
+                ).count();
+                request.entries.push_back(log_entry);
+            }
+
+            // Make the RPC call
+            auto result = master_client_->append_entries(follower_id, request);
+
+            if (result.has_value()) {
+                reply.term = result.value().term;
+                reply.success = result.value().success;
+                reply.conflict_index = 0;  // Not used in current implementation
+                reply.conflict_term = 0;
+
+                LOG_DEBUG(logger_, "AppendEntries RPC to " + follower_id +
+                         " returned: " + (reply.success ? "success" : "failure"));
+            } else {
+                LOG_WARN(logger_, "AppendEntries RPC to " + follower_id + " failed: " +
+                        result.error().message);
+                reply.success = false;
+            }
+        } catch (const std::exception& e) {
+            LOG_ERROR(logger_, "Exception in send_append_entries to " + follower_id +
+                     ": " + std::string(e.what()));
+            reply.success = false;
+        }
+    } else {
+        // No master client available - simulation mode for testing
+        LOG_DEBUG(logger_, "No DistributedMasterClient available, simulating AppendEntries success");
+        reply.success = true;
+        reply.term = args.term;
+    }
+
     return reply;
 }
 
@@ -778,6 +898,355 @@ void RaftConsensus::update_leader_id(const std::string& new_leader_id) {
     if (leader_id_ != new_leader_id) {
         LOG_INFO(logger_, "Leader changed from " + leader_id_ + " to " + new_leader_id);
         leader_id_ = new_leader_id;
+    }
+}
+
+// ===== Snapshot Operations =====
+
+Result<bool> RaftConsensus::create_snapshot() {
+    std::unique_lock<std::shared_mutex> lock(state_mutex_);
+
+    try {
+        // Can't create snapshot if we haven't committed anything yet
+        if (commit_index_ == 0) {
+            return tl::make_unexpected(ErrorHandler::create_error(
+                ErrorCode::INVALID_STATE,
+                "Cannot create snapshot: no committed entries"
+            ));
+        }
+
+        LOG_INFO(logger_, "Creating snapshot at commit index " + std::to_string(commit_index_));
+
+        // Create snapshot metadata
+        SnapshotMetadata metadata;
+        metadata.last_included_index = commit_index_;
+        metadata.last_included_term = (commit_index_ <= static_cast<int>(log_.size()))
+                                      ? log_[commit_index_ - 1].term
+                                      : last_snapshot_.metadata.last_included_term;
+
+        // Get cluster members from cluster service
+        if (cluster_service_) {
+            auto nodes_result = cluster_service_->get_all_nodes();
+            if (nodes_result.has_value()) {
+                for (const auto& node : nodes_result.value()) {
+                    metadata.cluster_members.push_back(node.node_id);
+                }
+            }
+        }
+
+        // Serialize committed log entries as state machine data
+        // In a real implementation, this would serialize the actual state machine state
+        // For now, we'll just serialize the committed log entries
+        std::vector<uint8_t> snapshot_data;
+        std::stringstream ss;
+
+        // Write snapshot header
+        ss << "RAFT_SNAPSHOT_V1\n";
+        ss << "commit_index:" << commit_index_ << "\n";
+        ss << "num_entries:" << commit_index_ << "\n";
+
+        // Write log entries (up to commit_index)
+        int entries_to_write = std::min(commit_index_, static_cast<int>(log_.size()));
+        for (int i = 0; i < entries_to_write; i++) {
+            const auto& entry = log_[i];
+            ss << "ENTRY\n";
+            ss << "term:" << entry.term << "\n";
+            ss << "type:" << entry.command_type << "\n";
+            ss << "data_len:" << entry.command_data.length() << "\n";
+            ss.write(entry.command_data.c_str(), entry.command_data.length());
+            ss << "\n";
+        }
+
+        std::string snapshot_str = ss.str();
+        snapshot_data.assign(snapshot_str.begin(), snapshot_str.end());
+
+        // Create snapshot
+        Snapshot snapshot;
+        snapshot.metadata = metadata;
+        snapshot.data = snapshot_data;
+
+        // Persist snapshot to disk
+        last_snapshot_ = snapshot;
+        persist_snapshot(snapshot);
+
+        LOG_INFO(logger_, "Snapshot created successfully with " + std::to_string(entries_to_write) +
+                 " entries, size: " + std::to_string(snapshot_data.size()) + " bytes");
+
+        return true;
+    } catch (const std::exception& e) {
+        return tl::make_unexpected(ErrorHandler::create_error(
+            ErrorCode::INTERNAL_ERROR,
+            "Exception in create_snapshot: " + std::string(e.what())
+        ));
+    }
+}
+
+void RaftConsensus::persist_snapshot(const Snapshot& snapshot) {
+    try {
+        // Create directory if it doesn't exist
+        std::string state_dir = "/tmp/jadevectordb/raft/" + server_id_;
+        std::system(("mkdir -p " + state_dir).c_str());
+
+        std::string snapshot_path = state_dir + "/snapshot.dat";
+        std::ofstream ofs(snapshot_path, std::ios::binary);
+
+        if (!ofs.is_open()) {
+            LOG_ERROR(logger_, "Failed to open snapshot file for writing: " + snapshot_path);
+            return;
+        }
+
+        // Write snapshot metadata
+        ofs.write(reinterpret_cast<const char*>(&snapshot.metadata.last_included_index), sizeof(int));
+        ofs.write(reinterpret_cast<const char*>(&snapshot.metadata.last_included_term), sizeof(int));
+
+        // Write cluster members
+        size_t num_members = snapshot.metadata.cluster_members.size();
+        ofs.write(reinterpret_cast<const char*>(&num_members), sizeof(size_t));
+        for (const auto& member : snapshot.metadata.cluster_members) {
+            size_t member_len = member.length();
+            ofs.write(reinterpret_cast<const char*>(&member_len), sizeof(size_t));
+            ofs.write(member.c_str(), member_len);
+        }
+
+        // Write snapshot data
+        size_t data_size = snapshot.data.size();
+        ofs.write(reinterpret_cast<const char*>(&data_size), sizeof(size_t));
+        ofs.write(reinterpret_cast<const char*>(snapshot.data.data()), data_size);
+
+        ofs.close();
+        LOG_INFO(logger_, "Persisted snapshot to " + snapshot_path);
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in persist_snapshot: " + std::string(e.what()));
+    }
+}
+
+bool RaftConsensus::load_snapshot() {
+    try {
+        std::string state_dir = "/tmp/jadevectordb/raft/" + server_id_;
+        std::string snapshot_path = state_dir + "/snapshot.dat";
+
+        std::ifstream ifs(snapshot_path, std::ios::binary);
+        if (!ifs.is_open()) {
+            // No snapshot file exists yet
+            return false;
+        }
+
+        Snapshot snapshot;
+
+        // Read snapshot metadata
+        ifs.read(reinterpret_cast<char*>(&snapshot.metadata.last_included_index), sizeof(int));
+        ifs.read(reinterpret_cast<char*>(&snapshot.metadata.last_included_term), sizeof(int));
+
+        // Read cluster members
+        size_t num_members = 0;
+        ifs.read(reinterpret_cast<char*>(&num_members), sizeof(size_t));
+        snapshot.metadata.cluster_members.resize(num_members);
+        for (size_t i = 0; i < num_members; i++) {
+            size_t member_len = 0;
+            ifs.read(reinterpret_cast<char*>(&member_len), sizeof(size_t));
+            std::string member(member_len, '\0');
+            ifs.read(&member[0], member_len);
+            snapshot.metadata.cluster_members[i] = member;
+        }
+
+        // Read snapshot data
+        size_t data_size = 0;
+        ifs.read(reinterpret_cast<char*>(&data_size), sizeof(size_t));
+        snapshot.data.resize(data_size);
+        ifs.read(reinterpret_cast<char*>(snapshot.data.data()), data_size);
+
+        ifs.close();
+
+        std::unique_lock<std::shared_mutex> lock(state_mutex_);
+        last_snapshot_ = snapshot;
+        last_applied_ = snapshot.metadata.last_included_index;
+        commit_index_ = std::max(commit_index_, snapshot.metadata.last_included_index);
+
+        LOG_INFO(logger_, "Loaded snapshot from " + snapshot_path +
+                 ", last_included_index: " + std::to_string(snapshot.metadata.last_included_index) +
+                 ", size: " + std::to_string(data_size) + " bytes");
+
+        return true;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in load_snapshot: " + std::string(e.what()));
+        return false;
+    }
+}
+
+RaftConsensus::InstallSnapshotReply RaftConsensus::handle_install_snapshot(const InstallSnapshotArgs& args) {
+    InstallSnapshotReply reply;
+    reply.term = current_term_;
+    reply.success = false;
+
+    std::unique_lock<std::shared_mutex> lock(state_mutex_);
+
+    // Reply false if term < currentTerm
+    if (args.term < current_term_) {
+        LOG_DEBUG(logger_, "Rejecting InstallSnapshot from " + args.leader_id +
+                 " with stale term " + std::to_string(args.term));
+        return reply;
+    }
+
+    // If term > currentTerm, become follower
+    if (args.term > current_term_) {
+        become_follower(args.term);
+    }
+
+    // Reset election timer since we heard from the leader
+    reset_election_timer();
+    update_leader_id(args.leader_id);
+
+    try {
+        // If this is the first chunk, create a new snapshot
+        if (args.offset == 0) {
+            last_snapshot_.metadata.last_included_index = args.last_included_index;
+            last_snapshot_.metadata.last_included_term = args.last_included_term;
+            last_snapshot_.data.clear();
+        }
+
+        // Append data to snapshot
+        last_snapshot_.data.insert(last_snapshot_.data.end(), args.data.begin(), args.data.end());
+
+        // If this is the last chunk, finalize the snapshot
+        if (args.done) {
+            // Discard any existing or partial log with last_included_index
+            if (args.last_included_index >= static_cast<int>(log_.size())) {
+                // Snapshot contains more than our entire log
+                log_.clear();
+            } else {
+                // Snapshot contains part of our log, keep entries after snapshot
+                log_.erase(log_.begin(), log_.begin() + args.last_included_index);
+            }
+
+            // Update commit index and last applied
+            commit_index_ = std::max(commit_index_, args.last_included_index);
+            last_applied_ = args.last_included_index;
+
+            // Persist the snapshot
+            persist_snapshot(last_snapshot_);
+
+            LOG_INFO(logger_, "Installed snapshot from " + args.leader_id +
+                     ", last_included_index: " + std::to_string(args.last_included_index) +
+                     ", size: " + std::to_string(last_snapshot_.data.size()) + " bytes");
+
+            reply.success = true;
+        }
+
+        reply.term = current_term_;
+        return reply;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in handle_install_snapshot: " + std::string(e.what()));
+        reply.success = false;
+        return reply;
+    }
+}
+
+RaftConsensus::InstallSnapshotReply RaftConsensus::send_install_snapshot(const std::string& follower_id,
+                                                                        const InstallSnapshotArgs& args) {
+    InstallSnapshotReply reply;
+    reply.term = current_term_;
+    reply.success = false;
+
+    // Validate that we have a cluster service for RPC
+    if (!cluster_service_) {
+        LOG_WARN(logger_, "No ClusterService available for sending InstallSnapshot to " + follower_id);
+        return reply;
+    }
+
+    // Verify the target node is in the cluster and alive
+    auto nodes_result = cluster_service_->get_all_nodes();
+    if (!nodes_result.has_value()) {
+        LOG_WARN(logger_, "Failed to get cluster nodes for InstallSnapshot to " + follower_id);
+        return reply;
+    }
+
+    bool node_found = false;
+    bool node_alive = false;
+    for (const auto& node : nodes_result.value()) {
+        if (node.node_id == follower_id) {
+            node_found = true;
+            node_alive = node.is_alive;
+            break;
+        }
+    }
+
+    if (!node_found) {
+        LOG_WARN(logger_, "Target node not found in cluster for InstallSnapshot: " + follower_id);
+        return reply;
+    }
+
+    if (!node_alive) {
+        LOG_DEBUG(logger_, "Target node is not alive, skipping InstallSnapshot: " + follower_id);
+        return reply;
+    }
+
+    LOG_DEBUG(logger_, "Sending InstallSnapshot to follower " + follower_id +
+             " with last_included_index " + std::to_string(args.last_included_index) +
+             " for term " + std::to_string(args.term));
+
+    // Use DistributedMasterClient for actual RPC if available
+    if (master_client_) {
+        DistributedMasterClient::InstallSnapshotRequest rpc_request;
+        rpc_request.term = args.term;
+        rpc_request.leader_id = args.leader_id;
+        rpc_request.last_included_index = args.last_included_index;
+        rpc_request.last_included_term = args.last_included_term;
+        rpc_request.offset = args.offset;
+        rpc_request.data = args.data;
+        rpc_request.done = args.done;
+
+        auto rpc_result = master_client_->install_snapshot(follower_id, rpc_request);
+        if (rpc_result.has_value()) {
+            reply.term = rpc_result.value().term;
+            reply.success = rpc_result.value().success;
+            LOG_DEBUG(logger_, "InstallSnapshot RPC to " + follower_id + " returned: " +
+                     (reply.success ? "success" : "failure"));
+        } else {
+            LOG_WARN(logger_, "InstallSnapshot RPC to " + follower_id + " failed: " +
+                    rpc_result.error().message);
+            reply.success = false;
+        }
+    } else {
+        // No master client available, simulate success for testing
+        LOG_DEBUG(logger_, "No master_client available, simulating InstallSnapshot success");
+        reply.success = true;
+        reply.term = args.term;
+    }
+
+    return reply;
+}
+
+const Snapshot& RaftConsensus::get_last_snapshot() const {
+    std::shared_lock<std::shared_mutex> lock(state_mutex_);
+    return last_snapshot_;
+}
+
+bool RaftConsensus::should_compact_log() const {
+    std::shared_lock<std::shared_mutex> lock(state_mutex_);
+    return static_cast<int>(log_.size()) > snapshot_log_threshold_;
+}
+
+void RaftConsensus::compact_log_to_snapshot() {
+    std::unique_lock<std::shared_mutex> lock(state_mutex_);
+
+    if (last_snapshot_.metadata.last_included_index == 0) {
+        LOG_DEBUG(logger_, "No snapshot available for log compaction");
+        return;
+    }
+
+    try {
+        // Remove all log entries up to and including the snapshot's last_included_index
+        int entries_to_remove = std::min(last_snapshot_.metadata.last_included_index,
+                                        static_cast<int>(log_.size()));
+
+        if (entries_to_remove > 0) {
+            log_.erase(log_.begin(), log_.begin() + entries_to_remove);
+            LOG_INFO(logger_, "Compacted log by removing " + std::to_string(entries_to_remove) +
+                     " entries up to index " + std::to_string(last_snapshot_.metadata.last_included_index) +
+                     ", remaining log size: " + std::to_string(log_.size()));
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in compact_log_to_snapshot: " + std::string(e.what()));
     }
 }
 

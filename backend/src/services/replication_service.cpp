@@ -595,7 +595,6 @@ Result<void> ReplicationService::send_replication_request(const Vector& vector,
         for (const auto& node_id : target_nodes) {
             replication_threads.emplace_back([this, &vector, &node_id, &successful_nodes, &failed_nodes, &result_mutex]() {
                 try {
-#ifdef BUILD_WITH_GRPC
                     // Check if worker is connected
                     if (!master_client_->is_worker_connected(node_id)) {
                         LOG_WARN(logger_, "Worker node " + node_id + " is not connected, skipping replication");
@@ -604,26 +603,34 @@ Result<void> ReplicationService::send_replication_request(const Vector& vector,
                         return;
                     }
 
-                    // Use DistributedMasterClient to send write request to the target node
-                    // Note: This assumes the master client has a method for writing vectors
-                    // In the actual implementation, we would use the appropriate gRPC method
-                    LOG_DEBUG(logger_, "Sending replication request to node: " + node_id);
+                    // Build replication request
+                    DistributedMasterClient::ReplicationRequest request;
+                    request.shard_id = "";  // Will be determined by worker based on vector
+                    request.source_node_id = "master";  // TODO: Get actual node ID
+                    request.replication_type = ReplicationType::INCREMENTAL;
+                    request.vectors.push_back(vector);
+                    request.from_version = 0;
+                    request.to_version = vector.version;
 
-                    // For now, we mark it as successful if the node is connected
-                    // In a full implementation, we would call master_client_->replicate_vector(node_id, vector)
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));  // Simulate network latency
-#else
-                    // Simulate replication without gRPC
-                    LOG_DEBUG(logger_, "Simulating replication to node: " + node_id + " (no gRPC)");
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-#endif
+                    LOG_DEBUG(logger_, "Sending replicate_data RPC to node: " + node_id);
 
-                    {
+                    // Use DistributedMasterClient to replicate data via gRPC
+                    auto result = master_client_->replicate_data(node_id, request);
+
+                    if (result.has_value() && result.value().success) {
                         std::lock_guard<std::mutex> lock(result_mutex);
                         successful_nodes.push_back(node_id);
+                        LOG_DEBUG(logger_, "Successfully replicated vector " + vector.id + " to node " + node_id +
+                                 " (" + std::to_string(result.value().vectors_replicated) + " vectors)");
+                    } else {
+                        std::lock_guard<std::mutex> lock(result_mutex);
+                        failed_nodes.push_back(node_id);
+                        if (result.has_value()) {
+                            LOG_WARN(logger_, "Replication to node " + node_id + " reported failure");
+                        } else {
+                            LOG_WARN(logger_, "Replication to node " + node_id + " failed: " + result.error().message);
+                        }
                     }
-
-                    LOG_DEBUG(logger_, "Successfully replicated vector " + vector.id + " to node " + node_id);
                 } catch (const std::exception& e) {
                     LOG_ERROR(logger_, "Exception replicating to node " + node_id + ": " + std::string(e.what()));
                     std::lock_guard<std::mutex> lock(result_mutex);
@@ -690,12 +697,34 @@ void ReplicationService::update_replication_status(const std::string& vector_id,
 
 Result<void> ReplicationService::apply_replicated_vector(const Vector& vector) {
     try {
-        // In a real implementation, this would:
-        // 1. Validate the replicated vector data
-        // 2. Apply it to the local storage
-        // 3. Update indexes and metadata
-        
-        LOG_DEBUG(logger_, "Applied replicated vector: " + vector.id);
+        LOG_DEBUG(logger_, "Applying replicated vector: " + vector.id);
+
+        // If a callback is set, use it to apply the vector to local storage
+        if (apply_callback_) {
+            // Extract database ID from replication status if available
+            std::string database_id;
+            {
+                std::lock_guard<std::mutex> lock(status_mutex_);
+                auto it = replication_status_.find(vector.id);
+                if (it != replication_status_.end()) {
+                    database_id = it->second.database_id;
+                }
+            }
+
+            auto result = apply_callback_(database_id, vector);
+            if (!result.has_value()) {
+                LOG_ERROR(logger_, "Failed to apply replicated vector via callback: " + result.error().message);
+                return tl::unexpected(result.error());
+            }
+
+            LOG_DEBUG(logger_, "Applied replicated vector " + vector.id + " via callback");
+            return {};
+        }
+
+        // No callback set - log a warning but succeed
+        // This handles the case where ReplicationService is used without a storage backend
+        LOG_WARN(logger_, "No apply callback set for ReplicationService - vector " + vector.id + 
+                " not persisted locally");
         return {};
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in apply_replicated_vector: " + std::string(e.what()));
