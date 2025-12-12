@@ -245,7 +245,7 @@ export const monitoringApi = {
   },
 };
 
-// API Service for Embedding Generation (placeholder for future implementation)
+// API Service for Embedding Generation
 export const embeddingApi = {
   generateEmbedding: async (embeddingRequest) => {
     const response = await fetch(`${API_BASE_URL}/embeddings/generate`, {
@@ -257,7 +257,7 @@ export const embeddingApi = {
   },
 };
 
-// API Service for Lifecycle Management (placeholder for future implementation)
+// API Service for Lifecycle Management
 export const lifecycleApi = {
   configureRetention: async (databaseId, retentionConfig) => {
     const response = await fetch(`${API_BASE_URL}/databases/${databaseId}/lifecycle`, {
