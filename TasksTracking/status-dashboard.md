@@ -59,7 +59,7 @@
 | T235 | Coordinate security policy requirements | MEDIUM | - | 0% |
 | T237 | Assign roles to default users | HIGH | - | ✅ Done (T236) |
 | T238 | Mirror backend changes in simple API or deprecate | LOW | - | 0% |
-| T259 | Complete distributed worker service stubs | HIGH | - | ~40% |
+| T259 | Complete distributed worker service stubs | HIGH | - | ~90% |
 
 ---
 
@@ -170,7 +170,7 @@
 - ✅ DIST-002: Distributed query executor
 
 **In Progress**:
-- 🔄 T259: Distributed worker service stubs (~40%)
+- 🔄 T259: Distributed worker service stubs (~90%)
 
 **Remaining**:
 - ⏳ DIST-003: Distributed write path
