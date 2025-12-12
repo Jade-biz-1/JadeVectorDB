@@ -35,10 +35,10 @@ class IndexService;
 class JadeVectorDBApp {
 private:
     std::unique_ptr<logging::Logger> logger_;
-    std::unique_ptr<ConfigManager> config_mgr_;
+    ConfigManager* config_mgr_;  // Raw pointer - singleton, not owned
     std::unique_ptr<ThreadPool> thread_pool_;
     // REMOVED: AuthManager* auth_mgr_ - migrated to AuthenticationService
-    std::unique_ptr<MetricsRegistry> metrics_registry_;
+    MetricsRegistry* metrics_registry_;  // Raw pointer - singleton, not owned
     std::unique_ptr<DatabaseLayer> db_layer_;
     std::unique_ptr<DistributedServiceManager> distributed_service_manager_;
     std::unique_ptr<RestApiService> rest_api_service_;
@@ -47,7 +47,7 @@ private:
     bool running_;
 
 public:
-    JadeVectorDBApp() : running_(false) {
+    JadeVectorDBApp() : running_(false), config_mgr_(nullptr), metrics_registry_(nullptr) {
         // Initialize logging
         logging::LoggerManager::initialize(logging::LogLevel::INFO);
         logger_ = std::make_unique<logging::Logger>("JadeVectorDBApp");
@@ -65,8 +65,8 @@ public:
     Result<void> initialize() {
         LOG_INFO(logger_, "Initializing JadeVectorDB services...");
         
-        // Get configuration
-        config_mgr_ = std::unique_ptr<ConfigManager>(ConfigManager::get_instance());
+        // Get configuration (singleton - not owned, don't delete)
+        config_mgr_ = ConfigManager::get_instance();
         
         // Load configuration from environment or default
         config_mgr_->load_from_env();
@@ -85,8 +85,8 @@ public:
         // Default users are now created by AuthenticationService.seed_default_users()
         // which is called during REST API initialization (rest_api.cpp line 132)
 
-        // Initialize metrics registry
-        metrics_registry_ = std::unique_ptr<MetricsRegistry>(MetricsManager::get_registry());
+        // Initialize metrics registry (singleton - not owned, don't delete)
+        metrics_registry_ = MetricsManager::get_registry();
         
         // Initialize database layer
         db_layer_ = std::make_unique<DatabaseLayer>();
@@ -193,6 +193,9 @@ public:
             LOG_DEBUG(logger_, "Application running...");
             count++;
         }
+        
+        // Explicitly shutdown before returning
+        auto shutdown_result = shutdown();
         
         return Result<void>{};
     }
