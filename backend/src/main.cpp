@@ -40,7 +40,7 @@ private:
     // REMOVED: AuthManager* auth_mgr_ - migrated to AuthenticationService
     MetricsRegistry* metrics_registry_;  // Raw pointer - singleton, not owned
     std::unique_ptr<DatabaseLayer> db_layer_;
-    std::unique_ptr<DistributedServiceManager> distributed_service_manager_;
+    std::shared_ptr<DistributedServiceManager> distributed_service_manager_;
     std::unique_ptr<RestApiService> rest_api_service_;
     std::unique_ptr<VectorDatabaseService> grpc_service_;
     
@@ -102,7 +102,7 @@ public:
         // Default database creation can be added back if needed using proper service layer
 
         // Initialize distributed services
-        distributed_service_manager_ = std::make_unique<DistributedServiceManager>();
+        distributed_service_manager_ = std::make_shared<DistributedServiceManager>();
         DistributedConfig dist_config;
         
         // Configure sharding
@@ -150,8 +150,8 @@ public:
             }
         }
         
-        // Initialize REST API service
-        rest_api_service_ = std::make_unique<RestApiService>(config.port);
+        // Initialize REST API service with distributed service manager
+        rest_api_service_ = std::make_unique<RestApiService>(config.port, distributed_service_manager_);
         
         // Initialize gRPC service
         grpc_service_ = std::make_unique<VectorDatabaseService>(
