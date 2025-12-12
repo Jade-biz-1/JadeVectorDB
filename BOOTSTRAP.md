@@ -21,12 +21,16 @@ This document helps you (Claude) quickly get up to speed when starting a new ses
 - Confusion about which system to use
 - Difficult migration and cleanup work
 
-### The AuthManager Lesson:
+### The AuthManager Lesson (RESOLVED ✅):
 In December 2025, we discovered two parallel authentication systems:
-1. `lib/auth.h` / `lib/auth.cpp` - `AuthManager` class (old, deprecated)
-2. `services/authentication_service.h` / `services/authentication_service.cpp` - `AuthenticationService` class (current)
+1. `lib/auth.h` / `lib/auth.cpp` - `AuthManager` class (old, **DELETED**)
+2. `services/authentication_service.h` / `services/authentication_service.cpp` - `AuthenticationService` class (current, **USE THIS**)
 
-This duplication was **completely unwanted** and required extensive cleanup work to stub out AuthManager and consolidate on AuthenticationService.
+This duplication was **completely unwanted** and required extensive cleanup work. **The cleanup is now complete** (2025-12-12):
+- ✅ Deleted `lib/auth.h` and `lib/auth.cpp`
+- ✅ Removed all AuthManager references from source files
+- ✅ Fixed double-free crash caused by singleton ownership issue
+- ✅ Valgrind clean (0 errors)
 
 **Action Required**: Before implementing ANY new service or major feature:
 1. Search the codebase for existing implementations
@@ -83,10 +87,9 @@ cd backend && ./build.sh --jobs 2
 cd backend && ./build.sh --no-tests --no-benchmarks
 ```
 
-⚠️ **Runtime crash on startup**: Duplicate route handlers in `rest_api.cpp`
-- Binary builds successfully
-- But crashes on startup with "handler already exists for /v1/databases"
-- Related to distributed system integration work
+✅ **Runtime crash on startup** - FIXED (2025-12-12)
+- Was caused by singleton ownership issue (ConfigManager/MetricsRegistry wrapped in unique_ptr)
+- Now builds and runs cleanly with proper shutdown
 
 ---
 
@@ -290,7 +293,7 @@ The project uses **AuthenticationService** (located in `backend/src/services/aut
 1. **Tests** - Have compilation errors (use `--no-tests --no-benchmarks`)
 2. **distributed_worker_service.cpp** - Incomplete stubs (~40% complete, T259)
 3. **Database ID mismatch** - IDs in list response don't match get endpoint
-4. **AuthManager cleanup needed** - Old AuthManager code still exists, needs removal (use AuthenticationService instead)
+4. ~~**AuthManager cleanup needed**~~ - ✅ COMPLETE (2025-12-12) - Old AuthManager code removed
 
 ### Recent Work (Last 7 Days):
 - ✅ Completed all authentication endpoints (T219-T222)
@@ -304,6 +307,9 @@ The project uses **AuthenticationService** (located in `backend/src/services/aut
 - ✅ Fixed default user passwords to meet 10-character minimum requirement
 - ✅ Added list_users() and list_api_keys() methods to AuthenticationService
 - ✅ Verified end-to-end authentication flow (login working)
+- ✅ **AuthManager cleanup COMPLETE** - Deleted lib/auth.h, lib/auth.cpp (2025-12-12)
+- ✅ **Fixed double-free crash** - Singleton ownership issue in main.cpp (2025-12-12)
+- ✅ **Valgrind clean** - 0 errors on shutdown (2025-12-12)
 
 ---
 
