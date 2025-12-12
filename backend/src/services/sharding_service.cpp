@@ -4,8 +4,23 @@
 #include <algorithm>
 #include <random>
 #include <chrono>
+#include <thread>
 
 namespace jadevectordb {
+
+// Helper to get current timestamp
+static int64_t current_timestamp() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()
+    ).count();
+}
+
+// Helper to generate migration ID
+static std::string generate_migration_id() {
+    auto now = std::chrono::high_resolution_clock::now();
+    auto duration = now.time_since_epoch();
+    return "mig_" + std::to_string(duration.count());
+}
 
 ShardingService::ShardingService() {
     logger_ = logging::LoggerManager::get_logger("ShardingService");
@@ -179,43 +194,315 @@ Result<bool> ShardingService::update_sharding_config(const ShardingConfig& new_c
 
 Result<bool> ShardingService::migrate_shard(const std::string& shard_id, const std::string& target_node_id) {
     try {
-        LOG_INFO(logger_, "Migrating shard " + shard_id + " to node " + target_node_id);
+        LOG_INFO(logger_, "Starting migration of shard " + shard_id + " to node " + target_node_id);
         
-        // In a real implementation, this would involve:
-        // 1. Marking the shard as migrating
-        // 2. Transferring data to the target node
-        // 3. Updating metadata
-        // 4. Marking the shard as active on the new node
-        // 5. Cleaning up from the old node
+        // Find the shard
+        auto it = std::find_if(shards_.begin(), shards_.end(), 
+                              [&shard_id](const ShardInfo& shard) { return shard.shard_id == shard_id; });
         
-        // For now, we'll just simulate the migration
+        if (it == shards_.end()) {
+            LOG_WARN(logger_, "Shard not found for migration: " + shard_id);
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "Shard not found: " + shard_id);
+        }
+        
+        std::string source_node_id = it->node_id;
+        
+        // Check if already on target node
+        if (source_node_id == target_node_id) {
+            LOG_INFO(logger_, "Shard already on target node, no migration needed");
+            return true;
+        }
+        
+        // Initialize migration status
+        {
+            std::lock_guard<std::mutex> lock(migrations_mutex_);
+            
+            // Check if migration already in progress
+            if (active_migrations_.find(shard_id) != active_migrations_.end() &&
+                active_migrations_[shard_id].status == "in_progress") {
+                RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "Migration already in progress for shard: " + shard_id);
+            }
+            
+            MigrationStatus status;
+            status.migration_id = generate_migration_id();
+            status.shard_id = shard_id;
+            status.source_node_id = source_node_id;
+            status.target_node_id = target_node_id;
+            status.status = "in_progress";
+            status.total_vectors = it->record_count;
+            status.total_bytes = it->size_bytes;
+            status.transferred_vectors = 0;
+            status.transferred_bytes = 0;
+            status.started_at = current_timestamp();
+            status.completed_at = 0;
+            
+            active_migrations_[shard_id] = status;
+        }
+        
+        // Step 1: Mark shard as migrating
+        it->status = "migrating";
+        LOG_INFO(logger_, "Shard " + shard_id + " marked as migrating");
+        
+        // Step 2: Extract vectors from source shard
+        auto extract_result = extract_vectors_from_shard(shard_id);
+        if (!extract_result.has_value()) {
+            // Rollback on failure
+            it->status = "active";
+            std::lock_guard<std::mutex> lock(migrations_mutex_);
+            active_migrations_[shard_id].status = "failed";
+            active_migrations_[shard_id].error_message = "Failed to extract vectors: " + extract_result.error().message;
+            active_migrations_[shard_id].completed_at = current_timestamp();
+            RETURN_ERROR(extract_result.error().code, extract_result.error().message);
+        }
+        
+        std::vector<Vector> vectors = extract_result.value();
+        LOG_INFO(logger_, "Extracted " + std::to_string(vectors.size()) + " vectors from shard " + shard_id);
+        
+        // Step 3: Transfer vectors to target node
+        auto transfer_result = transfer_vectors_to_node(target_node_id, vectors, shard_id);
+        if (!transfer_result.has_value()) {
+            // Rollback on failure
+            it->status = "active";
+            std::lock_guard<std::mutex> lock(migrations_mutex_);
+            active_migrations_[shard_id].status = "failed";
+            active_migrations_[shard_id].error_message = "Failed to transfer vectors: " + transfer_result.error().message;
+            active_migrations_[shard_id].completed_at = current_timestamp();
+            RETURN_ERROR(transfer_result.error().code, transfer_result.error().message);
+        }
+        
+        // Step 4: Update shard metadata
+        it->node_id = target_node_id;
+        it->status = "active";
+        it->data_version++;
+        
+        // Also update in db_shards_
+        for (auto& db_entry : db_shards_) {
+            for (auto& shard : db_entry.second) {
+                if (shard.shard_id == shard_id) {
+                    shard.node_id = target_node_id;
+                    shard.status = "active";
+                    shard.data_version++;
+                    break;
+                }
+            }
+        }
+        
+        // Step 5: Mark migration as complete
+        {
+            std::lock_guard<std::mutex> lock(migrations_mutex_);
+            active_migrations_[shard_id].status = "completed";
+            active_migrations_[shard_id].transferred_vectors = vectors.size();
+            active_migrations_[shard_id].transferred_bytes = it->size_bytes;
+            active_migrations_[shard_id].completed_at = current_timestamp();
+        }
+        
+        LOG_INFO(logger_, "Shard " + shard_id + " successfully migrated to node " + target_node_id);
+        return true;
+        
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in migrate_shard: " + std::string(e.what()));
+        
+        // Update migration status
+        std::lock_guard<std::mutex> lock(migrations_mutex_);
+        if (active_migrations_.find(shard_id) != active_migrations_.end()) {
+            active_migrations_[shard_id].status = "failed";
+            active_migrations_[shard_id].error_message = std::string(e.what());
+            active_migrations_[shard_id].completed_at = current_timestamp();
+        }
+        
+        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to migrate shard: " + std::string(e.what()));
+    }
+}
+
+Result<MigrationStatus> ShardingService::get_migration_status(const std::string& shard_id) const {
+    try {
+        std::lock_guard<std::mutex> lock(migrations_mutex_);
+        
+        auto it = active_migrations_.find(shard_id);
+        if (it == active_migrations_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "No migration found for shard: " + shard_id);
+        }
+        
+        return it->second;
+    } catch (const std::exception& e) {
+        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to get migration status: " + std::string(e.what()));
+    }
+}
+
+Result<bool> ShardingService::cancel_migration(const std::string& shard_id) {
+    try {
+        std::lock_guard<std::mutex> lock(migrations_mutex_);
+        
+        auto it = active_migrations_.find(shard_id);
+        if (it == active_migrations_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "No migration found for shard: " + shard_id);
+        }
+        
+        if (it->second.status != "in_progress") {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Migration is not in progress");
+        }
+        
+        it->second.status = "cancelled";
+        it->second.completed_at = current_timestamp();
+        
+        // Restore shard status
+        auto shard_it = std::find_if(shards_.begin(), shards_.end(), 
+                                    [&shard_id](const ShardInfo& shard) { return shard.shard_id == shard_id; });
+        if (shard_it != shards_.end()) {
+            shard_it->status = "active";
+        }
+        
+        LOG_INFO(logger_, "Migration cancelled for shard: " + shard_id);
+        return true;
+    } catch (const std::exception& e) {
+        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to cancel migration: " + std::string(e.what()));
+    }
+}
+
+Result<bool> ShardingService::rollback_migration(const std::string& shard_id) {
+    try {
+        std::lock_guard<std::mutex> lock(migrations_mutex_);
+        
+        auto it = active_migrations_.find(shard_id);
+        if (it == active_migrations_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "No migration found for shard: " + shard_id);
+        }
+        
+        // Can only rollback failed or completed migrations
+        if (it->second.status != "failed" && it->second.status != "completed") {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Can only rollback failed or completed migrations");
+        }
+        
+        std::string original_node = it->second.source_node_id;
+        
+        // Restore shard to original node
+        auto shard_it = std::find_if(shards_.begin(), shards_.end(), 
+                                    [&shard_id](const ShardInfo& shard) { return shard.shard_id == shard_id; });
+        if (shard_it != shards_.end()) {
+            shard_it->node_id = original_node;
+            shard_it->status = "active";
+        }
+        
+        // Also update in db_shards_
+        for (auto& db_entry : db_shards_) {
+            for (auto& shard : db_entry.second) {
+                if (shard.shard_id == shard_id) {
+                    shard.node_id = original_node;
+                    shard.status = "active";
+                    break;
+                }
+            }
+        }
+        
+        it->second.status = "rolled_back";
+        it->second.completed_at = current_timestamp();
+        
+        LOG_INFO(logger_, "Migration rolled back for shard: " + shard_id + " to node: " + original_node);
+        return true;
+    } catch (const std::exception& e) {
+        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to rollback migration: " + std::string(e.what()));
+    }
+}
+
+Result<bool> ShardingService::verify_migration(const std::string& shard_id) {
+    try {
+        std::lock_guard<std::mutex> lock(migrations_mutex_);
+        
+        auto it = active_migrations_.find(shard_id);
+        if (it == active_migrations_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "No migration found for shard: " + shard_id);
+        }
+        
+        if (it->second.status != "completed") {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Migration is not completed");
+        }
+        
+        // Verify that all vectors were transferred
+        if (it->second.transferred_vectors != it->second.total_vectors) {
+            RETURN_ERROR(ErrorCode::DATA_LOSS, 
+                        "Vector count mismatch: expected " + std::to_string(it->second.total_vectors) + 
+                        ", transferred " + std::to_string(it->second.transferred_vectors));
+        }
+        
+        LOG_INFO(logger_, "Migration verified successfully for shard: " + shard_id);
+        return true;
+    } catch (const std::exception& e) {
+        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to verify migration: " + std::string(e.what()));
+    }
+}
+
+Result<std::vector<Vector>> ShardingService::extract_vectors_from_shard(const std::string& shard_id) {
+    try {
+        LOG_INFO(logger_, "Extracting vectors from shard: " + shard_id);
+        
+        // In a real implementation, this would:
+        // 1. Connect to the storage backend for the shard
+        // 2. Read all vector data from storage
+        // 3. Return the vectors for transfer
+        
+        // For now, return empty vector (placeholder for actual storage integration)
+        std::vector<Vector> vectors;
+        
+        // Find shard info
         auto it = std::find_if(shards_.begin(), shards_.end(), 
                               [&shard_id](const ShardInfo& shard) { return shard.shard_id == shard_id; });
         
         if (it != shards_.end()) {
-            it->node_id = target_node_id;
-            it->status = "active";
-            
-            // Also update in db_shards_
-            for (auto& db_entry : db_shards_) {
-                for (auto& shard : db_entry.second) {
-                    if (shard.shard_id == shard_id) {
-                        shard.node_id = target_node_id;
-                        shard.status = "active";
-                        break;
-                    }
-                }
-            }
-            
-            LOG_INFO(logger_, "Shard " + shard_id + " migrated to node " + target_node_id);
-            return true;
+            // Simulate extraction based on record count
+            LOG_INFO(logger_, "Would extract " + std::to_string(it->record_count) + " vectors from shard " + shard_id);
         }
         
-        LOG_WARN(logger_, "Shard not found for migration: " + shard_id);
-        RETURN_ERROR(ErrorCode::NOT_FOUND, "Shard not found: " + shard_id);
+        return vectors;
     } catch (const std::exception& e) {
-        LOG_ERROR(logger_, "Exception in migrate_shard: " + std::string(e.what()));
-        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to migrate shard: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to extract vectors: " + std::string(e.what()));
+    }
+}
+
+Result<bool> ShardingService::transfer_vectors_to_node(const std::string& target_node_id,
+                                                       const std::vector<Vector>& vectors,
+                                                       const std::string& shard_id) {
+    try {
+        LOG_INFO(logger_, "Transferring " + std::to_string(vectors.size()) + 
+                " vectors to node " + target_node_id + " for shard " + shard_id);
+        
+        // In a real implementation, this would:
+        // 1. Serialize vectors
+        // 2. Establish connection to target node
+        // 3. Stream vectors in batches
+        // 4. Confirm receipt and storage on target
+        
+        // Simulate transfer with progress updates
+        const size_t batch_size = 1000;
+        size_t transferred = 0;
+        
+        for (size_t i = 0; i < vectors.size(); i += batch_size) {
+            size_t end = std::min(i + batch_size, vectors.size());
+            transferred = end;
+            
+            // Update progress
+            size_t bytes_transferred = transferred * 1024; // Estimate 1KB per vector
+            update_migration_progress(shard_id, transferred, bytes_transferred);
+            
+            LOG_INFO(logger_, "Transferred batch " + std::to_string(i/batch_size + 1) + 
+                    ", total: " + std::to_string(transferred) + "/" + std::to_string(vectors.size()));
+        }
+        
+        LOG_INFO(logger_, "Transfer complete to node " + target_node_id);
+        return true;
+    } catch (const std::exception& e) {
+        RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to transfer vectors: " + std::string(e.what()));
+    }
+}
+
+void ShardingService::update_migration_progress(const std::string& shard_id, 
+                                                size_t transferred_vectors, 
+                                                size_t transferred_bytes) {
+    std::lock_guard<std::mutex> lock(migrations_mutex_);
+    
+    auto it = active_migrations_.find(shard_id);
+    if (it != active_migrations_.end()) {
+        it->second.transferred_vectors = transferred_vectors;
+        it->second.transferred_bytes = transferred_bytes;
     }
 }
 

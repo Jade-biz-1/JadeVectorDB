@@ -222,6 +222,7 @@ set(CORE_SOURCES
     src/models/embedding_model.cpp
     src/services/vector_storage.cpp
     src/services/similarity_search.cpp
+    src/services/query_optimizer.cpp
     src/services/database_service.cpp
     src/services/database_layer.cpp
     src/services/metadata_filter.cpp

@@ -14,6 +14,7 @@ namespace jadevectordb {
 
 // Forward declarations
 class ClusterService;
+class DistributedMasterClient;
 
 // Log entry for the Raft log
 struct LogEntry {
@@ -21,11 +22,28 @@ struct LogEntry {
     std::string command_type;  // "store_vector", "delete_vector", etc.
     std::string command_data;  // Serialized command data
     std::chrono::steady_clock::time_point timestamp;
-    
+
     LogEntry() : term(0) {}
     LogEntry(int t, const std::string& cmd_type, const std::string& cmd_data)
-        : term(t), command_type(cmd_type), command_data(cmd_data), 
+        : term(t), command_type(cmd_type), command_data(cmd_data),
           timestamp(std::chrono::steady_clock::now()) {}
+};
+
+// Snapshot metadata
+struct SnapshotMetadata {
+    int last_included_index;  // The index of the last log entry included in the snapshot
+    int last_included_term;   // The term of the last log entry included in the snapshot
+    std::vector<std::string> cluster_members;  // Cluster membership at snapshot time
+    std::chrono::system_clock::time_point timestamp;  // When snapshot was created
+
+    SnapshotMetadata() : last_included_index(0), last_included_term(0),
+                        timestamp(std::chrono::system_clock::now()) {}
+};
+
+// Snapshot structure
+struct Snapshot {
+    SnapshotMetadata metadata;
+    std::vector<uint8_t> data;  // Serialized state machine data
 };
 
 /**
@@ -75,9 +93,27 @@ public:
         bool vote_granted;          // True means candidate received vote
     };
 
+    // InstallSnapshot RPC arguments
+    struct InstallSnapshotArgs {
+        int term;                   // Leader's term
+        std::string leader_id;      // Leader's ID
+        int last_included_index;    // The snapshot replaces all entries up through and including this index
+        int last_included_term;     // Term of last_included_index
+        int offset;                 // Byte offset where chunk is positioned in the snapshot file
+        std::vector<uint8_t> data;  // Raw bytes of the snapshot chunk, starting at offset
+        bool done;                  // True if this is the last chunk
+    };
+
+    // InstallSnapshot RPC reply
+    struct InstallSnapshotReply {
+        int term;                   // Current term, for leader to update itself
+        bool success;               // True if follower successfully installed snapshot
+    };
+
 private:
     std::shared_ptr<logging::Logger> logger_;
-    std::shared_ptr<ClusterService> cluster_service_;  // For cluster membership and RPC
+    std::shared_ptr<ClusterService> cluster_service_;  // For cluster membership
+    std::shared_ptr<DistributedMasterClient> master_client_;  // For RPC communication
 
     // Raft state variables
     State state_;
@@ -98,20 +134,27 @@ private:
     std::string leader_id_;
     int election_timeout_base_ms_;
     int heartbeat_interval_ms_;
-    
+
+    // Snapshot state
+    Snapshot last_snapshot_;
+    int snapshot_log_threshold_;  // Create snapshot when log exceeds this size
+
     // Timing
     std::chrono::steady_clock::time_point last_heartbeat_time_;
     std::chrono::steady_clock::time_point last_election_time_;
-    
+
     // Atomic flags
     std::atomic<bool> running_;
-    
+
     // Mutex for thread safety
     mutable std::shared_mutex state_mutex_;
 
 public:
     explicit RaftConsensus(const std::string& server_id);
     explicit RaftConsensus(const std::string& server_id, std::shared_ptr<ClusterService> cluster_service);
+    explicit RaftConsensus(const std::string& server_id,
+                          std::shared_ptr<ClusterService> cluster_service,
+                          std::shared_ptr<DistributedMasterClient> master_client);
     ~RaftConsensus() = default;
     
     // Initialize Raft instance
@@ -208,6 +251,27 @@ public:
     // Check if heartbeat timeout has occurred
     bool is_heartbeat_timeout() const;
 
+    // ===== Snapshot Operations =====
+
+    // Create a snapshot of the current committed state
+    Result<bool> create_snapshot();
+
+    // Handle InstallSnapshot RPC from leader
+    InstallSnapshotReply handle_install_snapshot(const InstallSnapshotArgs& args);
+
+    // Send InstallSnapshot RPC to a follower
+    InstallSnapshotReply send_install_snapshot(const std::string& follower_id,
+                                              const InstallSnapshotArgs& args);
+
+    // Get the last snapshot
+    const Snapshot& get_last_snapshot() const;
+
+    // Check if log compaction is needed
+    bool should_compact_log() const;
+
+    // Compact log after snapshot
+    void compact_log_to_snapshot();
+
 private:
     // Generate a random timeout within the specified range
     int generate_random_timeout(int min_ms, int max_ms) const;
@@ -217,9 +281,15 @@ private:
     
     // Persist Raft state to storage (for crash recovery)
     void persist_state();
-    
+
     // Load Raft state from storage (for crash recovery)
     void load_state();
+
+    // Persist snapshot to disk
+    void persist_snapshot(const Snapshot& snapshot);
+
+    // Load snapshot from disk
+    bool load_snapshot();
     
     // Update leader ID
     void update_leader_id(const std::string& new_leader_id);

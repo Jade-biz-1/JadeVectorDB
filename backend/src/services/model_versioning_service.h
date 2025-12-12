@@ -146,6 +146,37 @@ public:
                            const std::string& model_id, 
                            double latency, 
                            bool success);
+    
+    /**
+     * @brief Check if two model versions are compatible
+     * @param model_id ID of the model
+     * @param version1 First version to compare
+     * @param version2 Second version to compare
+     * @return True if versions are compatible, false otherwise
+     */
+    bool check_version_compatibility(const std::string& model_id,
+                                    const std::string& version1,
+                                    const std::string& version2) const;
+    
+    /**
+     * @brief Upgrade vectors from one model version to another
+     * @param vectors Vector of vectors to upgrade
+     * @param target_model_id Target model ID
+     * @param target_version Target model version
+     * @return True if upgrade was successful, false otherwise
+     */
+    bool upgrade_vectors(std::vector<Vector>& vectors,
+                        const std::string& target_model_id,
+                        const std::string& target_version);
+    
+    /**
+     * @brief Get recommended model version for a given input
+     * @param model_id ID of the model
+     * @param input_type Type of input (text, image, etc.)
+     * @return Recommended version number
+     */
+    std::string get_recommended_version(const std::string& model_id,
+                                       const std::string& input_type) const;
 
 private:
     // Store model versions: model_id -> version_number -> ModelVersion

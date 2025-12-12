@@ -73,6 +73,7 @@ using std::identity;
 #include "metadata_filter.h"
 #include "lib/metrics.h"
 #include "lib/vector_operations.h"
+#include "query_optimizer.h"
 
 namespace jadevectordb {
 
@@ -126,6 +127,9 @@ private:
 
     // Metadata filter service
     std::unique_ptr<MetadataFilter> metadata_filter_;
+    
+    // Query optimizer for cost-based optimization
+    std::unique_ptr<QueryOptimizer> query_optimizer_;
 
 public:
     // Test accessor methods
@@ -159,6 +163,9 @@ public:
 
     // Validate search parameters
     Result<void> validate_search_params(const SearchParams& params) const;
+    
+    // Get query optimizer instance
+    QueryOptimizer* get_query_optimizer() { return query_optimizer_.get(); }
 
 private:
     // Core similarity calculation methods
