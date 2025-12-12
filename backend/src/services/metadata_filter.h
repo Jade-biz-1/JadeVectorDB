@@ -86,7 +86,7 @@ struct GeoQuery {
     std::string field; // The field to apply the geo query to
     
     GeoQuery(GeospatialOperator operation, const std::string& field_name) 
-        : op(operation), field(field_name), radius(0.0) {}
+        : op(operation), radius(0.0), field(field_name) {}
 };
 
 // Additional structures for temporal filtering
@@ -116,7 +116,7 @@ struct TemporalQuery {
     std::string field;                                 // The field to apply the temporal query to
     
     explicit TemporalQuery(TemporalOperator operation, const std::string& field_name) 
-        : op(operation), field(field_name), duration(0) {}
+        : op(operation), duration(0), field(field_name) {}
 };
 
 // Additional structures for nested object filtering

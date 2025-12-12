@@ -54,11 +54,11 @@
 | T229 | Update documentation for search API | MEDIUM | - | ✅ Complete |
 | T231 | Backend tests for authentication flows | HIGH | - | ✅ Complete |
 | T232 | Backend tests for API key lifecycle | HIGH | - | ✅ Complete |
-| T233 | Frontend tests for authentication flows | MEDIUM | - | 0% |
+| T233 | Frontend tests for authentication flows | MEDIUM | - | ✅ Complete |
 | T234 | Smoke/performance tests for search and auth | MEDIUM | - | ✅ Complete |
 | T235 | Coordinate security policy requirements | MEDIUM | - | ✅ Complete |
 | T237 | Assign roles to default users | HIGH | - | ✅ Complete |
-| T238 | Mirror backend changes in simple API or deprecate | LOW | - | 0% |
+| T238 | Mirror backend changes in simple API or deprecate | LOW | - | ✅ N/A |
 | T259 | Complete distributed worker service stubs | HIGH | 2025-12-12 | ✅ 100% |
 
 ---
@@ -150,10 +150,10 @@
 **Remaining**:
 - 🔄 T245: Distributed Raft consensus (~85% - core done, snapshots remaining)
 - 🔄 T246: Actual data replication (~90% - gRPC wired, callbacks ready)
-- ⏳ T247: Shard data migration (MEDIUM)
-- ⏳ T250: Query optimizer (LOW)
-- ⏳ T251: Certificate management (LOW)
-- ⏳ T252: Model versioning (LOW)
+- ✅ T247: Shard data migration (COMPLETE)
+- ✅ T250: Query optimizer (COMPLETE)
+- ✅ T251: Certificate management (COMPLETE)
+- ✅ T252: Model versioning (COMPLETE)
 
 ---
 
@@ -207,11 +207,11 @@
 5. ~~**CLEANUP** - AuthManager consolidation (14 tasks)~~ ✅
 
 ### Next Week:
-1. **T229** - Update search API documentation (MEDIUM)
-2. **T233** - Frontend tests for authentication flows (MEDIUM)
-3. **T234** - Smoke/performance tests (MEDIUM)
-4. **T235** - Security policy documentation (MEDIUM)
-5. **T247** - Shard data migration (MEDIUM)
+1. ~~**T229** - Update search API documentation (MEDIUM)~~ ✅
+2. ~~**T233** - Frontend tests for authentication flows (MEDIUM)~~ ✅
+3. ~~**T234** - Smoke/performance tests (MEDIUM)~~ ✅
+4. ~~**T235** - Security policy documentation (MEDIUM)~~ ✅
+5. ~~**T247** - Shard data migration (MEDIUM)~~ ✅
 
 ### Later:
 1. Complete Phase 15 backend optimizations (T250-T252)

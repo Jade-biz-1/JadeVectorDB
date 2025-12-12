@@ -152,13 +152,16 @@ Added to CMakeLists.txt. See backend/tests/T230_TEST_IMPLEMENTATION_SUMMARY.md f
 **Completion Details**: Completely rewrote test to use AuthenticationService instead of AuthManager. Simplified from complex API (permissions, descriptions, validity) to actual simple API (generate/authenticate/revoke/list). Test coverage: API key generation (single, multiple, non-existent user), authentication with API keys (valid, invalid), revocation (valid, invalid, already revoked), listing (all keys, per-user), complete lifecycle integration. Test compiles successfully. See docs/AUTH_TESTS_FIXED_2025-12-11.md for details.
 
 ### T233: Extend frontend tests for authentication flows
-**[P] Next Session Task**
-**File**: `frontend/src/__tests__/auth.test.js`, `frontend/cypress/e2e/auth.cy.js`
+**[\u2713] COMPLETE**
+**File**: `frontend/tests/integration/auth-flows.test.js`, `frontend/tests/unit/pages/search-page.test.js`
 **Dependencies**: T227
 **Description**: Add Jest/Cypress tests for login/logout flows, API key revocation UX, and search result rendering toggles
-**Status**: [ ] PENDING
+**Status**: [\u2713] COMPLETE
 **Priority**: MEDIUM
-**Estimated Effort**: 2-3 days
+**Completion Details**: 
+- Login/logout flow tests already existed (comprehensive 540-line test suite)
+- Added 6 API key revocation UX tests: successful revocation, confirmation dialog, failure handling, list refresh, button disable during operation
+- Added 6 search result rendering toggle tests: includeMetadata toggle state, parameter passing for true/false, includeVectorData, metadata display/hide in results
 
 ### T234: Introduce smoke/performance tests for search and auth
 **[\u2713] COMPLETE**
@@ -205,13 +208,13 @@ Uses JADE_ENV environment variable for detection. Idempotent operation. Removed 
 **Completion Details**: Verified that seed_default_users() from T236 already implements this correctly. Users are created with appropriate roles (admin: admin/developer/user, dev: developer/user, test: tester/user), is_active=true, and only in non-production environments. Roles serve as permissions in this system.
 
 ### T238: Mirror backend changes in simple API or deprecate
-**[P] Next Session Task**
+**[\u2713] COMPLETE (N/A)**
 **File**: `backend/src/api/rest/rest_api_simple.cpp`
 **Dependencies**: T219-T226
 **Description**: Mirror backend contract changes in rest_api_simple.cpp or formally deprecate the simple API to avoid drift
-**Status**: [ ] PENDING
+**Status**: [\u2713] COMPLETE (N/A - simple API never existed)
 **Priority**: LOW
-**Estimated Effort**: 2-3 days
+**Completion Details**: Verified that `rest_api_simple.cpp` does not exist in the codebase. The REST API consists solely of `rest_api.cpp` and associated handler files (`rest_api_auth_handlers.cpp`, `rest_api_user_handlers.cpp`, `rest_api_apikey_handlers.cpp`, `rest_api_security_handlers.cpp`). No simple API drift issue exists.
 
 ---
 

@@ -1115,4 +1115,67 @@ Result<DistributedMasterClient::AppendEntriesResponse> DistributedMasterClient::
 #endif
 }
 
+Result<DistributedMasterClient::InstallSnapshotResponse> DistributedMasterClient::install_snapshot(
+    const std::string& target_worker_id,
+    const InstallSnapshotRequest& request
+) {
+    auto connection_result = get_worker_connection(target_worker_id);
+    if (!connection_result.has_value()) {
+        return tl::make_unexpected(connection_result.error());
+    }
+
+#ifdef BUILD_WITH_GRPC
+    try {
+        distributed::InstallSnapshotRequest grpc_request;
+        grpc_request.set_term(request.term);
+        grpc_request.set_leader_id(request.leader_id);
+        grpc_request.set_last_included_index(request.last_included_index);
+        grpc_request.set_last_included_term(request.last_included_term);
+        grpc_request.set_offset(request.offset);
+        grpc_request.set_data(request.data.data(), request.data.size());
+        grpc_request.set_done(request.done);
+
+        auto context = create_context(config_.default_timeout);
+        distributed::InstallSnapshotResponse grpc_response;
+
+        auto status = connection_result.value()->stub->InstallSnapshot(context.get(), grpc_request, &grpc_response);
+
+        if (!status.ok()) {
+            logger_->debug("InstallSnapshot RPC failed for " + target_worker_id + ": " + status.error_message());
+            mark_worker_failed(target_worker_id);
+            return tl::make_unexpected(ErrorHandler::create_error(
+                ErrorCode::NETWORK_ERROR,
+                "InstallSnapshot failed: " + status.error_message()
+            ));
+        }
+
+        mark_worker_success(target_worker_id);
+
+        InstallSnapshotResponse response;
+        response.term = grpc_response.term();
+        response.success = grpc_response.success();
+        response.follower_id = grpc_response.follower_id();
+
+        logger_->debug("InstallSnapshot to " + target_worker_id + " completed, success=" + 
+                      std::to_string(response.success));
+
+        return response;
+
+    } catch (const std::exception& e) {
+        mark_worker_failed(target_worker_id);
+        return tl::make_unexpected(ErrorHandler::create_error(
+            ErrorCode::SERVICE_ERROR,
+            "Exception in install_snapshot: " + std::string(e.what())
+        ));
+    }
+#else
+    logger_->debug("Simulating install_snapshot (no gRPC)");
+    InstallSnapshotResponse response;
+    response.term = request.term;
+    response.success = true;
+    response.follower_id = target_worker_id;
+    return response;
+#endif
+}
+
 } // namespace jadevectordb

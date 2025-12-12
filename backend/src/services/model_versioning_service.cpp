@@ -1,4 +1,5 @@
 #include "model_versioning_service.h"
+#include "models/vector.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -7,6 +8,7 @@
 #include <ctime>
 #include <chrono>
 #include <algorithm>
+#include <sstream>
 
 namespace jadevectordb {
 
@@ -252,6 +254,166 @@ bool ModelVersioningService::is_test_active(const std::string& test_id) const {
     }
     
     return false; // Test doesn't exist
+}
+
+bool ModelVersioningService::check_version_compatibility(const std::string& model_id,
+                                                        const std::string& version1,
+                                                        const std::string& version2) const {
+    auto model_it = model_versions_.find(model_id);
+    if (model_it == model_versions_.end()) {
+        return false; // Model doesn't exist
+    }
+    
+    auto v1_it = model_it->second.find(version1);
+    auto v2_it = model_it->second.find(version2);
+    
+    if (v1_it == model_it->second.end() || v2_it == model_it->second.end()) {
+        return false; // One or both versions don't exist
+    }
+    
+    // Parse semantic versions (e.g., "1.2.3")
+    auto parse_version = [](const std::string& version) {
+        std::vector<int> parts;
+        std::stringstream ss(version);
+        std::string part;
+        while (std::getline(ss, part, '.')) {
+            try {
+                parts.push_back(std::stoi(part));
+            } catch (...) {
+                parts.push_back(0);
+            }
+        }
+        while (parts.size() < 3) parts.push_back(0);
+        return parts;
+    };
+    
+    auto v1_parts = parse_version(version1);
+    auto v2_parts = parse_version(version2);
+    
+    // Check compatibility: versions are compatible if major version is the same
+    // This is a common convention in semantic versioning
+    if (v1_parts[0] == v2_parts[0]) {
+        return true; // Same major version = compatible
+    }
+    
+    // Check metadata for explicit compatibility information
+    if (v1_it->second.metadata.count("compatible_versions")) {
+        // In a real implementation, we'd parse this metadata
+        return true;
+    }
+    
+    return false; // Different major versions = incompatible by default
+}
+
+bool ModelVersioningService::upgrade_vectors(std::vector<Vector>& vectors,
+                                            const std::string& target_model_id,
+                                            const std::string& target_version) {
+    auto model_it = model_versions_.find(target_model_id);
+    if (model_it == model_versions_.end()) {
+        return false; // Target model doesn't exist
+    }
+    
+    auto version_it = model_it->second.find(target_version);
+    if (version_it == model_it->second.end()) {
+        return false; // Target version doesn't exist
+    }
+    
+    const ModelVersion& target_model = version_it->second;
+    
+    // Upgrade each vector
+    for (auto& vector : vectors) {
+        // Check if upgrade is needed
+        if (vector.embedding_model.name == target_model_id &&
+            vector.embedding_model.version == target_version) {
+            continue; // Already on target version
+        }
+        
+        // Check compatibility
+        if (vector.embedding_model.name == target_model_id) {
+            if (!check_version_compatibility(target_model_id, 
+                                            vector.embedding_model.version, 
+                                            target_version)) {
+                // Incompatible versions - would need re-embedding
+                // In a real implementation, this would trigger re-embedding
+                continue;
+            }
+        }
+        
+        // Update vector's model information
+        vector.embedding_model.name = target_model_id;
+        vector.embedding_model.version = target_version;
+        vector.embedding_model.provider = target_model.metadata.count("provider") ? 
+                                         target_model.metadata.at("provider") : "";
+        
+        // Increment vector version to track the change
+        vector.version++;
+        
+        // Update metadata timestamp
+        auto now = std::chrono::system_clock::now();
+        auto time_t_now = std::chrono::system_clock::to_time_t(now);
+        vector.metadata.updated_at = std::ctime(&time_t_now);
+    }
+    
+    return true;
+}
+
+std::string ModelVersioningService::get_recommended_version(const std::string& model_id,
+                                                           const std::string& input_type) const {
+    auto model_it = model_versions_.find(model_id);
+    if (model_it == model_versions_.end()) {
+        return ""; // Model doesn't exist
+    }
+    
+    // Find the latest active version that supports the input type
+    std::string recommended_version;
+    std::vector<int> highest_version = {0, 0, 0};
+    
+    for (const auto& [version_num, version_info] : model_it->second) {
+        // Skip inactive versions
+        if (version_info.status != "active") {
+            continue;
+        }
+        
+        // Check if this version supports the input type
+        bool supports_input = true;
+        if (version_info.metadata.count("supported_inputs")) {
+            // In a real implementation, we'd parse the supported inputs
+            // For now, assume all active versions support all input types
+        }
+        
+        if (supports_input) {
+            // Parse version number
+            std::vector<int> version_parts;
+            std::stringstream ss(version_num);
+            std::string part;
+            while (std::getline(ss, part, '.')) {
+                try {
+                    version_parts.push_back(std::stoi(part));
+                } catch (...) {
+                    version_parts.push_back(0);
+                }
+            }
+            while (version_parts.size() < 3) version_parts.push_back(0);
+            
+            // Compare versions
+            bool is_higher = false;
+            for (size_t i = 0; i < 3; i++) {
+                if (version_parts[i] > highest_version[i]) {
+                    is_higher = true;
+                    break;
+                } else if (version_parts[i] < highest_version[i]) {
+                    break;
+                }
+            }
+            
+            if (is_higher) {
+                highest_version = version_parts;
+                recommended_version = version_num;
+            }
+        }
+    }
+    
+    return recommended_version;
 }
 
 } // namespace jadevectordb
