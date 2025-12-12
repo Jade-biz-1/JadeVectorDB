@@ -1,5 +1,5 @@
-import Head from 'next/head';
 import { useState, useEffect } from 'react';
+import Layout from '../components/Layout';
 import { usersApi } from '../lib/api';
 
 export default function UserManagement() {
@@ -117,115 +117,400 @@ export default function UserManagement() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Head>
-        <title>User Management - JadeVectorDB</title>
-        <meta name="description" content="User management dashboard" />
-      </Head>
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
+    <Layout title="User Management - JadeVectorDB">
+      <style jsx>{`
+        .users-container {
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 20px;
+        }
+
+        .page-header {
+          margin-bottom: 30px;
+        }
+
+        .page-title {
+          font-size: 32px;
+          font-weight: 700;
+          color: #2c3e50;
+          margin: 0 0 10px 0;
+        }
+
+        .page-description {
+          color: #7f8c8d;
+          font-size: 16px;
+        }
+
+        .alert {
+          padding: 15px;
+          border-radius: 8px;
+          margin-bottom: 20px;
+          font-size: 14px;
+        }
+
+        .alert-error {
+          background: #fee2e2;
+          border: 1px solid #fecaca;
+          color: #991b1b;
+        }
+
+        .alert-success {
+          background: #dcfce7;
+          border: 1px solid #bbf7d0;
+          color: #166534;
+        }
+
+        .card {
+          background: white;
+          border-radius: 8px;
+          padding: 30px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+          margin-bottom: 30px;
+        }
+
+        .card-title {
+          font-size: 20px;
+          font-weight: 600;
+          color: #2c3e50;
+          margin: 0 0 10px 0;
+        }
+
+        .card-subtitle {
+          font-size: 14px;
+          color: #7f8c8d;
+          margin-bottom: 25px;
+        }
+
+        .form-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 15px;
+        }
+
+        @media (min-width: 768px) {
+          .form-grid {
+            grid-template-columns: 1fr 1fr;
+          }
+        }
+
+        .form-group {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .form-label {
+          font-weight: 500;
+          color: #2c3e50;
+          margin-bottom: 8px;
+          font-size: 14px;
+        }
+
+        .form-input {
+          padding: 10px 12px;
+          border: 1px solid #d1d5db;
+          border-radius: 6px;
+          font-size: 14px;
+          transition: all 0.2s;
+        }
+
+        .form-input:focus {
+          outline: none;
+          border-color: #3498db;
+          box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        .btn {
+          padding: 10px 20px;
+          border-radius: 6px;
+          font-weight: 500;
+          font-size: 14px;
+          cursor: pointer;
+          transition: all 0.2s;
+          border: none;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .btn-primary {
+          background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+          color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(52, 152, 219, 0.4);
+        }
+
+        .btn-primary:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .btn-secondary {
+          background: #95a5a6;
+          color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+          background: #7f8c8d;
+        }
+
+        .btn-danger {
+          background: #e74c3c;
+          color: white;
+          padding: 6px 12px;
+          font-size: 12px;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+          background: #c0392b;
+        }
+
+        .btn-edit {
+          background: #3498db;
+          color: white;
+          padding: 6px 12px;
+          font-size: 12px;
+          margin-right: 8px;
+        }
+
+        .btn-edit:hover:not(:disabled) {
+          background: #2980b9;
+        }
+
+        .button-group {
+          display: flex;
+          gap: 10px;
+          margin-top: 15px;
+        }
+
+        .table-container {
+          overflow-x: auto;
+        }
+
+        table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+
+        thead {
+          background: #f8f9fa;
+        }
+
+        th {
+          text-align: left;
+          padding: 12px 15px;
+          border-bottom: 2px solid #ecf0f1;
+          font-size: 12px;
+          color: #7f8c8d;
+          text-transform: uppercase;
+          font-weight: 600;
+        }
+
+        td {
+          padding: 15px;
+          border-bottom: 1px solid #ecf0f1;
+          font-size: 14px;
+          color: #2c3e50;
+        }
+
+        tbody tr:hover {
+          background: #f8f9fa;
+        }
+
+        .badge {
+          display: inline-block;
+          padding: 4px 12px;
+          border-radius: 12px;
+          font-size: 12px;
+          font-weight: 600;
+        }
+
+        .badge-success {
+          background: #d4edda;
+          color: #155724;
+        }
+
+        .badge-error {
+          background: #f8d7da;
+          color: #721c24;
+        }
+
+        .empty-state {
+          text-align: center;
+          padding: 40px;
+          color: #7f8c8d;
+        }
+
+        .loading-state {
+          text-align: center;
+          padding: 40px;
+          color: #7f8c8d;
+        }
+      `}</style>
+
+      <div className="users-container">
+        <div className="page-header">
+          <h1 className="page-title">User Management</h1>
+          <p className="page-description">Create and manage user accounts</p>
         </div>
-      </header>
-      <main>
-        <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-          <div className="bg-white p-6 rounded-lg shadow mb-8">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Add / Edit User</h2>
-            <form onSubmit={editingId ? handleUpdateUser : handleAddUser} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input
-                type="text"
-                name="username"
-                placeholder="Username"
-                value={form.username}
-                onChange={handleInputChange}
-                required
-                className="border rounded px-3 py-2"
-              />
-              <input
-                type="email"
-                name="email"
-                placeholder="Email"
-                value={form.email}
-                onChange={handleInputChange}
-                required
-                className="border rounded px-3 py-2"
-              />
-              <input
-                type="text"
-                name="roles"
-                placeholder="Roles (comma separated)"
-                value={form.roles}
-                onChange={handleInputChange}
-                required
-                className="border rounded px-3 py-2"
-              />
-              <select
-                name="status"
-                value={form.status}
-                onChange={handleInputChange}
-                className="border rounded px-3 py-2"
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
-              <button
-                type="submit"
-                disabled={saving}
-                className="bg-indigo-600 text-white px-4 py-2 rounded mt-2"
-              >
+
+        {error && (
+          <div className="alert alert-error">
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="alert alert-success">
+            {success}
+          </div>
+        )}
+
+        <div className="card">
+          <h2 className="card-title">{editingId ? 'Edit User' : 'Add New User'}</h2>
+          <p className="card-subtitle">
+            {editingId ? 'Update user information' : 'Create a new user account'}
+          </p>
+
+          <form onSubmit={editingId ? handleUpdateUser : handleAddUser}>
+            <div className="form-grid">
+              <div className="form-group">
+                <label htmlFor="username" className="form-label">Username *</label>
+                <input
+                  type="text"
+                  id="username"
+                  name="username"
+                  className="form-input"
+                  value={form.username}
+                  onChange={handleInputChange}
+                  required
+                  placeholder="john_doe"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="email" className="form-label">Email *</label>
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  className="form-input"
+                  value={form.email}
+                  onChange={handleInputChange}
+                  required
+                  placeholder="john@example.com"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="password" className="form-label">
+                  Password {editingId ? '(leave blank to keep current)' : '*'}
+                </label>
+                <input
+                  type="password"
+                  id="password"
+                  name="password"
+                  className="form-input"
+                  value={form.password}
+                  onChange={handleInputChange}
+                  required={!editingId}
+                  placeholder={editingId ? 'Leave blank to keep current' : 'Enter password'}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="roles" className="form-label">Roles (comma-separated)</label>
+                <input
+                  type="text"
+                  id="roles"
+                  name="roles"
+                  className="form-input"
+                  value={form.roles}
+                  onChange={handleInputChange}
+                  placeholder="admin, developer, user"
+                />
+              </div>
+            </div>
+
+            <div className="button-group">
+              <button type="submit" disabled={saving} className="btn btn-primary">
                 {editingId ? (saving ? 'Updating...' : 'Update User') : (saving ? 'Adding...' : 'Add User')}
               </button>
               {editingId && (
                 <button
                   type="button"
-                  className="bg-gray-400 text-white px-4 py-2 rounded mt-2"
-                  onClick={() => { setEditingId(null); setForm({ username: '', email: '', roles: '', status: 'active' }); }}
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setEditingId(null);
+                    setForm({ username: '', password: '', email: '', roles: '' });
+                  }}
                 >
                   Cancel
                 </button>
               )}
-            </form>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Users</h2>
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead>
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User ID</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Roles</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {loading ? (
-                  <tr><td colSpan={6} className="text-center py-4">Loading...</td></tr>
-                ) : users.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center py-4">No users found.</td></tr>
-                ) : (
-                  users.map(user => (
+            </div>
+          </form>
+        </div>
+
+        <div className="card">
+          <h2 className="card-title">Users</h2>
+          <p className="card-subtitle">Manage existing user accounts</p>
+
+          <div className="table-container">
+            {loading ? (
+              <div className="loading-state">Loading users...</div>
+            ) : users.length === 0 ? (
+              <div className="empty-state">No users found. Add your first user above.</div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>User ID</th>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Roles</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map(user => (
                     <tr key={user.id}>
-                      <td className="px-6 py-4 whitespace-nowrap">{user.id}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">{user.username}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">{user.email}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">{Array.isArray(user.roles) ? user.roles.join(', ') : user.roles}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{user.status}</span>
+                      <td>{user.id}</td>
+                      <td>{user.username}</td>
+                      <td>{user.email}</td>
+                      <td>{Array.isArray(user.roles) ? user.roles.join(', ') : user.roles}</td>
+                      <td>
+                        <span className={`badge ${user.status === 'active' ? 'badge-success' : 'badge-error'}`}>
+                          {user.status || 'active'}
+                        </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <button className="bg-blue-500 text-white px-2 py-1 rounded mr-2" onClick={() => handleEditUser(user)} disabled={saving}>Edit</button>
-                        <button className="bg-red-600 text-white px-2 py-1 rounded" onClick={() => handleDeleteUser(user.id)} disabled={saving}>Delete</button>
+                      <td>
+                        <button
+                          className="btn btn-edit"
+                          onClick={() => handleEditUser(user)}
+                          disabled={saving}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn btn-danger"
+                          onClick={() => handleDeleteUser(user.id)}
+                          disabled={saving}
+                        >
+                          Delete
+                        </button>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </Layout>
   );
 }

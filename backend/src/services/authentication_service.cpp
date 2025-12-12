@@ -666,6 +666,29 @@ Result<bool> AuthenticationService::reset_password(const std::string& user_id,
     }
 }
 
+Result<UserCredentials> AuthenticationService::get_user(const std::string& user_id) const {
+    try {
+        if (user_id.empty()) {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "User ID is required");
+        }
+
+        std::lock_guard<std::mutex> lock(users_mutex_);
+
+        // Lookup user by ID
+        auto it = users_.find(user_id);
+        if (it != users_.end()) {
+            LOG_DEBUG(logger_, "Found user by ID: " + user_id);
+            return it->second;
+        }
+
+        LOG_WARN(logger_, "User not found with ID: " + user_id);
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found");
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in get_user: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to get user");
+    }
+}
+
 Result<UserCredentials> AuthenticationService::get_user_by_username(const std::string& username) const {
     try {
         if (username.empty()) {
@@ -849,6 +872,85 @@ Result<bool> AuthenticationService::revoke_api_key(const std::string& api_key) {
     std::string user_id = it->second;
     api_keys_.erase(it);
     LOG_INFO(logger_, "API key revoked for user: " + user_id);
+
+    return true;
+}
+
+Result<std::vector<UserCredentials>> AuthenticationService::list_users() const {
+    std::lock_guard<std::mutex> lock(users_mutex_);
+
+    std::vector<UserCredentials> users;
+    users.reserve(users_.size());
+
+    for (const auto& [user_id, user] : users_) {
+        users.push_back(user);
+    }
+
+    LOG_INFO(logger_, "Listed " + std::to_string(users.size()) + " users");
+    return users;
+}
+
+Result<std::vector<std::pair<std::string, std::string>>> AuthenticationService::list_api_keys() const {
+    std::lock_guard<std::mutex> lock(api_keys_mutex_);
+
+    std::vector<std::pair<std::string, std::string>> api_keys;
+    api_keys.reserve(api_keys_.size());
+
+    for (const auto& [api_key, user_id] : api_keys_) {
+        api_keys.push_back({user_id, api_key});
+    }
+
+    LOG_INFO(logger_, "Listed " + std::to_string(api_keys.size()) + " API keys");
+    return api_keys;
+}
+
+Result<std::vector<std::pair<std::string, std::string>>> AuthenticationService::list_api_keys_for_user(const std::string& user_id) const {
+    std::lock_guard<std::mutex> lock(api_keys_mutex_);
+
+    std::vector<std::pair<std::string, std::string>> user_api_keys;
+
+    for (const auto& [api_key, uid] : api_keys_) {
+        if (uid == user_id) {
+            user_api_keys.push_back({uid, api_key});
+        }
+    }
+
+    LOG_INFO(logger_, "Listed " + std::to_string(user_api_keys.size()) + " API keys for user: " + user_id);
+    return user_api_keys;
+}
+
+Result<bool> AuthenticationService::update_email(const std::string& user_id, const std::string& new_email) {
+    std::lock_guard<std::mutex> lock(users_mutex_);
+
+    auto it = users_.find(user_id);
+    if (it == users_.end()) {
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
+    }
+
+    it->second.email = new_email;
+    LOG_INFO(logger_, "Updated email for user: " + user_id);
+
+    return true;
+}
+
+Result<bool> AuthenticationService::update_roles(const std::string& user_id, const std::vector<std::string>& new_roles) {
+    std::lock_guard<std::mutex> lock(users_mutex_);
+
+    auto it = users_.find(user_id);
+    if (it == users_.end()) {
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
+    }
+
+    it->second.roles = new_roles;
+
+    std::string roles_str = "[";
+    for (size_t i = 0; i < new_roles.size(); ++i) {
+        if (i > 0) roles_str += ", ";
+        roles_str += new_roles[i];
+    }
+    roles_str += "]";
+
+    LOG_INFO(logger_, "Updated roles for user " + user_id + " to: " + roles_str);
 
     return true;
 }

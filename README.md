@@ -96,6 +96,16 @@ We believe in building great software together! 🚀
 - **Testing**: Google Test and Google Mock for unit/integration tests
 - **Build System**: CMake with FetchContent for dependency management
 
+## Task Tracking
+
+All project tasks are tracked in the **TasksTracking/** folder:
+
+- **TasksTracking/status-dashboard.md** - Current focus, recent completions, and next steps
+- **TasksTracking/overview.md** - Overall progress summary and milestones
+- **TasksTracking/README.md** - Guide to using the task tracking system
+- **TasksTracking/06-current-auth-api.md** - Current work on authentication and API
+- See [TasksTracking/README.md](TasksTracking/README.md) for complete details
+
 ## Getting Started
 
 ### Prerequisites

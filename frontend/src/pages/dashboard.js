@@ -1,5 +1,5 @@
-import Head from 'next/head';
 import { useEffect, useState } from 'react';
+import Layout from '../components/Layout';
 import { clusterApi, databaseApi, monitoringApi, securityApi } from '../lib/api';
 
 export default function Dashboard() {
@@ -12,7 +12,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchDashboardData();
-    // Auto-refresh every 30 seconds
     const interval = setInterval(fetchDashboardData, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -21,10 +20,10 @@ export default function Dashboard() {
     setLoading(true);
     try {
       const [nodesRes, dbRes, statusRes, logsRes] = await Promise.all([
-        clusterApi.listNodes().catch(err => ({ nodes: [] })),
-        databaseApi.listDatabases(5, 0).catch(err => ({ databases: [] })),
-        monitoringApi.systemStatus().catch(err => null),
-        securityApi.listAuditLogs(5, 0).catch(err => ({ logs: [] }))
+        clusterApi.listNodes().catch(() => ({ nodes: [] })),
+        databaseApi.listDatabases(5, 0).catch(() => ({ databases: [] })),
+        monitoringApi.systemStatus().catch(() => null),
+        securityApi.listAuditLogs(5, 0).catch(() => ({ logs: [] }))
       ]);
 
       setNodes(nodesRes.nodes || []);
@@ -40,173 +39,279 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Head>
-        <title>Dashboard - JadeVectorDB</title>
-        <meta name="description" content="Unified system overview" />
-      </Head>
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">JadeVectorDB Dashboard</h1>
-              {lastUpdated && (
-                <p className="text-sm text-gray-500 mt-1">
-                  Last updated: {lastUpdated.toLocaleTimeString()}
-                </p>
-              )}
-            </div>
-            <button
-              onClick={fetchDashboardData}
-              disabled={loading}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-4 py-2 rounded-md disabled:opacity-50"
-            >
-              {loading ? 'Refreshing...' : 'Refresh'}
-            </button>
+    <Layout title="Dashboard - JadeVectorDB">
+      <style jsx>{`
+        .dashboard-container {
+          max-width: 1400px;
+          margin: 0 auto;
+          padding: 20px;
+        }
+        .dashboard-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 30px;
+          background: white;
+          padding: 20px;
+          border-radius: 8px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .dashboard-header h1 {
+          font-size: 32px;
+          color: #2c3e50;
+          margin: 0;
+        }
+        .last-updated {
+          font-size: 14px;
+          color: #7f8c8d;
+          margin-top: 5px;
+        }
+        .btn-refresh {
+          padding: 10px 20px;
+          background: #3498db;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 500;
+          transition: all 0.3s ease;
+        }
+        .btn-refresh:hover:not(:disabled) {
+          background: #2980b9;
+        }
+        .btn-refresh:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+          gap: 20px;
+          margin-bottom: 20px;
+        }
+        .card {
+          background: white;
+          border-radius: 8px;
+          padding: 25px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .card h2 {
+          font-size: 20px;
+          color: #2c3e50;
+          margin: 0 0 20px 0;
+          font-weight: 600;
+        }
+        .empty-state {
+          text-align: center;
+          padding: 40px;
+          color: #7f8c8d;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+        thead {
+          background: #f8f9fa;
+        }
+        th {
+          text-align: left;
+          padding: 12px 10px;
+          border-bottom: 2px solid #ecf0f1;
+          font-size: 12px;
+          color: #7f8c8d;
+          text-transform: uppercase;
+          font-weight: 600;
+        }
+        td {
+          padding: 12px 10px;
+          border-bottom: 1px solid #ecf0f1;
+          font-size: 14px;
+          color: #2c3e50;
+        }
+        tr:hover {
+          background: #f8f9fa;
+        }
+        .badge {
+          display: inline-block;
+          padding: 4px 12px;
+          border-radius: 12px;
+          font-size: 12px;
+          font-weight: 600;
+        }
+        .badge-success {
+          background: #d4edda;
+          color: #155724;
+        }
+        .badge-error {
+          background: #f8d7da;
+          color: #721c24;
+        }
+        .db-link {
+          color: #3498db;
+          text-decoration: none;
+          font-weight: 500;
+        }
+        .db-link:hover {
+          text-decoration: underline;
+        }
+        .log-entry {
+          padding: 12px;
+          border-left: 3px solid #3498db;
+          background: #f8f9fa;
+          margin-bottom: 10px;
+          border-radius: 4px;
+        }
+        .log-time {
+          font-size: 12px;
+          color: #7f8c8d;
+          margin-bottom: 5px;
+        }
+        .log-message {
+          font-size: 14px;
+          color: #2c3e50;
+        }
+        .stat-value {
+          font-size: 28px;
+          font-weight: 700;
+          color: #3498db;
+          margin-bottom: 5px;
+        }
+        .stat-label {
+          font-size: 14px;
+          color: #7f8c8d;
+        }
+      `}</style>
+
+      <div className="dashboard-container">
+        <div className="dashboard-header">
+          <div>
+            <h1>JadeVectorDB Dashboard</h1>
+            {lastUpdated && (
+              <div className="last-updated">
+                Last updated: {lastUpdated.toLocaleTimeString()}
+              </div>
+            )}
           </div>
+          <button
+            onClick={fetchDashboardData}
+            disabled={loading}
+            className="btn-refresh"
+          >
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
         </div>
-      </header>
-      <main>
-        <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Cluster Status */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">
-              Cluster Status ({nodes.length} nodes)
-            </h2>
+
+        <div className="grid">
+          <div className="card">
+            <h2>Cluster Status ({nodes.length} nodes)</h2>
             {loading && nodes.length === 0 ? (
-              <div className="text-center py-4 text-gray-500">Loading...</div>
+              <div className="empty-state">Loading...</div>
             ) : nodes.length === 0 ? (
-              <div className="text-center py-4 text-gray-500">No cluster nodes found</div>
+              <div className="empty-state">No cluster nodes found</div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Node ID</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Node ID</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {nodes.map(node => (
+                    <tr key={node.id}>
+                      <td>{node.id}</td>
+                      <td>{node.role || 'worker'}</td>
+                      <td>
+                        <span className={`badge ${node.status === 'active' ? 'badge-success' : 'badge-error'}`}>
+                          {node.status || 'unknown'}
+                        </span>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {nodes.map(node => (
-                      <tr key={node.id}>
-                        <td className="px-4 py-2 text-sm text-gray-900">{node.id}</td>
-                        <td className="px-4 py-2 text-sm text-gray-500">{node.role || 'worker'}</td>
-                        <td className="px-4 py-2">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            node.status === 'active'
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {node.status || 'unknown'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
 
-          {/* Database Overview */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">
-              Databases ({databases.length})
-            </h2>
+          <div className="card">
+            <h2>Recent Databases ({databases.length})</h2>
             {loading && databases.length === 0 ? (
-              <div className="text-center py-4 text-gray-500">Loading...</div>
+              <div className="empty-state">Loading...</div>
             ) : databases.length === 0 ? (
-              <div className="text-center py-4 text-gray-500">No databases found</div>
+              <div className="empty-state">No databases found</div>
             ) : (
-              <ul className="divide-y divide-gray-200">
-                {databases.map(db => (
-                  <li key={db.databaseId || db.id} className="py-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-indigo-700">{db.name}</p>
-                        <p className="text-sm text-gray-500">
-                          {db.vectorDimension}D, {db.indexType || 'FLAT'}
-                        </p>
-                      </div>
-                      {db.stats && (
-                        <div className="text-right text-sm text-gray-500">
-                          <p>{db.stats.vectorCount || 0} vectors</p>
-                        </div>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* System Health */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">System Health</h2>
-            {loading && !systemStatus ? (
-              <div className="text-center py-4 text-gray-500">Loading...</div>
-            ) : systemStatus ? (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-700">Overall Status</span>
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    systemStatus.status === 'operational'
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {systemStatus.status || 'Unknown'}
-                  </span>
-                </div>
-                {systemStatus.checks && Object.entries(systemStatus.checks).map(([key, value]) => (
-                  <div key={key} className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600 capitalize">{key}</span>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      value === 'ok'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-4 text-gray-500">No status available</div>
-            )}
-          </div>
-
-          {/* Recent Activity */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Recent Activity</h2>
-            {loading && recentLogs.length === 0 ? (
-              <div className="text-center py-4 text-gray-500">Loading...</div>
-            ) : recentLogs.length === 0 ? (
-              <div className="text-center py-4 text-gray-500">No recent activity</div>
-            ) : (
-              <ul className="divide-y divide-gray-200">
-                {recentLogs.map((log, idx) => (
-                  <li key={log.id || idx} className="py-3">
-                    <div className="flex items-start">
-                      <div className="flex-shrink-0">
-                        <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5"></div>
-                      </div>
-                      <div className="ml-3">
-                        <p className="text-sm font-medium text-gray-900">
-                          {log.user || 'System'}: {log.event || log.action}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {log.timestamp ? new Date(log.timestamp).toLocaleString() : 'Recently'}
-                        </p>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Dimension</th>
+                    <th>Index</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {databases.map(db => (
+                    <tr key={db.id || db.databaseId}>
+                      <td>
+                        <a href={`/databases/${db.id || db.databaseId}`} className="db-link">
+                          {db.name}
+                        </a>
+                      </td>
+                      <td>{db.vectorDimension}</td>
+                      <td>
+                        <span className="badge badge-success">{db.indexType}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         </div>
-      </main>
-    </div>
+
+        {systemStatus && (
+          <div className="card">
+            <h2>System Status</h2>
+            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+              <div>
+                <div className="stat-value">{systemStatus.uptime || 'N/A'}</div>
+                <div className="stat-label">Uptime</div>
+              </div>
+              <div>
+                <div className="stat-value">{systemStatus.cpu || 'N/A'}</div>
+                <div className="stat-label">CPU Usage</div>
+              </div>
+              <div>
+                <div className="stat-value">{systemStatus.memory || 'N/A'}</div>
+                <div className="stat-label">Memory Usage</div>
+              </div>
+              <div>
+                <div className="stat-value">{systemStatus.requests || '0'}</div>
+                <div className="stat-label">Total Requests</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="card">
+          <h2>Recent Audit Logs</h2>
+          {loading && recentLogs.length === 0 ? (
+            <div className="empty-state">Loading...</div>
+          ) : recentLogs.length === 0 ? (
+            <div className="empty-state">No recent logs</div>
+          ) : (
+            <div>
+              {recentLogs.map((log, index) => (
+                <div key={index} className="log-entry">
+                  <div className="log-time">{log.timestamp || new Date().toLocaleString()}</div>
+                  <div className="log-message">{log.message || log.action || 'Log entry'}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </Layout>
   );
 }

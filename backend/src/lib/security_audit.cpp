@@ -14,9 +14,9 @@ SecurityAuditLogger::SecurityAuditLogger(const std::string& log_file)
       log_authentication_events_(true),
       log_configuration_changes_(true),
       log_data_access_(true) {
-    
+
     logger_ = logging::LoggerManager::get_logger("SecurityAuditLogger");
-    auth_manager_ = AuthManager::get_instance();
+    // REMOVED: auth_manager_ = AuthManager::get_instance() - migrated to AuthenticationService
 }
 
 SecurityAuditLogger::~SecurityAuditLogger() {

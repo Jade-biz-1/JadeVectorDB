@@ -2,7 +2,6 @@
 // This file contains T221 implementations: list, create, revoke API keys
 
 #include "api/rest/rest_api.h"
-#include "lib/auth.h"
 #include <crow/json.h>
 #include <chrono>
 
@@ -30,29 +29,12 @@ crow::response RestApiImpl::handle_create_api_key_request(const crow::request& r
 
         std::string user_id = body_json["user_id"].s();
 
-        // Optional fields
-        std::vector<std::string> permissions;
-        if (body_json.has("permissions") && body_json["permissions"].t() == crow::json::type::List) {
-            for (size_t i = 0; i < body_json["permissions"].size(); i++) {
-                permissions.push_back(body_json["permissions"][i].s());
-            }
-        }
+        // Note: AuthenticationService uses a simplified API key model without permissions,
+        // descriptions, or expiry dates. These fields are accepted but not persisted.
+        std::string description = body_json.has("description") ? std::string(body_json["description"].s()) : std::string("");
 
-        std::string description;
-        if (body_json.has("description")) {
-            description = body_json["description"].s();
-        }
-
-        // Validity duration (default 30 days)
-        int validity_days = 30;
-        if (body_json.has("validity_days")) {
-            validity_days = body_json["validity_days"].i();
-        }
-        std::chrono::hours validity_duration = std::chrono::hours(24 * validity_days);
-
-        // Generate API key
-        auto api_key_result = auth_manager_->generate_api_key(
-            user_id, permissions, description, validity_duration);
+        // Generate API key using AuthenticationService
+        auto api_key_result = authentication_service_->generate_api_key(user_id);
 
         if (!api_key_result.has_value()) {
             LOG_ERROR(logger_, "Failed to generate API key for user " + user_id + ": " +
@@ -79,11 +61,8 @@ crow::response RestApiImpl::handle_create_api_key_request(const crow::request& r
         crow::json::wvalue response;
         response["api_key"] = api_key;
         response["user_id"] = user_id;
-        response["description"] = description;
-        response["validity_days"] = validity_days;
-        response["permissions"] = crow::json::wvalue::list();
-        for (size_t i = 0; i < permissions.size(); i++) {
-            response["permissions"][i] = permissions[i];
+        if (!description.empty()) {
+            response["description"] = description;
         }
         response["message"] = "API key created successfully";
         response["created_at"] = to_iso_string(std::chrono::system_clock::now());
@@ -109,10 +88,11 @@ crow::response RestApiImpl::handle_list_api_keys_request(const crow::request& re
         // Check if filtering by user_id
         std::string user_id_filter = req.url_params.get("user_id");
 
-        // Get list of API keys
+        // Get list of API keys from AuthenticationService
+        // Note: AuthenticationService returns simplified key data (user_id, api_key pairs)
         auto keys_result = user_id_filter.empty() ?
-            auth_manager_->list_api_keys() :
-            auth_manager_->list_api_keys_for_user(user_id_filter);
+            authentication_service_->list_api_keys() :
+            authentication_service_->list_api_keys_for_user(user_id_filter);
 
         if (!keys_result.has_value()) {
             LOG_ERROR(logger_, "Failed to list API keys: " +
@@ -122,7 +102,7 @@ crow::response RestApiImpl::handle_list_api_keys_request(const crow::request& re
             return crow::response(500, error_response);
         }
 
-        auto keys = keys_result.value();
+        auto keys = keys_result.value();  // vector<pair<string user_id, string api_key>>
 
         // Build response
         crow::json::wvalue response;
@@ -130,22 +110,12 @@ crow::response RestApiImpl::handle_list_api_keys_request(const crow::request& re
         response["count"] = keys.size();
 
         for (size_t i = 0; i < keys.size(); i++) {
-            const auto& key = keys[i];
+            const auto& [user_id, api_key_hash] = keys[i];
             crow::json::wvalue key_obj;
-            key_obj["key_id"] = key.key_id;
-            key_obj["user_id"] = key.user_id;
-            key_obj["description"] = key.description;
-            key_obj["is_active"] = key.is_active;
-            key_obj["created_at"] = to_iso_string(key.created_at);
-            key_obj["expires_at"] = to_iso_string(key.expires_at);
+            key_obj["user_id"] = user_id;
+            key_obj["api_key"] = api_key_hash;  // This is the actual key value (for display/usage)
 
-            // Add permissions
-            key_obj["permissions"] = crow::json::wvalue::list();
-            for (size_t j = 0; j < key.permissions.size(); j++) {
-                key_obj["permissions"][j] = key.permissions[j];
-            }
-
-            // Don't include the actual key hash for security
+            // Note: Simplified model - no key_id, description, permissions, expiry, or active status
             response["api_keys"][i] = std::move(key_obj);
         }
 
@@ -165,10 +135,11 @@ crow::response RestApiImpl::handle_list_api_keys_request(const crow::request& re
 // ============================================================================
 crow::response RestApiImpl::handle_revoke_api_key_request(const crow::request& req, const std::string& key_id) {
     try {
-        LOG_INFO(logger_, "Received revoke API key request for ID: " + key_id);
+        LOG_INFO(logger_, "Received revoke API key request for: " + key_id);
 
-        // Revoke the API key
-        auto revoke_result = auth_manager_->revoke_api_key(key_id);
+        // Note: In the simplified model, key_id IS the api_key value itself
+        // Revoke the API key using AuthenticationService
+        auto revoke_result = authentication_service_->revoke_api_key(key_id);
 
         if (!revoke_result.has_value()) {
             LOG_ERROR(logger_, "Failed to revoke API key " + key_id + ": " +
@@ -187,7 +158,7 @@ crow::response RestApiImpl::handle_revoke_api_key_request(const crow::request& r
         // Log audit event
         if (security_audit_logger_) {
             security_audit_logger_->log_authentication_attempt(
-                key_id,  // Use key_id as identifier
+                key_id,  // Use key as identifier
                 req.get_header_value("X-Forwarded-For").empty() ?
                     req.remote_ip_address : req.get_header_value("X-Forwarded-For"),
                 true,
@@ -197,7 +168,7 @@ crow::response RestApiImpl::handle_revoke_api_key_request(const crow::request& r
 
         // Build success response
         crow::json::wvalue response;
-        response["key_id"] = key_id;
+        response["api_key"] = key_id;
         response["message"] = "API key revoked successfully";
 
         LOG_INFO(logger_, "Successfully revoked API key: " + key_id);

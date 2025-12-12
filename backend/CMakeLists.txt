@@ -232,6 +232,8 @@ set(CORE_SOURCES
     src/services/lifecycle_service.cpp
     src/services/query_router.cpp
     src/services/distributed_service_manager.cpp
+    src/services/alert_service.cpp
+    src/services/metrics_service.cpp
     src/services/distributed_query_planner.cpp
     src/services/distributed_query_executor.cpp
     src/services/distributed_write_coordinator.cpp
@@ -256,7 +258,7 @@ set(CORE_SOURCES
     src/lib/error_handling.cpp
     src/lib/config.cpp
     src/lib/thread_pool.cpp
-    src/lib/auth.cpp
+    # REMOVED: src/lib/auth.cpp - migrated to AuthenticationService
     src/lib/zero_trust.cpp
     src/lib/metrics.cpp
     src/lib/compression.cpp
@@ -268,11 +270,11 @@ set(CORE_SOURCES
 
 set(API_SOURCES
     src/api/rest/rest_api.cpp
-    # Commented out to avoid duplicate symbols - implementations are in rest_api.cpp
-    # src/api/rest/rest_api_auth_handlers.cpp
-    # src/api/rest/rest_api_user_handlers.cpp
-    # src/api/rest/rest_api_apikey_handlers.cpp
-    # src/api/rest/rest_api_security_handlers.cpp
+    # New handler files using AuthenticationService (not AuthManager)
+    src/api/rest/rest_api_auth_handlers.cpp
+    src/api/rest/rest_api_user_handlers.cpp
+    src/api/rest/rest_api_apikey_handlers.cpp
+    src/api/rest/rest_api_security_handlers.cpp
     src/api/grpc/grpc_service_stub.cpp
     src/api/grpc/distributed_worker_service.cpp
     src/api/grpc/distributed_master_client.cpp
@@ -344,6 +346,8 @@ if(BUILD_TESTS)
         tests/test_advanced_embedding_unit.cpp
         tests/test_advanced_embedding_integration.cpp
         tests/test_search_serialization.cpp
+        tests/test_authentication_flows.cpp
+        tests/test_api_key_lifecycle.cpp
     )
 
     target_link_libraries(jadevectordb_tests PRIVATE
@@ -363,13 +367,29 @@ endif()
 option(BUILD_BENCHMARKS "Build benchmark suite" ON)
 
 if(BUILD_BENCHMARKS)
+    # Create separate executables for each benchmark file to avoid multiple main() conflicts
     add_executable(search_benchmarks
         tests/benchmarks/search_benchmarks.cpp
-        tests/benchmarks/advanced_filtering_benchmarks.cpp
-        tests/benchmarks/advanced_indexing_benchmarks.cpp
+    )
+    target_link_libraries(search_benchmarks PRIVATE
+        benchmark::benchmark
+        benchmark::benchmark_main
+        jadevectordb_core
     )
 
-    target_link_libraries(search_benchmarks PRIVATE
+    add_executable(advanced_filtering_benchmarks
+        tests/benchmarks/advanced_filtering_benchmarks.cpp
+    )
+    target_link_libraries(advanced_filtering_benchmarks PRIVATE
+        benchmark::benchmark
+        benchmark::benchmark_main
+        jadevectordb_core
+    )
+
+    add_executable(advanced_indexing_benchmarks
+        tests/benchmarks/advanced_indexing_benchmarks.cpp
+    )
+    target_link_libraries(advanced_indexing_benchmarks PRIVATE
         benchmark::benchmark
         benchmark::benchmark_main
         jadevectordb_core
@@ -378,7 +398,6 @@ if(BUILD_BENCHMARKS)
     add_executable(filtered_search_benchmarks
         tests/benchmarks/filtered_search_benchmarks.cpp
     )
-
     target_link_libraries(filtered_search_benchmarks PRIVATE
         benchmark::benchmark
         benchmark::benchmark_main

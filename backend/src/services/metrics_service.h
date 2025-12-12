@@ -60,7 +60,7 @@ private:
     MetricsConfig config_;
     std::vector<MetricRecord> metrics_history_;         // Time-series history of metrics
     std::unordered_map<std::string, MetricRecord> current_metrics_;  // Current values by name
-    std::mutex metrics_mutex_;
+    mutable std::mutex metrics_mutex_;
 
     std::chrono::system_clock::time_point service_start_time_;
     

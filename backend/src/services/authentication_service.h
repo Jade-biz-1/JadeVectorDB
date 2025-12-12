@@ -17,6 +17,7 @@ namespace jadevectordb {
 struct UserCredentials {
     std::string user_id;
     std::string username;
+    std::string email;  // Added for API compatibility
     std::string password_hash;
     std::string salt;
     std::vector<std::string> roles;
@@ -119,6 +120,14 @@ public:
     Result<bool> update_username(const std::string& user_id,
                                 const std::string& new_username);
 
+    // Update email
+    Result<bool> update_email(const std::string& user_id,
+                             const std::string& new_email);
+
+    // Update roles
+    Result<bool> update_roles(const std::string& user_id,
+                             const std::vector<std::string>& new_roles);
+
     // User authentication
     Result<AuthToken> authenticate(const std::string& username,
                                   const std::string& password,
@@ -197,6 +206,15 @@ public:
 
     // Seed default users for non-production environments
     Result<bool> seed_default_users();
+
+    // List all users
+    Result<std::vector<UserCredentials>> list_users() const;
+
+    // List all API keys
+    Result<std::vector<std::pair<std::string, std::string>>> list_api_keys() const;
+
+    // List API keys for a specific user
+    Result<std::vector<std::pair<std::string, std::string>>> list_api_keys_for_user(const std::string& user_id) const;
 
 private:
     // Password hashing

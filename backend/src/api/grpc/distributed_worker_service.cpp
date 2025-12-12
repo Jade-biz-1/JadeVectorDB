@@ -414,6 +414,34 @@ Result<DistributedWorkerService::HealthInfo> DistributedWorkerService::get_healt
     auto shard_statuses = collect_shard_statuses();
     if (shard_statuses.has_value()) {
         health.shard_statuses = shard_statuses.value();
+
+        // Calculate overall shard state based on individual shard statuses
+        int healthy_count = 0;
+        int degraded_count = 0;
+        int critical_count = 0;
+
+        for (const auto& shard_status : shard_statuses.value()) {
+            if (shard_status.state == ShardState::ACTIVE) {
+                healthy_count++;
+            } else if (shard_status.state == ShardState::SYNCING ||
+                       shard_status.state == ShardState::MIGRATING ||
+                       shard_status.state == ShardState::READONLY) {
+                degraded_count++;
+            } else {
+                critical_count++;  // OFFLINE, INITIALIZING, UNKNOWN, etc.
+            }
+        }
+
+        // Determine overall shard state
+        if (critical_count > 0 || shard_statuses.value().empty()) {
+            health.shard_state = "critical";
+        } else if (degraded_count > 0) {
+            health.shard_state = "degraded";
+        } else {
+            health.shard_state = "healthy";
+        }
+    } else {
+        health.shard_state = "unknown";
     }
 
     return health;
