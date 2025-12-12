@@ -83,6 +83,11 @@ void RestApiService::stop() {
         LOG_INFO(logger_, "Stopping REST API server");
         running_ = false;
         
+        // Stop the Crow app first to unblock the server thread
+        if (api_impl_) {
+            api_impl_->stop_server();
+        }
+        
         if (server_thread_ && server_thread_->joinable()) {
             server_thread_->join();
         }
@@ -107,6 +112,20 @@ void RestApiService::run_server() {
 
 RestApiImpl::RestApiImpl() {
     logger_ = logging::LoggerManager::get_logger("RestApiImpl");
+}
+
+RestApiImpl::~RestApiImpl() {
+    // Ensure Crow app is stopped before destruction
+    if (app_) {
+        try {
+            app_->stop();
+        } catch (...) {
+            // Ignore exceptions during shutdown
+        }
+        // Give Crow threads time to finish
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        app_.reset();
+    }
 }
 
 bool RestApiImpl::initialize(int port) {
@@ -173,6 +192,13 @@ void RestApiImpl::start_server() {
     if (app_) {
         LOG_INFO(logger_, "Starting Crow server on port " << server_port_);
         app_->port(server_port_).multithreaded().run();
+    }
+}
+
+void RestApiImpl::stop_server() {
+    if (app_) {
+        LOG_INFO(logger_, "Stopping Crow server");
+        app_->stop();
     }
 }
 

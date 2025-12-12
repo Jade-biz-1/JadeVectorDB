@@ -121,7 +121,7 @@ private:
     
 public:
     explicit RestApiImpl();
-    ~RestApiImpl() = default;
+    ~RestApiImpl();
     
     // Initialize the web server framework
     bool initialize(int port);
@@ -131,6 +131,9 @@ public:
     
     // Start the server
     void start_server();
+    
+    // Stop the server
+    void stop_server();
     
     // Individual route handlers
     void handle_health_check();           // GET /health
