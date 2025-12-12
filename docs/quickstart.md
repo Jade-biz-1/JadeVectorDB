@@ -133,6 +133,25 @@ Authorization: Bearer {api-key}
 Authorization: ApiKey {api-key}
 ```
 
+#### Default Users (Development/Test only)
+
+For local development and testing, JadeVectorDB provides default user accounts:
+
+| Username | Password | Roles |
+|----------|----------|-------|
+| admin | admin123 | admin, developer, user |
+| dev | dev123 | developer, user |
+| test | test123 | tester, user |
+
+*Note: Default users are only seeded when `JADE_ENV` is set to `development`, `test`, or `local`.*
+
+**Login Example:**
+```bash
+curl -X POST "http://localhost:8080/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin123"}'
+```
+
 ### Error Handling
 
 The API returns standard HTTP status codes:

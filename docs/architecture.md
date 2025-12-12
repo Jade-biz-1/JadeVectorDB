@@ -167,14 +167,24 @@ The system supports multiple indexing algorithms optimized for different use cas
 
 ### Distributed Architecture
 
-#### Cluster Management
+#### DistributedServiceManager
+The `DistributedServiceManager` coordinates all distributed components:
+- Lifecycle management of distributed services
+- Service initialization and configuration
+- Health monitoring and status reporting
+- Integration with security audit logging and performance benchmarking
+
+#### Cluster Management (ClusterService)
 - **Raft Consensus**: For leader election and distributed consensus
 - **Member List**: Automatic discovery and failure detection
 - **Gossip Protocol**: For cluster state propagation
+- **Node Health Monitoring**: Continuous health checks and automatic failover
+- **Cluster Membership**: Dynamic node addition and removal
 
 #### Data Distribution
-- **Sharding Strategies**: Hash-based, range-based, and vector-based sharding
-- **Replication**: Configurable replication factors for durability
+- **Sharding Strategies** (ShardingService): Hash-based, range-based, and vector-based sharding
+- **Replication** (ReplicationService): Configurable replication factors for durability with master-slave replication
+- **Query Routing** (QueryRouter): Intelligent request distribution across shards and replicas
 - **Load Balancing**: Automatic request distribution across nodes
 
 ### Configuration Management
