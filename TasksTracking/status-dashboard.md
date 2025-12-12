@@ -27,9 +27,9 @@
 | **CLEANUP-009** | Rebuild and verify | CRITICAL | ✅ Complete |
 | **CLEANUP-010** | E2E authentication testing | CRITICAL | ✅ Complete |
 | **CLEANUP-011** | Update TasksTracking | HIGH | ✅ Complete |
-| **CLEANUP-012** | Update BOOTSTRAP.md | HIGH | Ready ⏳ |
+| **CLEANUP-012** | Update BOOTSTRAP.md | HIGH | ✅ Complete |
 | **CLEANUP-013** | Update status-dashboard.md | MEDIUM | ✅ Complete |
-| **CLEANUP-014** | Update overview.md | MEDIUM | Ready ⏳ |
+| **CLEANUP-014** | Update overview.md | MEDIUM | ✅ Complete |
 
 **Completed (2025-12-11 to 2025-12-12)**:
 - ✅ Fixed password validation (10-char minimum requirement)
@@ -50,16 +50,16 @@
 
 | Task | Description | Priority | Assigned | Progress |
 |------|-------------|----------|----------|----------|
-| **CLEANUP** | AuthManager Consolidation (14 tasks) | CRITICAL | - | ✅ 93% (13/14) |
+| **CLEANUP** | AuthManager Consolidation (14 tasks) | CRITICAL | - | ✅ 100% (14/14) |
 | T229 | Update documentation for search API | MEDIUM | - | 0% |
 | T231 | Backend tests for authentication flows | HIGH | - | ✅ Complete |
 | T232 | Backend tests for API key lifecycle | HIGH | - | ✅ Complete |
 | T233 | Frontend tests for authentication flows | MEDIUM | - | 0% |
 | T234 | Smoke/performance tests for search and auth | MEDIUM | - | 0% |
 | T235 | Coordinate security policy requirements | MEDIUM | - | 0% |
-| T237 | Assign roles to default users | HIGH | - | ✅ Done (T236) |
+| T237 | Assign roles to default users | HIGH | - | ✅ Complete |
 | T238 | Mirror backend changes in simple API or deprecate | LOW | - | 0% |
-| T259 | Complete distributed worker service stubs | HIGH | 2025-12-12 | ✅ 95% |
+| T259 | Complete distributed worker service stubs | HIGH | 2025-12-12 | ✅ 100% |
 
 ---
 
@@ -200,16 +200,18 @@
 ## 🎯 Next Up (Priority Order)
 
 ### This Week:
-1. **T231** - Backend tests for authentication flows (HIGH)
-2. **T232** - Backend tests for API key lifecycle (HIGH)
-3. **T237** - Assign roles to default users (HIGH)
+1. ~~**T231** - Backend tests for authentication flows (HIGH)~~ ✅
+2. ~~**T232** - Backend tests for API key lifecycle (HIGH)~~ ✅
+3. ~~**T237** - Assign roles to default users (HIGH)~~ ✅
 4. ~~**T259** - Complete distributed worker service stubs (HIGH)~~ ✅
+5. ~~**CLEANUP** - AuthManager consolidation (14 tasks)~~ ✅
 
 ### Next Week:
 1. **T229** - Update search API documentation (MEDIUM)
-2. **T233-T234** - Frontend and smoke tests (MEDIUM)
-3. **T235** - Security policy documentation (MEDIUM)
-4. **Tutorial enhancements** - Assessment and help systems
+2. **T233** - Frontend tests for authentication flows (MEDIUM)
+3. **T234** - Smoke/performance tests (MEDIUM)
+4. **T235** - Security policy documentation (MEDIUM)
+5. **T247** - Shard data migration (MEDIUM)
 
 ### Later:
 1. Complete Phase 15 backend optimizations (T250-T252)
