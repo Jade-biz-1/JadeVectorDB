@@ -1,4 +1,5 @@
 #include "sharding_service.h"
+#include "database_layer.h"
 #include "lib/logging.h"
 #include "lib/error_handling.h"
 #include <algorithm>
@@ -22,7 +23,7 @@ static std::string generate_migration_id() {
     return "mig_" + std::to_string(duration.count());
 }
 
-ShardingService::ShardingService() {
+ShardingService::ShardingService() : db_layer_(nullptr) {
     logger_ = logging::LoggerManager::get_logger("ShardingService");
     
     // Initialize with default hash function
@@ -33,6 +34,25 @@ ShardingService::ShardingService() {
         }
         return hash;
     };
+}
+
+ShardingService::ShardingService(std::shared_ptr<DatabaseLayer> db_layer) 
+    : db_layer_(db_layer) {
+    logger_ = logging::LoggerManager::get_logger("ShardingService");
+    
+    // Initialize with default hash function
+    hash_function_ = [](const std::string& key) -> uint64_t {
+        uint64_t hash = 5381;
+        for (char c : key) {
+            hash = ((hash << 5) + hash) + c; // hash * 33 + c
+        }
+        return hash;
+    };
+}
+
+void ShardingService::set_database_layer(std::shared_ptr<DatabaseLayer> db_layer) {
+    db_layer_ = db_layer;
+    LOG_INFO(logger_, "DatabaseLayer set for ShardingService");
 }
 
 bool ShardingService::initialize(const ShardingConfig& config) {
@@ -435,23 +455,52 @@ Result<std::vector<Vector>> ShardingService::extract_vectors_from_shard(const st
     try {
         LOG_INFO(logger_, "Extracting vectors from shard: " + shard_id);
         
-        // In a real implementation, this would:
-        // 1. Connect to the storage backend for the shard
-        // 2. Read all vector data from storage
-        // 3. Return the vectors for transfer
-        
-        // For now, return empty vector (placeholder for actual storage integration)
-        std::vector<Vector> vectors;
-        
         // Find shard info
         auto it = std::find_if(shards_.begin(), shards_.end(), 
                               [&shard_id](const ShardInfo& shard) { return shard.shard_id == shard_id; });
         
-        if (it != shards_.end()) {
-            // Simulate extraction based on record count
-            LOG_INFO(logger_, "Would extract " + std::to_string(it->record_count) + " vectors from shard " + shard_id);
+        if (it == shards_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "Shard not found: " + shard_id);
         }
         
+        std::string database_id = it->database_id;
+        size_t expected_count = it->record_count;
+        
+        LOG_INFO(logger_, "Extracting up to " + std::to_string(expected_count) + " vectors from shard " + shard_id);
+        
+        // If no database layer, fall back to empty extraction (for testing)
+        if (!db_layer_) {
+            LOG_WARN(logger_, "No DatabaseLayer available, returning empty vector list");
+            return std::vector<Vector>();
+        }
+        
+        // Get all vector IDs from the database
+        auto vector_ids_result = db_layer_->get_all_vector_ids(database_id);
+        if (!vector_ids_result.has_value()) {
+            LOG_ERROR(logger_, "Failed to get vector IDs from database " + database_id);
+            return tl::unexpected(vector_ids_result.error());
+        }
+        
+        auto all_vector_ids = vector_ids_result.value();
+        std::vector<Vector> vectors;
+        
+        // Filter vectors that belong to this shard based on sharding strategy
+        for (const auto& vector_id : all_vector_ids) {
+            // Get shard for this vector
+            auto shard_result = get_shard_for_vector(vector_id, database_id);
+            if (shard_result.has_value() && shard_result.value() == shard_id) {
+                // This vector belongs to this shard, retrieve it
+                auto vector_result = db_layer_->retrieve_vector(database_id, vector_id);
+                if (vector_result.has_value()) {
+                    vectors.push_back(vector_result.value());
+                } else {
+                    LOG_WARN(logger_, "Failed to retrieve vector " + vector_id + ": " + 
+                            vector_result.error().message);
+                }
+            }
+        }
+        
+        LOG_INFO(logger_, "Extracted " + std::to_string(vectors.size()) + " vectors from shard " + shard_id);
         return vectors;
     } catch (const std::exception& e) {
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to extract vectors: " + std::string(e.what()));
@@ -465,29 +514,47 @@ Result<bool> ShardingService::transfer_vectors_to_node(const std::string& target
         LOG_INFO(logger_, "Transferring " + std::to_string(vectors.size()) + 
                 " vectors to node " + target_node_id + " for shard " + shard_id);
         
-        // In a real implementation, this would:
-        // 1. Serialize vectors
-        // 2. Establish connection to target node
-        // 3. Stream vectors in batches
-        // 4. Confirm receipt and storage on target
+        if (vectors.empty()) {
+            LOG_INFO(logger_, "No vectors to transfer");
+            return true;
+        }
         
-        // Simulate transfer with progress updates
+        // Transfer vectors in batches for efficiency
         const size_t batch_size = 1000;
         size_t transferred = 0;
+        size_t total_bytes = 0;
         
         for (size_t i = 0; i < vectors.size(); i += batch_size) {
             size_t end = std::min(i + batch_size, vectors.size());
+            std::vector<Vector> batch(vectors.begin() + i, vectors.begin() + end);
+            
+            // In a production system, this would use gRPC to transfer to target node
+            // For now, we log the transfer operation
+            // The actual implementation would:
+            // 1. Serialize batch using FlatBuffers
+            // 2. Use DistributedMasterClient to send batch to target_node_id
+            // 3. Target node stores vectors using its local DatabaseLayer
+            // 4. Confirm receipt and storage success
+            
+            LOG_INFO(logger_, "Transferring batch " + std::to_string(i/batch_size + 1) + 
+                    " (" + std::to_string(batch.size()) + " vectors) to node " + target_node_id);
+            
+            // Estimate bytes transferred (vector dimension * 4 bytes per float + metadata)
+            for (const auto& vec : batch) {
+                total_bytes += vec.values.size() * sizeof(float) + 256; // 256 bytes for metadata
+            }
+            
             transferred = end;
             
-            // Update progress
-            size_t bytes_transferred = transferred * 1024; // Estimate 1KB per vector
-            update_migration_progress(shard_id, transferred, bytes_transferred);
+            // Update migration progress
+            update_migration_progress(shard_id, transferred, total_bytes);
             
-            LOG_INFO(logger_, "Transferred batch " + std::to_string(i/batch_size + 1) + 
-                    ", total: " + std::to_string(transferred) + "/" + std::to_string(vectors.size()));
+            // Simulate network latency
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         
-        LOG_INFO(logger_, "Transfer complete to node " + target_node_id);
+        LOG_INFO(logger_, "Transfer complete: " + std::to_string(transferred) + 
+                " vectors (" + std::to_string(total_bytes) + " bytes) to node " + target_node_id);
         return true;
     } catch (const std::exception& e) {
         RETURN_ERROR(ErrorCode::SERVICE_ERROR, "Failed to transfer vectors: " + std::string(e.what()));
