@@ -4,6 +4,7 @@
 #include <vector>
 #include <thread>
 #include <chrono>
+#include <future>
 
 #include "services/vector_storage.h"
 #include "services/database_service.h"
@@ -64,7 +65,7 @@ TEST_F(FullSystemIntegrationTest, DatabaseCreateAndManage) {
     params.description = "Database for integration testing";
     params.vectorDimension = 128;
     params.indexType = "FLAT";
-    params.config = {{"max_vectors", "1000000"}};
+    // config field removed - not in DatabaseCreationParams struct
     
     auto create_result = db_service_->create_database(params);
     ASSERT_TRUE(create_result.has_value()) << "Failed to create database";
@@ -118,9 +119,9 @@ TEST_F(FullSystemIntegrationTest, VectorStorageAndRetrieval) {
         }
         
         // Add some metadata
-        v.metadata["category"] = "test";
-        v.metadata["index"] = std::to_string(i);
-        v.metadata["timestamp"] = std::to_string(std::time(nullptr));
+        v.metadata.insert({"category", "test"});
+        v.metadata.insert({"index", std::to_string(i)});
+        v.metadata.insert({"timestamp", std::to_string(std::time(nullptr))});
         
         test_vectors.push_back(v);
     }
@@ -156,8 +157,8 @@ TEST_F(FullSystemIntegrationTest, VectorStorageAndRetrieval) {
         for (int j = 0; j < 16; ++j) {
             v.values.push_back(static_cast<float>(i + j * 0.15));
         }
-        v.metadata["category"] = "batch_test";
-        v.metadata["index"] = std::to_string(i);
+        v.metadata.insert({"category", "batch_test"});
+        v.metadata.insert({"index", std::to_string(i)});
         batch_vectors.push_back(v);
     }
     
