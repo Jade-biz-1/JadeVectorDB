@@ -606,7 +606,10 @@ Result<void> ReplicationService::send_replication_request(const Vector& vector,
                     // Build replication request
                     DistributedMasterClient::ReplicationRequest request;
                     request.shard_id = "";  // Will be determined by worker based on vector
-                    request.source_node_id = "master";  // TODO: Get actual node ID
+                    // Get node ID from cluster service if available, otherwise use "master" as fallback
+                    request.source_node_id = (cluster_service_ && !cluster_service_->get_current_node_id().empty()) 
+                        ? cluster_service_->get_current_node_id() 
+                        : "master";
                     request.replication_type = ReplicationType::INCREMENTAL;
                     request.vectors.push_back(vector);
                     request.from_version = 0;

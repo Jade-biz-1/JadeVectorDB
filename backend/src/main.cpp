@@ -47,7 +47,7 @@ private:
     bool running_;
 
 public:
-    JadeVectorDBApp() : running_(false), config_mgr_(nullptr), metrics_registry_(nullptr) {
+    JadeVectorDBApp() : config_mgr_(nullptr), metrics_registry_(nullptr), running_(false) {
         // Initialize logging
         logging::LoggerManager::initialize(logging::LogLevel::INFO);
         logger_ = std::make_unique<logging::Logger>("JadeVectorDBApp");
@@ -57,7 +57,11 @@ public:
 
     ~JadeVectorDBApp() {
         if (running_) {
-            shutdown();
+            auto shutdown_result = shutdown();
+            // Log but don't throw in destructor
+            if (!shutdown_result) {
+                // Error already logged by shutdown()
+            }
         }
         LOG_INFO(logger_, "JadeVectorDB Application terminated");
     }
@@ -238,6 +242,8 @@ public:
 } // namespace jadevectordb
 
 int main(int argc, char* argv[]) {
+    (void)argc; // Unused - future: parse command line args
+    (void)argv; // Unused - future: parse command line args
     std::cout << "Starting JadeVectorDB..." << std::endl;
     
     jadevectordb::JadeVectorDBApp app;

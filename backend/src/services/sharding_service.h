@@ -14,6 +14,9 @@
 
 namespace jadevectordb {
 
+// Forward declarations
+class DatabaseLayer;
+
 // Represents a shard in the distributed system
 struct ShardInfo {
     std::string shard_id;
@@ -87,6 +90,7 @@ public:
 
 private:
     std::shared_ptr<logging::Logger> logger_;
+    std::shared_ptr<DatabaseLayer> db_layer_;
     ShardingConfig config_;
     std::vector<ShardInfo> shards_;
     std::unordered_map<std::string, std::vector<ShardInfo>> db_shards_; // database_id -> shards
@@ -100,7 +104,11 @@ private:
     
 public:
     explicit ShardingService();
+    explicit ShardingService(std::shared_ptr<DatabaseLayer> db_layer);
     ~ShardingService() = default;
+    
+    // Set database layer (for cases where it's not available at construction)
+    void set_database_layer(std::shared_ptr<DatabaseLayer> db_layer);
     
     // Initialize the sharding service with configuration
     bool initialize(const ShardingConfig& config);
