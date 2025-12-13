@@ -152,35 +152,38 @@ Added to CMakeLists.txt. See backend/tests/T230_TEST_IMPLEMENTATION_SUMMARY.md f
 **Completion Details**: Completely rewrote test to use AuthenticationService instead of AuthManager. Simplified from complex API (permissions, descriptions, validity) to actual simple API (generate/authenticate/revoke/list). Test coverage: API key generation (single, multiple, non-existent user), authentication with API keys (valid, invalid), revocation (valid, invalid, already revoked), listing (all keys, per-user), complete lifecycle integration. Test compiles successfully. See docs/AUTH_TESTS_FIXED_2025-12-11.md for details.
 
 ### T233: Extend frontend tests for authentication flows
-**[\u2713] COMPLETE**
-**File**: `frontend/tests/integration/auth-flows.test.js`, `frontend/tests/unit/pages/search-page.test.js`
+**[✓] COMPLETE**
+**File**: `frontend/tests/integration/auth-flows.test.js` (713 lines)
 **Dependencies**: T227
 **Description**: Add Jest/Cypress tests for login/logout flows, API key revocation UX, and search result rendering toggles
-**Status**: [\u2713] COMPLETE
+**Status**: [✓] COMPLETE
 **Priority**: MEDIUM
 **Completion Details**: 
-- Login/logout flow tests already existed (comprehensive 540-line test suite)
+- Comprehensive 713-line test suite for authentication flows exists
+- Tests cover: login/logout flow, API key management, localStorage operations, error handling
 - Added 6 API key revocation UX tests: successful revocation, confirmation dialog, failure handling, list refresh, button disable during operation
-- Added 6 search result rendering toggle tests: includeMetadata toggle state, parameter passing for true/false, includeVectorData, metadata display/hide in results
+- Added 6 search result rendering toggle tests in `frontend/tests/unit/pages/search-page.test.js`
+- File verified to exist and contain extensive test coverage
 
 ### T234: Introduce smoke/performance tests for search and auth
-**[\u2713] COMPLETE**
-**File**: `scripts/smoke_tests.sh`, `scripts/performance_tests.sh`
+**[✓] COMPLETE**
+**File**: `scripts/smoke_tests.sh` (294 lines), `scripts/performance_tests.sh`
 **Dependencies**: T219, T044
 **Description**: Create smoke/performance test scripts exercising /v1/databases/{id}/search and authentication endpoints
-**Status**: [\u2713] COMPLETE
+**Status**: [✓] COMPLETE
 **Priority**: MEDIUM
-**Completion Details**: Created two comprehensive test scripts:
-- `smoke_tests.sh`: 12 tests covering health check, login (valid/invalid), protected endpoints, database operations, search with parameters, API key lifecycle, and logout flow
+**Completion Details**: Both comprehensive test scripts exist and verified:
+- `smoke_tests.sh` (294 lines): 12 tests covering health check, login (valid/invalid), protected endpoints, database operations, search with parameters, API key lifecycle, and logout flow
 - `performance_tests.sh`: Latency and throughput benchmarks for login, user list, database list, and token validation endpoints with configurable iterations and threshold checking
-
-### T235: Coordinate security policy requirements
-**[\u2713] COMPLETE**
-**File**: `docs/security_policy.md`
+- Files verified to exist with full implementation
+### T235: Coordinate security policy requirements before finalizing handlers
+**[✓] COMPLETE**
+**File**: `docs/security_policy.md` (204 lines)
 **Dependencies**: T219, T221
 **Description**: Document password hashing policy, audit retention windows, and API key rotation requirements before finalizing handlers
-**Status**: [\u2713] COMPLETE
+**Status**: [✓] COMPLETE
 **Priority**: MEDIUM
+**Completion Details**: Comprehensive security_policy.md exists with 204 lines covering: password requirements (bcrypt, min length, strong password rules), token/session management (expiry times, lifecycle), account protection (brute force, lockout), API key security (rotation schedule, best practices), audit logging (events, retention), data encryption (AES-256-GCM), and production recommendations. File verified to exist with full policy documentation.
 **Completion Details**: Created comprehensive security_policy.md with password requirements (bcrypt, min length, strong password rules), token/session management (expiry times, lifecycle), account protection (brute force, lockout), API key security (rotation schedule, best practices), audit logging (events, retention), data encryption (AES-256-GCM), and production recommendations.
 
 ### T236: Implement environment-specific default user seeding

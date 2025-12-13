@@ -132,6 +132,9 @@ public:
     // Get current cluster state
     Result<ClusterState> get_cluster_state() const;
     
+    // Get current node ID
+    std::string get_current_node_id() const { return node_id_; }
+    
     // Get current node role
     ClusterRole get_current_role() const;
     
