@@ -14,6 +14,7 @@ VECTOR_ID=""
 QUERY_VECTOR=""
 TOP_K=10
 CURL_ONLY=false
+OUTPUT_FORMAT="json"
 
 # Function to print usage
 usage() {
@@ -27,6 +28,7 @@ usage() {
     echo "  --database-id ID     Database ID (required for vector operations)"
     echo "                       Can also be set via JADEVECTORDB_DATABASE_ID environment variable"
     echo "  --curl-only          Generate cURL commands instead of executing"
+    echo "  --format FORMAT      Output format: json (default), yaml, table"
     echo ""
     echo "Commands:"
     echo "  Database Operations:"
@@ -60,6 +62,42 @@ usage() {
     echo "  $0 --curl-only --url http://localhost:8080 list-dbs"
     echo ""
     exit 1
+}
+
+# Function to format output
+format_output() {
+    local data="$1"
+    local format="${2:-json}"
+
+    case "$format" in
+        json)
+            echo "$data" | jq '.' 2>/dev/null || echo "$data"
+            ;;
+        yaml)
+            if command -v yq &> /dev/null; then
+                echo "$data" | yq eval -P 2>/dev/null || echo "$data"
+            else
+                echo "Warning: yq not installed. Install with: brew install yq (Mac) or snap install yq (Linux)" >&2
+                echo "Falling back to JSON output:" >&2
+                echo "$data" | jq '.' 2>/dev/null || echo "$data"
+            fi
+            ;;
+        table)
+            if echo "$data" | jq -e 'type == "array"' &> /dev/null; then
+                # Array of objects - format as table
+                echo "$data" | jq -r '(.[0] | keys_unsorted) as $keys | $keys, map([.[ $keys[] ]])[] | @tsv' | column -t -s $'\t' 2>/dev/null || echo "$data"
+            elif echo "$data" | jq -e 'type == "object"' &> /dev/null; then
+                # Single object - format as key-value table
+                echo "$data" | jq -r 'to_entries | .[] | [.key, .value] | @tsv' | column -t -s $'\t' 2>/dev/null || echo "$data"
+            else
+                echo "$data"
+            fi
+            ;;
+        *)
+            echo "Error: Unsupported format: $format" >&2
+            echo "$data"
+            ;;
+    esac
 }
 
 # Function to make API call
@@ -124,6 +162,10 @@ while [[ $# -gt 0 ]]; do
         --curl-only)
             CURL_ONLY=true
             shift
+            ;;
+        --format)
+            OUTPUT_FORMAT="$2"
+            shift 2
             ;;
         --help|-h)
             usage
@@ -197,7 +239,7 @@ EOF
             echo "  \"$BASE_URL/v1/databases\""
         else
             result=$(api_call "GET" "/v1/databases" "")
-            echo "$result"
+            format_output "$result" "$OUTPUT_FORMAT"
         fi
         ;;
     get-db)
