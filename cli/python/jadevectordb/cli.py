@@ -9,6 +9,8 @@ import os
 from typing import Dict, List
 from .client import JadeVectorDB, Vector, JadeVectorDBError
 from .curl_generator import CurlCommandGenerator
+from .import_export import VectorImporter, VectorExporter, ImportExportError, simple_progress_callback
+from .formatters import print_formatted
 
 def create_database(args: argparse.Namespace):
     """Create a new database"""
@@ -45,11 +47,11 @@ def list_databases(args: argparse.Namespace):
         curl_cmd = generator.list_databases()
         print(curl_cmd)
         return
-        
+
     client = JadeVectorDB(args.url, args.api_key)
     try:
         databases = client.list_databases()
-        print(json.dumps(databases, indent=2))
+        print_formatted(databases, args.format)
     except JadeVectorDBError as e:
         print(f"Error listing databases: {e}")
         sys.exit(1)
@@ -192,11 +194,11 @@ def get_status(args: argparse.Namespace):
         curl_cmd = generator.get_status()
         print(curl_cmd)
         return
-        
+
     client = JadeVectorDB(args.url, args.api_key)
     try:
         status = client.get_status()
-        print(json.dumps(status, indent=2))
+        print_formatted(status, args.format)
     except JadeVectorDBError as e:
         print(f"Error getting status: {e}")
         sys.exit(1)
@@ -283,6 +285,193 @@ def delete_database(args: argparse.Namespace):
         print(f"Error deleting database: {e}")
         sys.exit(1)
 
+# User Management Commands
+
+def user_add(args: argparse.Namespace):
+    """Add a new user"""
+    client = JadeVectorDB(args.url, args.api_key)
+    try:
+        user = client.create_user(
+            email=args.email,
+            role=args.role,
+            password=args.password if hasattr(args, 'password') else None
+        )
+        print(f"Successfully created user: {args.email}")
+        print(json.dumps(user, indent=2))
+    except JadeVectorDBError as e:
+        print(f"Error creating user: {e}")
+        sys.exit(1)
+
+def user_list(args: argparse.Namespace):
+    """List all users"""
+    client = JadeVectorDB(args.url, args.api_key)
+    try:
+        users = client.list_users(
+            role=args.role if hasattr(args, 'role') and args.role else None,
+            status=args.status if hasattr(args, 'status') and args.status else None
+        )
+        print_formatted(users, args.format)
+    except JadeVectorDBError as e:
+        print(f"Error listing users: {e}")
+        sys.exit(1)
+
+def user_show(args: argparse.Namespace):
+    """Show user details"""
+    client = JadeVectorDB(args.url, args.api_key)
+    try:
+        user = client.get_user(email=args.email)
+        print(json.dumps(user, indent=2))
+    except JadeVectorDBError as e:
+        print(f"Error retrieving user: {e}")
+        sys.exit(1)
+
+def user_update(args: argparse.Namespace):
+    """Update user information"""
+    client = JadeVectorDB(args.url, args.api_key)
+    try:
+        user = client.update_user(
+            email=args.email,
+            role=args.role if hasattr(args, 'role') and args.role else None,
+            status=args.status if hasattr(args, 'status') and args.status else None
+        )
+        print(f"Successfully updated user: {args.email}")
+        print(json.dumps(user, indent=2))
+    except JadeVectorDBError as e:
+        print(f"Error updating user: {e}")
+        sys.exit(1)
+
+def user_delete(args: argparse.Namespace):
+    """Delete a user"""
+    client = JadeVectorDB(args.url, args.api_key)
+    try:
+        success = client.delete_user(email=args.email)
+        if success:
+            print(f"Successfully deleted user: {args.email}")
+        else:
+            print("Failed to delete user")
+    except JadeVectorDBError as e:
+        print(f"Error deleting user: {e}")
+        sys.exit(1)
+
+def user_activate(args: argparse.Namespace):
+    """Activate a user"""
+    client = JadeVectorDB(args.url, args.api_key)
+    try:
+        user = client.activate_user(email=args.email)
+        print(f"Successfully activated user: {args.email}")
+        print(json.dumps(user, indent=2))
+    except JadeVectorDBError as e:
+        print(f"Error activating user: {e}")
+        sys.exit(1)
+
+def user_deactivate(args: argparse.Namespace):
+    """Deactivate a user"""
+    client = JadeVectorDB(args.url, args.api_key)
+    try:
+        user = client.deactivate_user(email=args.email)
+        print(f"Successfully deactivated user: {args.email}")
+        print(json.dumps(user, indent=2))
+    except JadeVectorDBError as e:
+        print(f"Error deactivating user: {e}")
+        sys.exit(1)
+
+# Import/Export Commands
+
+def import_vectors(args: argparse.Namespace):
+    """Import vectors from file"""
+    client = JadeVectorDB(args.url, args.api_key)
+
+    try:
+        batch_size = args.batch_size if hasattr(args, 'batch_size') and args.batch_size else 100
+        importer = VectorImporter(client, args.database_id, batch_size=batch_size)
+
+        print(f"Importing vectors from {args.file}...")
+
+        # Determine format from file extension or explicit format
+        file_format = args.format if hasattr(args, 'format') and args.format else None
+        if not file_format:
+            if args.file.endswith('.json'):
+                file_format = 'json'
+            elif args.file.endswith('.csv'):
+                file_format = 'csv'
+            else:
+                print("Error: Cannot determine file format. Please specify --format")
+                sys.exit(1)
+
+        # Import based on format
+        if file_format == 'json':
+            stats = importer.import_from_json(args.file, progress_callback=simple_progress_callback)
+        elif file_format == 'csv':
+            stats = importer.import_from_csv(args.file, progress_callback=simple_progress_callback)
+        else:
+            print(f"Error: Unsupported format: {file_format}")
+            sys.exit(1)
+
+        # Print results
+        print(f"\nImport completed:")
+        print(f"  Total vectors: {stats['total']}")
+        print(f"  Successfully imported: {stats['imported']}")
+        print(f"  Errors: {stats['errors']}")
+        print(f"  Success rate: {stats['success_rate']:.1f}%")
+
+    except ImportExportError as e:
+        print(f"Import error: {e}")
+        sys.exit(1)
+    except JadeVectorDBError as e:
+        print(f"Database error: {e}")
+        sys.exit(1)
+
+def export_vectors(args: argparse.Namespace):
+    """Export vectors to file"""
+    client = JadeVectorDB(args.url, args.api_key)
+
+    try:
+        exporter = VectorExporter(client, args.database_id)
+
+        # Parse vector IDs if provided
+        vector_ids = None
+        if hasattr(args, 'vector_ids') and args.vector_ids:
+            if args.vector_ids.startswith('['):
+                vector_ids = json.loads(args.vector_ids)
+            else:
+                vector_ids = [v.strip() for v in args.vector_ids.split(',')]
+
+        print(f"Exporting vectors to {args.file}...")
+
+        # Determine format from file extension or explicit format
+        file_format = args.format if hasattr(args, 'format') and args.format else None
+        if not file_format:
+            if args.file.endswith('.json'):
+                file_format = 'json'
+            elif args.file.endswith('.csv'):
+                file_format = 'csv'
+            else:
+                print("Error: Cannot determine file format. Please specify --format")
+                sys.exit(1)
+
+        # Export based on format
+        if file_format == 'json':
+            stats = exporter.export_to_json(args.file, vector_ids=vector_ids, progress_callback=simple_progress_callback)
+        elif file_format == 'csv':
+            stats = exporter.export_to_csv(args.file, vector_ids=vector_ids, progress_callback=simple_progress_callback)
+        else:
+            print(f"Error: Unsupported format: {file_format}")
+            sys.exit(1)
+
+        # Print results
+        print(f"\nExport completed:")
+        print(f"  Total vectors: {stats['total']}")
+        print(f"  Successfully exported: {stats['exported']}")
+        print(f"  Errors: {stats['errors']}")
+        print(f"  Output file: {stats['file_path']}")
+
+    except ImportExportError as e:
+        print(f"Export error: {e}")
+        sys.exit(1)
+    except JadeVectorDBError as e:
+        print(f"Database error: {e}")
+        sys.exit(1)
+
 def setup_parser():
     """Set up the argument parser"""
     parser = argparse.ArgumentParser(description="JadeVectorDB CLI")
@@ -294,6 +483,7 @@ def setup_parser():
     parser.add_argument("--url", default=default_url, help=f"JadeVectorDB API URL (default: {default_url}, can be set via JADEVECTORDB_URL env var)")
     parser.add_argument("--api-key", default=default_api_key, help="API key for authentication (can be set via JADEVECTORDB_API_KEY env var)")
     parser.add_argument("--curl-only", action="store_true", help="Generate cURL commands instead of executing")
+    parser.add_argument("--format", choices=['json', 'yaml', 'table'], default='json', help="Output format (default: json)")
     
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
     
@@ -354,6 +544,55 @@ def setup_parser():
     delete_db_parser = subparsers.add_parser("delete-db", help="Delete a database")
     delete_db_parser.add_argument("--database-id", required=True, help="Database ID")
     delete_db_parser.set_defaults(func=delete_database)
+
+    # User management subcommands
+    user_add_parser = subparsers.add_parser("user-add", help="Add a new user")
+    user_add_parser.add_argument("email", help="User email address")
+    user_add_parser.add_argument("--role", required=True, help="User role (admin, developer, viewer, etc.)")
+    user_add_parser.add_argument("--password", help="Optional password")
+    user_add_parser.set_defaults(func=user_add)
+
+    user_list_parser = subparsers.add_parser("user-list", help="List all users")
+    user_list_parser.add_argument("--role", help="Filter by role")
+    user_list_parser.add_argument("--status", help="Filter by status (active, inactive)")
+    user_list_parser.set_defaults(func=user_list)
+
+    user_show_parser = subparsers.add_parser("user-show", help="Show user details")
+    user_show_parser.add_argument("email", help="User email address")
+    user_show_parser.set_defaults(func=user_show)
+
+    user_update_parser = subparsers.add_parser("user-update", help="Update user information")
+    user_update_parser.add_argument("email", help="User email address")
+    user_update_parser.add_argument("--role", help="New role")
+    user_update_parser.add_argument("--status", help="New status (active, inactive)")
+    user_update_parser.set_defaults(func=user_update)
+
+    user_delete_parser = subparsers.add_parser("user-delete", help="Delete a user")
+    user_delete_parser.add_argument("email", help="User email address")
+    user_delete_parser.set_defaults(func=user_delete)
+
+    user_activate_parser = subparsers.add_parser("user-activate", help="Activate a user")
+    user_activate_parser.add_argument("email", help="User email address")
+    user_activate_parser.set_defaults(func=user_activate)
+
+    user_deactivate_parser = subparsers.add_parser("user-deactivate", help="Deactivate a user")
+    user_deactivate_parser.add_argument("email", help="User email address")
+    user_deactivate_parser.set_defaults(func=user_deactivate)
+
+    # Import/Export subcommands
+    import_parser = subparsers.add_parser("import", help="Import vectors from file")
+    import_parser.add_argument("--database-id", required=True, help="Target database ID")
+    import_parser.add_argument("--file", required=True, help="Input file path")
+    import_parser.add_argument("--format", choices=['json', 'csv'], help="File format (auto-detected if not specified)")
+    import_parser.add_argument("--batch-size", type=int, default=100, help="Number of vectors per batch (default: 100)")
+    import_parser.set_defaults(func=import_vectors)
+
+    export_parser = subparsers.add_parser("export", help="Export vectors to file")
+    export_parser.add_argument("--database-id", required=True, help="Source database ID")
+    export_parser.add_argument("--file", required=True, help="Output file path")
+    export_parser.add_argument("--format", choices=['json', 'csv'], help="File format (auto-detected if not specified)")
+    export_parser.add_argument("--vector-ids", help="Comma-separated list or JSON array of vector IDs to export")
+    export_parser.set_defaults(func=export_vectors)
 
     return parser
 

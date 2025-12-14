@@ -2,16 +2,23 @@
 
 const { program } = require('commander');
 const chalk = require('chalk');
-const { 
-  createDatabase, 
-  listDatabases, 
-  getDatabase, 
-  storeVector, 
-  retrieveVector, 
+const {
+  createDatabase,
+  listDatabases,
+  getDatabase,
+  storeVector,
+  retrieveVector,
   deleteVector,
   searchVectors,
   getHealth,
-  getStatus
+  getStatus,
+  createUser,
+  listUsers,
+  getUser,
+  updateUser,
+  deleteUser,
+  activateUser,
+  deactivateUser
 } = require('../src/api');
 
 // Initialize commander program
@@ -261,6 +268,142 @@ program
     }
   });
 
+// User management commands
+const userCommands = program
+  .command('user')
+  .description('User management operations');
+
+userCommands
+  .command('add')
+  .description('Add a new user')
+  .argument('<email>', 'User email address')
+  .argument('<role>', 'User role (admin, developer, viewer, etc.)')
+  .option('--password <password>', 'Optional password')
+  .action(async (email, role, options) => {
+    program.opts().url && (baseUrl = program.opts().url);
+    program.opts().apiKey && (apiKey = program.opts().apiKey);
+
+    try {
+      const result = await createUser(baseUrl, apiKey, email, role, options.password);
+      console.log(chalk.green(`Successfully created user: ${email}`));
+      console.log(JSON.stringify(result, null, 2));
+    } catch (error) {
+      console.error(chalk.red(`Error creating user: ${error.message}`));
+      process.exit(1);
+    }
+  });
+
+userCommands
+  .command('list')
+  .description('List all users')
+  .option('--role <role>', 'Filter by role')
+  .option('--status <status>', 'Filter by status (active, inactive)')
+  .action(async (options) => {
+    program.opts().url && (baseUrl = program.opts().url);
+    program.opts().apiKey && (apiKey = program.opts().apiKey);
+
+    try {
+      const result = await listUsers(baseUrl, apiKey, options.role, options.status);
+      console.log(chalk.green('Users:'));
+      console.log(JSON.stringify(result, null, 2));
+    } catch (error) {
+      console.error(chalk.red(`Error listing users: ${error.message}`));
+      process.exit(1);
+    }
+  });
+
+userCommands
+  .command('show')
+  .description('Show user details')
+  .argument('<email>', 'User email address')
+  .action(async (email) => {
+    program.opts().url && (baseUrl = program.opts().url);
+    program.opts().apiKey && (apiKey = program.opts().apiKey);
+
+    try {
+      const result = await getUser(baseUrl, apiKey, email);
+      console.log(chalk.green('User details:'));
+      console.log(JSON.stringify(result, null, 2));
+    } catch (error) {
+      console.error(chalk.red(`Error retrieving user: ${error.message}`));
+      process.exit(1);
+    }
+  });
+
+userCommands
+  .command('update')
+  .description('Update user information')
+  .argument('<email>', 'User email address')
+  .option('--role <role>', 'New role')
+  .option('--status <status>', 'New status (active, inactive)')
+  .action(async (email, options) => {
+    program.opts().url && (baseUrl = program.opts().url);
+    program.opts().apiKey && (apiKey = program.opts().apiKey);
+
+    try {
+      const result = await updateUser(baseUrl, apiKey, email, options.role, options.status);
+      console.log(chalk.green(`Successfully updated user: ${email}`));
+      console.log(JSON.stringify(result, null, 2));
+    } catch (error) {
+      console.error(chalk.red(`Error updating user: ${error.message}`));
+      process.exit(1);
+    }
+  });
+
+userCommands
+  .command('delete')
+  .description('Delete a user')
+  .argument('<email>', 'User email address')
+  .action(async (email) => {
+    program.opts().url && (baseUrl = program.opts().url);
+    program.opts().apiKey && (apiKey = program.opts().apiKey);
+
+    try {
+      const result = await deleteUser(baseUrl, apiKey, email);
+      console.log(chalk.green(`Successfully deleted user: ${email}`));
+      console.log(JSON.stringify(result, null, 2));
+    } catch (error) {
+      console.error(chalk.red(`Error deleting user: ${error.message}`));
+      process.exit(1);
+    }
+  });
+
+userCommands
+  .command('activate')
+  .description('Activate a user')
+  .argument('<email>', 'User email address')
+  .action(async (email) => {
+    program.opts().url && (baseUrl = program.opts().url);
+    program.opts().apiKey && (apiKey = program.opts().apiKey);
+
+    try {
+      const result = await activateUser(baseUrl, apiKey, email);
+      console.log(chalk.green(`Successfully activated user: ${email}`));
+      console.log(JSON.stringify(result, null, 2));
+    } catch (error) {
+      console.error(chalk.red(`Error activating user: ${error.message}`));
+      process.exit(1);
+    }
+  });
+
+userCommands
+  .command('deactivate')
+  .description('Deactivate a user')
+  .argument('<email>', 'User email address')
+  .action(async (email) => {
+    program.opts().url && (baseUrl = program.opts().url);
+    program.opts().apiKey && (apiKey = program.opts().apiKey);
+
+    try {
+      const result = await deactivateUser(baseUrl, apiKey, email);
+      console.log(chalk.green(`Successfully deactivated user: ${email}`));
+      console.log(JSON.stringify(result, null, 2));
+    } catch (error) {
+      console.error(chalk.red(`Error deactivating user: ${error.message}`));
+      process.exit(1);
+    }
+  });
+
 // Health and status commands
 program
   .command('health')
@@ -268,7 +411,7 @@ program
   .action(async () => {
     program.opts().url && (baseUrl = program.opts().url);
     program.opts().apiKey && (apiKey = program.opts().apiKey);
-    
+
     try {
       const result = await getHealth(baseUrl, apiKey);
       console.log(chalk.green('Health status:'));

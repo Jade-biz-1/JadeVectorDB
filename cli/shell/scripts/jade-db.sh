@@ -14,6 +14,7 @@ VECTOR_ID=""
 QUERY_VECTOR=""
 TOP_K=10
 CURL_ONLY=false
+OUTPUT_FORMAT="json"
 
 # Function to print usage
 usage() {
@@ -27,18 +28,33 @@ usage() {
     echo "  --database-id ID     Database ID (required for vector operations)"
     echo "                       Can also be set via JADEVECTORDB_DATABASE_ID environment variable"
     echo "  --curl-only          Generate cURL commands instead of executing"
+    echo "  --format FORMAT      Output format: json (default), yaml, table"
     echo ""
     echo "Commands:"
-    echo "  create-db NAME [DESCRIPTION] [DIMENSION] [INDEX_TYPE]    Create a new database"
-    echo "  list-dbs                                                 List all databases"
-    echo "  get-db ID                                                Get database info"
-    echo "  delete-db ID                                             Delete a database"
-    echo "  store ID VALUES [METADATA]                               Store a vector (requires --database-id)"
-    echo "  retrieve ID                                              Retrieve a vector (requires --database-id)"
-    echo "  delete ID                                                Delete a vector (requires --database-id)"
-    echo "  search QUERY_VECTOR [TOP_K] [THRESHOLD]                  Search for similar vectors (requires --database-id)"
-    echo "  status                                                   Get system status"
-    echo "  health                                                   Get system health"
+    echo "  Database Operations:"
+    echo "    create-db NAME [DESCRIPTION] [DIMENSION] [INDEX_TYPE]    Create a new database"
+    echo "    list-dbs                                                 List all databases"
+    echo "    get-db ID                                                Get database info"
+    echo "    delete-db ID                                             Delete a database"
+    echo ""
+    echo "  Vector Operations:"
+    echo "    store ID VALUES [METADATA]                               Store a vector (requires --database-id)"
+    echo "    retrieve ID                                              Retrieve a vector (requires --database-id)"
+    echo "    delete ID                                                Delete a vector (requires --database-id)"
+    echo "    search QUERY_VECTOR [TOP_K] [THRESHOLD]                  Search for similar vectors (requires --database-id)"
+    echo ""
+    echo "  User Management:"
+    echo "    user-add EMAIL ROLE [PASSWORD]                           Add a new user"
+    echo "    user-list [ROLE] [STATUS]                                List all users"
+    echo "    user-show EMAIL                                          Show user details"
+    echo "    user-update EMAIL [ROLE] [STATUS]                        Update user info"
+    echo "    user-delete EMAIL                                        Delete a user"
+    echo "    user-activate EMAIL                                      Activate a user"
+    echo "    user-deactivate EMAIL                                    Deactivate a user"
+    echo ""
+    echo "  System:"
+    echo "    status                                                   Get system status"
+    echo "    health                                                   Get system health"
     echo ""
     echo "Examples:"
     echo "  $0 --url http://localhost:8080 list-dbs"
@@ -46,6 +62,42 @@ usage() {
     echo "  $0 --curl-only --url http://localhost:8080 list-dbs"
     echo ""
     exit 1
+}
+
+# Function to format output
+format_output() {
+    local data="$1"
+    local format="${2:-json}"
+
+    case "$format" in
+        json)
+            echo "$data" | jq '.' 2>/dev/null || echo "$data"
+            ;;
+        yaml)
+            if command -v yq &> /dev/null; then
+                echo "$data" | yq eval -P 2>/dev/null || echo "$data"
+            else
+                echo "Warning: yq not installed. Install with: brew install yq (Mac) or snap install yq (Linux)" >&2
+                echo "Falling back to JSON output:" >&2
+                echo "$data" | jq '.' 2>/dev/null || echo "$data"
+            fi
+            ;;
+        table)
+            if echo "$data" | jq -e 'type == "array"' &> /dev/null; then
+                # Array of objects - format as table
+                echo "$data" | jq -r '(.[0] | keys_unsorted) as $keys | $keys, map([.[ $keys[] ]])[] | @tsv' | column -t -s $'\t' 2>/dev/null || echo "$data"
+            elif echo "$data" | jq -e 'type == "object"' &> /dev/null; then
+                # Single object - format as key-value table
+                echo "$data" | jq -r 'to_entries | .[] | [.key, .value] | @tsv' | column -t -s $'\t' 2>/dev/null || echo "$data"
+            else
+                echo "$data"
+            fi
+            ;;
+        *)
+            echo "Error: Unsupported format: $format" >&2
+            echo "$data"
+            ;;
+    esac
 }
 
 # Function to make API call
@@ -110,6 +162,10 @@ while [[ $# -gt 0 ]]; do
         --curl-only)
             CURL_ONLY=true
             shift
+            ;;
+        --format)
+            OUTPUT_FORMAT="$2"
+            shift 2
             ;;
         --help|-h)
             usage
@@ -183,7 +239,7 @@ EOF
             echo "  \"$BASE_URL/v1/databases\""
         else
             result=$(api_call "GET" "/v1/databases" "")
-            echo "$result"
+            format_output "$result" "$OUTPUT_FORMAT"
         fi
         ;;
     get-db)
@@ -375,6 +431,118 @@ EOF
             result=$(api_call "POST" "/v1/databases/$DATABASE_ID/search" "$DATA")
             echo "$result"
         fi
+        ;;
+    user-add)
+        if [ -z "$2" ] || [ -z "$3" ]; then
+            echo "Error: Email and role are required"
+            usage
+        fi
+
+        EMAIL="$2"
+        ROLE="$3"
+        PASSWORD="${4:-""}"
+
+        if [ -n "$PASSWORD" ]; then
+            DATA="{\"email\":\"$EMAIL\",\"role\":\"$ROLE\",\"password\":\"$PASSWORD\"}"
+        else
+            DATA="{\"email\":\"$EMAIL\",\"role\":\"$ROLE\"}"
+        fi
+
+        result=$(api_call "POST" "/api/v1/users" "$DATA")
+        echo "$result"
+        ;;
+    user-list)
+        ROLE_FILTER="${2:-}"
+        STATUS_FILTER="${3:-}"
+
+        QUERY_PARAMS=""
+        if [ -n "$ROLE_FILTER" ]; then
+            QUERY_PARAMS="?role=$ROLE_FILTER"
+        fi
+        if [ -n "$STATUS_FILTER" ]; then
+            if [ -n "$QUERY_PARAMS" ]; then
+                QUERY_PARAMS="${QUERY_PARAMS}&status=$STATUS_FILTER"
+            else
+                QUERY_PARAMS="?status=$STATUS_FILTER"
+            fi
+        fi
+
+        result=$(api_call "GET" "/api/v1/users${QUERY_PARAMS}" "")
+        echo "$result"
+        ;;
+    user-show)
+        if [ -z "$2" ]; then
+            echo "Error: Email is required"
+            usage
+        fi
+
+        EMAIL="$2"
+        result=$(api_call "GET" "/api/v1/users/$EMAIL" "")
+        echo "$result"
+        ;;
+    user-update)
+        if [ -z "$2" ]; then
+            echo "Error: Email is required"
+            usage
+        fi
+
+        EMAIL="$2"
+        NEW_ROLE="${3:-}"
+        NEW_STATUS="${4:-}"
+
+        if [ -z "$NEW_ROLE" ] && [ -z "$NEW_STATUS" ]; then
+            echo "Error: At least one of role or status must be provided"
+            exit 1
+        fi
+
+        DATA="{"
+        FIRST=true
+        if [ -n "$NEW_ROLE" ]; then
+            DATA="${DATA}\"role\":\"$NEW_ROLE\""
+            FIRST=false
+        fi
+        if [ -n "$NEW_STATUS" ]; then
+            if [ "$FIRST" = false ]; then
+                DATA="${DATA},"
+            fi
+            DATA="${DATA}\"status\":\"$NEW_STATUS\""
+        fi
+        DATA="${DATA}}"
+
+        result=$(api_call "PUT" "/api/v1/users/$EMAIL" "$DATA")
+        echo "$result"
+        ;;
+    user-delete)
+        if [ -z "$2" ]; then
+            echo "Error: Email is required"
+            usage
+        fi
+
+        EMAIL="$2"
+        result=$(api_call "DELETE" "/api/v1/users/$EMAIL" "")
+        echo "$result"
+        ;;
+    user-activate)
+        if [ -z "$2" ]; then
+            echo "Error: Email is required"
+            usage
+        fi
+
+        EMAIL="$2"
+        DATA="{\"status\":\"active\"}"
+        result=$(api_call "PUT" "/api/v1/users/$EMAIL" "$DATA")
+        echo "$result"
+        ;;
+    user-deactivate)
+        if [ -z "$2" ]; then
+            echo "Error: Email is required"
+            usage
+        fi
+
+        EMAIL="$2"
+        DATA="{\"status\":\"inactive\"}"
+        result=$(api_call "PUT" "/api/v1/users/$EMAIL" "$DATA")
+        echo "$result"
         ;;
     status)
         if [ "$CURL_ONLY" = true ]; then
