@@ -139,7 +139,7 @@ cd backend && ./build.sh --no-tests --no-benchmarks
 | `backend/BUILD_QUICK_REFERENCE.md` | Quick build commands |
 | `backend/build.sh` | **THE BUILD SCRIPT** |
 | `RECOVERY_SUMMARY.md` | Last session recovery summary |
-| `DEVELOPER_GUIDE.md` | Developer onboarding |
+| `BOOTSTRAP.md` | **THIS FILE - Complete developer onboarding and project overview** |
 | `TasksTracking/status-dashboard.md` | **Current focus and status - CHECK THIS** |
 | `TasksTracking/overview.md` | Overall progress and milestones |
 | `TasksTracking/06-current-auth-api.md` | **Current work: Auth & API tasks** |
@@ -232,7 +232,9 @@ These contain detailed technical research. **Consult before implementing related
 
 ---
 
-## 📁 Project Structure
+## 📁 Project Structure and Architecture
+
+JadeVectorDB is a distributed vector database with a modular architecture consisting of several key components:
 
 ```
 JadeVectorDB/
@@ -246,15 +248,17 @@ JadeVectorDB/
 │   ├── build.sh              # ⚠️ THE BUILD SCRIPT - USE THIS!
 │   ├── CMakeLists.txt        # CMake configuration
 │   └── BUILD*.md             # Build documentation
-├── frontend/                  # Next.js Web UI
+├── frontend/                  # Next.js Web UI (23+ fully implemented pages)
 │   ├── src/                  # React components
 │   └── public/               # Static assets
 ├── cli/                       # CLI tools
-│   ├── python/               # Python CLI
-│   └── shell/                # Shell CLI
+│   ├── python/               # Python CLI (full-featured)
+│   └── shell/                # Shell CLI (lightweight)
 ├── docs/                      # Documentation
 │   ├── COMPLETE_BUILD_SYSTEM_SETUP.md
 │   └── archive/              # Archived documentation
+├── docker/                    # Containerization and orchestration
+├── scripts/                   # Development and deployment utilities
 ├── TasksTracking/             # **TASK TRACKING - SINGLE SOURCE OF TRUTH**
 │   ├── README.md             # Task system guide
 │   ├── status-dashboard.md   # Current focus (CHECK THIS FIRST!)
@@ -273,6 +277,29 @@ JadeVectorDB/
 ├── RECOVERY_SUMMARY.md        # Last session status
 └── BOOTSTRAP.md               # This file
 ```
+
+### Key Backend Services
+
+The backend features several core services that handle different aspects of the system:
+
+- **DatabaseService** - Manages database creation, configuration, and lifecycle
+- **VectorStorageService** - Handles vector storage and retrieval operations
+- **SimilaritySearchService** - Implements various similarity search algorithms (cosine, euclidean, dot product)
+- **AuthenticationService** - JWT-based authentication with API key management
+- **ClusterService** - Implements Raft-based consensus for master election
+- **ShardingService** - Distributes data across cluster nodes using multiple strategies
+- **ReplicationService** - Ensures data availability through configurable replication
+- **DistributedServiceManager** - Coordinates all distributed services
+
+### Frontend Features
+
+The Next.js web interface provides 23+ fully implemented pages for:
+- Database management
+- Vector operations
+- Similarity search
+- Performance monitoring
+- Cluster management
+- Security and access control
 
 ---
 
@@ -308,6 +335,63 @@ cd backend && ./build.sh --no-tests --no-benchmarks
 ### Step 5: Ask What to Work On
 ```
 "I've reviewed the project status. What would you like to work on today?"
+```
+
+---
+
+## 🛠️ Development Environment Setup
+
+### Prerequisites
+
+Before you begin, ensure you have the following tools installed:
+
+- **Git:** For version control
+- **C++ Toolchain:** Modern C++ compiler (GCC, Clang, or MSVC) supporting C++20
+- **CMake:** Version 3.20 or higher
+- **Node.js:** Version 18 or higher (for frontend)
+- **Python:** Version 3.8 or higher (for Python CLI)
+- **Docker and Docker Compose:** For containerized deployment
+
+**Note**: All C++ dependencies (Eigen, FlatBuffers, Apache Arrow, gRPC, etc.) are automatically fetched and built from source by the build system - no manual installation needed!
+
+You can check prerequisites by running:
+```bash
+sh .specify/scripts/bash/check-prerequisites.sh
+```
+
+### Cloning the Repository
+
+```bash
+git clone <repository-url>
+cd JadeVectorDB
+```
+
+### Frontend Setup (Next.js)
+
+```bash
+# Navigate to the frontend directory
+cd frontend
+
+# Install dependencies
+npm install
+
+# Run development server
+npm run dev
+
+# Access at http://localhost:3000
+```
+
+### CLI Setup (Python)
+
+```bash
+# Navigate to the Python CLI directory
+cd cli/python
+
+# Install in editable mode (recommended for development)
+pip install -e .
+
+# Verify installation
+jade-db --help
 ```
 
 ---
@@ -424,9 +508,9 @@ The project uses **AuthenticationService** (located in `backend/src/services/aut
 
 ---
 
-## 🔧 Development Patterns
+## 🔧 Development Patterns and Best Practices
 
-### Error Handling:
+### Error Handling
 ```cpp
 // Return errors using Result<T> type
 return tl::make_unexpected(ErrorHandler::create_error(
@@ -435,7 +519,7 @@ return tl::make_unexpected(ErrorHandler::create_error(
 ));
 ```
 
-### Logging:
+### Logging
 ```cpp
 // Initialize logger
 logger_ = logging::LoggerManager::get_logger("ServiceName");
@@ -445,10 +529,72 @@ logger_->info("message");
 logger_->error("error message");
 ```
 
-### Type Conventions:
+### Type Conventions
 - Use `SearchResults` (plural) for result structs
 - Use `vector_count` not `record_count`
 - Use `primary` not `is_primary`
+
+### Code Organization
+
+The project follows a modular architecture pattern:
+- Each service is implemented in its own file with clear interfaces
+- Service dependencies are managed through dependency injection
+- Configuration is centralized with environment variable support
+- Error handling follows a consistent Result<T> pattern
+
+### Testing Strategy
+
+The project maintains high test coverage with:
+- Unit tests for individual components (80%+ coverage target)
+- Integration tests for service interactions
+- End-to-end tests for complete workflows
+- Chaos tests for failure scenarios
+- Performance benchmarks for critical operations
+
+**Running Tests:**
+```bash
+# Backend tests (when test compilation is fixed)
+cd backend/build
+./jadevectordb_tests
+
+# Code coverage
+cd backend
+mkdir build && cd build
+cmake -DCMAKE_BUILD_TYPE=Debug -DBUILD_COVERAGE=ON ..
+make
+make coverage
+# Coverage report available in coverage_report/ directory
+```
+
+### Performance Considerations
+
+When developing for JadeVectorDB:
+- Use efficient data structures (Eigen for linear algebra operations)
+- Implement connection pooling for distributed communication
+- Optimize query execution plans
+- Consider memory usage for large vector operations
+- Implement proper caching strategies
+- Target sub-50ms search for 1M vectors
+- Target 10,000+ vectors/second ingestion
+
+### Git Workflow
+
+For contributing to the project:
+1. Fork the repository
+2. Create a feature branch (`feature/description-of-change`)
+3. Make your changes following the existing code style
+4. Add tests for new functionality
+5. Update documentation as needed
+6. Submit a pull request with a clear description
+
+### Continuous Integration
+
+The project uses CI/CD pipelines that:
+- Run all tests on each commit
+- Build Docker images automatically
+- Perform static analysis and security checks
+- Generate code coverage reports
+- Run performance benchmarks
 
 ---
 
@@ -542,24 +688,87 @@ After **ANY** of the following activities, you **MUST** update documentation:
 
 ---
 
-## 🐳 Docker (Alternative to Local Build)
+## 🐳 Docker Deployment
+
+### Local Development Deployment
+
+For local development, use the standard Docker Compose setup:
 
 ```bash
-# Build Docker image (from project root)
-docker build -t jadevectordb:latest .
+# Build and run all services
+docker compose up --build
 
-# Run
-docker run -p 8080:8080 jadevectordb:latest
-
-# With docker compose (note: docker compose, NOT docker-compose)
+# Run in detached mode
 docker compose up -d
 
-# Distributed cluster
+# Stop all services
+docker compose down
+```
+
+This creates a single-node setup with:
+- JadeVectorDB API server on port 8081
+- Web UI on port 3000
+- Prometheus monitoring on port 9090
+- Grafana dashboard on port 3001
+
+### Distributed Deployment
+
+For production and scaling, use the distributed architecture with master-worker nodes:
+
+```bash
+# Start distributed cluster
+docker compose -f docker-compose.distributed.yml up --build
+
+# Run in detached mode
 docker compose -f docker-compose.distributed.yml up -d
 ```
 
-**Note**: Docker uses the same `build.sh` internally!
-**Important**: Use `docker compose` (with space), NOT `docker-compose` (with hyphen). The latter is obsolete.
+This creates a 3-node cluster with:
+- 1 Master node (jadevectordb-master)
+- 2 Worker nodes (jadevectordb-worker-1, jadevectordb-worker-2)
+- Web UI connected to the master node
+- Monitoring services (Prometheus and Grafana)
+
+The distributed setup includes:
+- **ClusterService**: Raft-based consensus for master election
+- **ShardingService**: Multiple data distribution strategies (hash, range, vector-based, auto)
+- **ReplicationService**: Configurable replication (synchronous/asynchronous)
+- **Load balancing**: Health-aware request routing
+
+### Kubernetes Deployment
+
+For cloud deployments, JadeVectorDB can be deployed to Kubernetes using StatefulSets:
+
+```yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: jadevectordb-master
+spec:
+  serviceName: jadevectordb-master
+  replicas: 3
+  selector:
+    matchLabels:
+      app: jadevectordb
+      role: master
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: jadevectordb-worker
+spec:
+  serviceName: jadevectordb-worker
+  replicas: 5
+  selector:
+    matchLabels:
+      app: jadevectordb
+      role: worker
+```
+
+**Important Notes:**
+- Docker uses the same `build.sh` internally
+- Use `docker compose` (with space), NOT `docker-compose` (with hyphen - it's obsolete)
+- All services run containerized with proper networking and volume management
 
 ---
 
@@ -572,6 +781,156 @@ docker compose -f docker-compose.distributed.yml up -d
 | With gRPC | ~40 min | ~1 min |
 
 **Why first build is slow**: All dependencies (Eigen, FlatBuffers, Crow, Google Test, Benchmark, Arrow) are fetched and compiled from source!
+
+---
+
+## 📊 Monitoring and Observability
+
+JadeVectorDB includes comprehensive monitoring and observability capabilities to help you understand system performance and health.
+
+### Built-in Metrics
+
+The system exposes various metrics through API endpoints:
+- **Health checks**: `/health` endpoint for system status
+- **Performance metrics**: `/status` endpoint for detailed system status
+- **API endpoints**:
+  - `GET /health` - System health check
+  - `GET /status` - Detailed system status with cluster information
+  - `GET /v1/databases` - List all databases and their status
+  - `GET /v1/monitoring/performance` - Performance metrics
+
+### Prometheus Integration
+
+The system is configured to work with Prometheus for metric collection:
+
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: 'jadevectordb'
+    static_configs:
+      - targets: ['jadevectordb:8080']
+    scrape_interval: 15s
+    metrics_path: /metrics
+```
+
+### Grafana Dashboards
+
+Grafana dashboards provide visualization of key metrics:
+- Cluster status and node health
+- Query performance (p50, p95, p99 latencies)
+- Throughput metrics
+- Resource utilization (CPU, memory, disk, network)
+- Replication lag and consistency metrics
+
+Access Grafana at `http://localhost:3001` when running with Docker Compose.
+
+### Key Metrics to Monitor
+
+| Metric Category | Key Metrics |
+|-----------------|-------------|
+| **Cluster Health** | Node status, master status, connectivity |
+| **Performance** | Query latency (p50, p95, p99), throughput |
+| **Data Distribution** | Shard count per node, data balance |
+| **Replication** | Replication lag, consistency level |
+| **Resources** | CPU, memory, disk, network per node |
+
+### Distributed Tracing
+
+The distributed system components support distributed tracing across:
+- Master-worker communication
+- Query execution across shards
+- Replication operations
+- Cluster management operations
+
+---
+
+## 🌐 Scaling Strategies
+
+### Horizontal Scaling
+
+JadeVectorDB scales horizontally by adding worker nodes to the cluster:
+
+1. **Sharding-based scaling**: Data is automatically distributed across nodes based on sharding strategy
+2. **Query distribution**: Search requests are distributed across relevant shards in parallel
+3. **Load balancing**: Queries are distributed across nodes based on their load and health status
+
+### Vertical Scaling
+
+For single-node deployments, you can scale vertically by increasing:
+- CPU and memory resources
+- Storage capacity
+- Network bandwidth
+
+### Auto-scaling Considerations
+
+While auto-scaling is not yet implemented in the current version, the architecture supports:
+- Dynamic node joining/leaving
+- Automatic shard rebalancing
+- Load-based scaling decisions
+
+---
+
+## 🔧 Distributed System Management
+
+### Cluster Management Commands
+
+Use the command-line interface to manage your distributed cluster:
+
+**Python CLI:**
+```bash
+# Check cluster status
+jade-db cluster status
+
+# List all nodes
+jade-db nodes list
+
+# Add a new node to the cluster
+jade-db cluster add-node --node-id node-id --node-type worker
+
+# Remove a node from the cluster
+jade-db cluster remove-node --node-id node-id
+```
+
+**Shell CLI:**
+```bash
+# Check cluster health
+bash cli/shell/scripts/jade-db.sh cluster-status
+
+# List nodes
+bash cli/shell/scripts/jade-db.sh list-nodes
+```
+
+### Master Election and Failover
+
+The system uses Raft-based consensus for master election:
+- Automatic master failover in case of master node failure
+- Election timeout: 5-10 seconds for failover
+- Consistent leader election with no split-brain scenarios
+- Quorum-based decision making
+
+### Data Migration and Rebalancing
+
+The system supports live data migration between nodes:
+- Zero-downtime migration for queries
+- Automated shard rebalancing
+- Configurable migration strategies (LIVE_COPY, SNAPSHOT, INCREMENTAL)
+- Progress tracking and rollback capability
+
+### Backup and Restore
+
+Distributed backup and restore capabilities include:
+- Cluster-wide snapshots
+- Incremental backup strategies
+- Point-in-time restore functionality
+- Backup verification and integrity checks
+
+### Security in Distributed Mode
+
+Security measures in distributed mode:
+- Node authentication within the cluster
+- Secure RPC communication (to be implemented with TLS)
+- Role-based access control across all nodes
+- Secure API key distribution
 
 ---
 
@@ -624,8 +983,8 @@ When starting a new session, verify:
 11. **Docker**: Use `docker compose` (NOT `docker-compose` - it's obsolete)
 12. **API Versioning**: Check if endpoints are /api/v1 or /v1
 13. **Summaries**: Don't create unnecessary summaries - ask user first
-14. **Git Branch**: Currently on `run-and-fix`
-15. **Project Progress**: ~91.6% complete (283/309 tasks)
+14. **Git Branch**: Currently on `claude/read-bootstrap-docs-2GQ0d`
+15. **Project Progress**: ~95% complete (287/309 tasks)
 16. **Authentication**: Use AuthenticationService (NOT AuthManager)
 17. **Passwords**: Minimum 10 characters (see Authentication section)
 
@@ -646,8 +1005,24 @@ The build system automatically fetches and compiles:
 
 ---
 
-**Last Updated**: December 11, 2025
-**Current Branch**: run-and-fix
+## 📚 Additional Resources and Documentation
+
+For further information about JadeVectorDB, consult these additional resources:
+
+- **[API Documentation](docs/api_documentation.md)** - Complete REST API reference
+- **[CLI Documentation](docs/cli-documentation.md)** - Command-line interface reference
+- **[Architecture Documentation](docs/architecture.md)** - Detailed system architecture
+- **[Search Functionality](docs/search_functionality.md)** - Search algorithms and metadata filtering
+- **[Quiz System Documentation](docs/QUIZ_SYSTEM_DOCUMENTATION.md)** - Interactive tutorial assessment platform
+- **[Distributed Implementation Plan](DISTRIBUTED_SYSTEM_IMPLEMENTATION_PLAN.md)** - Detailed distributed system architecture
+- **[Deployment Guide](DOCKER_DEPLOYMENT.md)** - Production deployment instructions
+- **[Contributing Guidelines](CONTRIBUTING.md)** - Guidelines for contributing to the project
+- **[Consistency Report](docs/archive/CONSISTENCY_REPORT_2025-12-03.md)** - Archived report on code consistency and implementation status
+
+---
+
+**Last Updated**: December 14, 2025
+**Current Branch**: claude/read-bootstrap-docs-2GQ0d
 **Build System Version**: Self-contained FetchContent-based
 
 **Critical Reminders**:
