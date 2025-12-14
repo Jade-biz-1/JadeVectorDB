@@ -2731,7 +2731,7 @@ Uses JADE_ENV environment variable for detection. Idempotent operation. Removed 
 - **Phase 13 (T254-T263)**: Distributed system completion - 7 tasks complete from recovery work
   - T254-T258, T260, T263: Core distributed components ✓
   - T259, T261-T262: Worker service completions and integration testing (PENDING)
-- **Phase 14 (T264-T271)**: Advanced testing and optimization tasks added from RECOVERY_SUMMARY.md analysis
+- **Phase 14 (T264-T271)**: Advanced testing and optimization tasks added from docs/archive/RECOVERY_SUMMARY_2025-12-03.md analysis
 
 ---
 
