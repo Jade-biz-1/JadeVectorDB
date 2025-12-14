@@ -8,7 +8,7 @@ This document helps you (Claude) quickly get up to speed when starting a new ses
 ## ✅ LATEST STATUS (December 13, 2025)
 
 **Build Status**: ✅ PASSING (main library)
-**Automated Tests**: ✅ COMPLETED - See `AUTOMATED_TEST_REPORT.md`
+**Automated Tests**: ✅ COMPLETED - See `docs/archive/AUTOMATED_TEST_REPORT_2025-12-13.md`
 **Overall Completion**: 100% (309/309 tasks)
 **Distributed System**: ✅ 100% Complete (12,259+ lines)
 **CLI Tools**: ✅ Operational (cluster_cli.py with 10 commands)
@@ -26,7 +26,7 @@ This document helps you (Claude) quickly get up to speed when starting a new ses
 
 ### Known Issues:
 - ⚠️ Test compilation has errors (not blocking - tests need fixing but main library builds fine)
-- See `AUTOMATED_TEST_REPORT.md` for full details
+- See `docs/archive/AUTOMATED_TEST_REPORT_2025-12-13.md` for full details
 
 ---
 
@@ -1015,7 +1015,7 @@ For further information about JadeVectorDB, consult these additional resources:
 - **[Search Functionality](docs/search_functionality.md)** - Search algorithms and metadata filtering
 - **[Quiz System Documentation](docs/QUIZ_SYSTEM_DOCUMENTATION.md)** - Interactive tutorial assessment platform
 - **[Distributed Implementation Plan](DISTRIBUTED_SYSTEM_IMPLEMENTATION_PLAN.md)** - Detailed distributed system architecture
-- **[Deployment Guide](DOCKER_DEPLOYMENT.md)** - Production deployment instructions
+- **[Deployment Guide](docs/DOCKER_DEPLOYMENT.md)** - Production deployment instructions
 - **[Contributing Guidelines](CONTRIBUTING.md)** - Guidelines for contributing to the project
 - **[Consistency Report](docs/archive/CONSISTENCY_REPORT_2025-12-03.md)** - Archived report on code consistency and implementation status
 

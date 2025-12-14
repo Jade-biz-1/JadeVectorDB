@@ -177,7 +177,7 @@ CLI Tutorial (All Exercises) → Deployment Documentation → Monitoring & Scali
 ### Community
 - **GitHub Issues:** Report bugs and feature requests
 - **Contributing:** See [CONTRIBUTING.md](../CONTRIBUTING.md)
-- **Developer Guide:** See [DEVELOPER_GUIDE.md](../DEVELOPER_GUIDE.md)
+- **Developer Guide:** See [BOOTSTRAP.md](../BOOTSTRAP.md)
 
 ---
 
@@ -186,7 +186,7 @@ CLI Tutorial (All Exercises) → Deployment Documentation → Monitoring & Scali
 Once you've completed the tutorials:
 
 1. **🚀 Production Deployment**
-   - Review [DOCKER_DEPLOYMENT.md](../DOCKER_DEPLOYMENT.md)
+   - Review [DOCKER_DEPLOYMENT.md](../docs/DOCKER_DEPLOYMENT.md)
    - Study Kubernetes configurations in `/k8s/`
    - Explore multi-cloud deployment in `/deployments/`
 

@@ -77,7 +77,7 @@
 - Main library builds and runs successfully
 - Tests need fixing but don't block deployment
 
-**Full Report**: See `AUTOMATED_TEST_REPORT.md`
+**Full Report**: See `docs/archive/AUTOMATED_TEST_REPORT_2025-12-13.md`
 
 ---
 
