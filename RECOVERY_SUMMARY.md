@@ -76,7 +76,7 @@ After an irreversible git operation, we recovered committed work and investigate
 
 #### Other Documentation
 - ✅ `docs/archive/CONSISTENCY_REPORT_2025-12-03.md` - Archived Dec 3, 2025 (previously updated Nov 30, 2025)
-- ✅ `DEVELOPER_GUIDE.md` - Complete developer guide
+- ✅ `BOOTSTRAP.md` - Complete developer guide
 - ✅ All tutorial files in `docs/tutorial/`
 
 ### 3. Build System Updates ✅

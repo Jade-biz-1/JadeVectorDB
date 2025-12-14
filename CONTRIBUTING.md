@@ -29,7 +29,7 @@ To get started with contributing to JadeVectorDB:
    ```bash
    git clone https://github.com/your-username/JadeVectorDB.git
    ```
-3. Follow the setup instructions in our [Developer Guide](DEVELOPER_GUIDE.md) to set up your development environment.
+3. Follow the setup instructions in our [Developer Guide](BOOTSTRAP.md) to set up your development environment.
 
 ## How to Contribute
 
