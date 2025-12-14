@@ -15,8 +15,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Jade-biz-1/JadeVectorDB",
-    packages=find_packages(where="jadevectordb"),
-    package_dir={"": "jadevectordb"},
+    packages=find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
