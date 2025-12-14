@@ -10,6 +10,7 @@ from typing import Dict, List
 from .client import JadeVectorDB, Vector, JadeVectorDBError
 from .curl_generator import CurlCommandGenerator
 from .import_export import VectorImporter, VectorExporter, ImportExportError, simple_progress_callback
+from .formatters import print_formatted
 
 def create_database(args: argparse.Namespace):
     """Create a new database"""
@@ -46,11 +47,11 @@ def list_databases(args: argparse.Namespace):
         curl_cmd = generator.list_databases()
         print(curl_cmd)
         return
-        
+
     client = JadeVectorDB(args.url, args.api_key)
     try:
         databases = client.list_databases()
-        print(json.dumps(databases, indent=2))
+        print_formatted(databases, args.format)
     except JadeVectorDBError as e:
         print(f"Error listing databases: {e}")
         sys.exit(1)
@@ -193,11 +194,11 @@ def get_status(args: argparse.Namespace):
         curl_cmd = generator.get_status()
         print(curl_cmd)
         return
-        
+
     client = JadeVectorDB(args.url, args.api_key)
     try:
         status = client.get_status()
-        print(json.dumps(status, indent=2))
+        print_formatted(status, args.format)
     except JadeVectorDBError as e:
         print(f"Error getting status: {e}")
         sys.exit(1)
@@ -309,7 +310,7 @@ def user_list(args: argparse.Namespace):
             role=args.role if hasattr(args, 'role') and args.role else None,
             status=args.status if hasattr(args, 'status') and args.status else None
         )
-        print(json.dumps(users, indent=2))
+        print_formatted(users, args.format)
     except JadeVectorDBError as e:
         print(f"Error listing users: {e}")
         sys.exit(1)
@@ -482,6 +483,7 @@ def setup_parser():
     parser.add_argument("--url", default=default_url, help=f"JadeVectorDB API URL (default: {default_url}, can be set via JADEVECTORDB_URL env var)")
     parser.add_argument("--api-key", default=default_api_key, help="API key for authentication (can be set via JADEVECTORDB_API_KEY env var)")
     parser.add_argument("--curl-only", action="store_true", help="Generate cURL commands instead of executing")
+    parser.add_argument("--format", choices=['json', 'yaml', 'table'], default='json', help="Output format (default: json)")
     
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
     
