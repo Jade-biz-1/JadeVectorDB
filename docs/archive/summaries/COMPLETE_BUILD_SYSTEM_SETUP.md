@@ -23,7 +23,7 @@ This document summarizes the complete build system enhancement and Docker cleanu
 - ✅ Quick reference (`backend/BUILD_QUICK_REFERENCE.md`)
 - ✅ Getting started (`backend/README_BUILD.md`)
 - ✅ Technical summary (`BUILD_SYSTEM_ENHANCEMENT_SUMMARY.md`)
-- ✅ Docker cleanup summary (`DOCKER_CLEANUP_SUMMARY.md`)
+- ✅ Docker cleanup summary (`docs/archive/DOCKER_CLEANUP_SUMMARY.md`)
 
 ## 📁 File Structure
 
@@ -51,7 +51,7 @@ JadeVectorDB/
 ```
 JadeVectorDB/
 ├── BUILD_SYSTEM_ENHANCEMENT_SUMMARY.md  # Technical details
-├── DOCKER_CLEANUP_SUMMARY.md            # Docker cleanup
+├── docs/archive/DOCKER_CLEANUP_SUMMARY.md            # Docker cleanup
 └── COMPLETE_BUILD_SYSTEM_SETUP.md       # This file
 ```
 
@@ -122,7 +122,7 @@ docker-compose -f docker-compose.distributed.yml up -d
 | `BUILD.md` | Complete guide | You need detailed info |
 | `README_BUILD.md` | Getting started | You're new to the project |
 | `BUILD_SYSTEM_ENHANCEMENT_SUMMARY.md` | Technical details | You want implementation details |
-| `DOCKER_CLEANUP_SUMMARY.md` | Docker cleanup | You want Docker-specific info |
+| `docs/archive/DOCKER_CLEANUP_SUMMARY.md` | Docker cleanup | You want Docker-specific info |
 | `COMPLETE_BUILD_SYSTEM_SETUP.md` | Overview (this) | You want the big picture |
 
 ## 🔄 Migration from Old System
@@ -244,7 +244,7 @@ docker build \
 ### DevOps/Infrastructure (1.5 hours)
 1. Complete developer path (1 hour)
 2. Read `BUILD_SYSTEM_ENHANCEMENT_SUMMARY.md` (15 min)
-3. Read `DOCKER_CLEANUP_SUMMARY.md` (15 min)
+3. Read `docs/archive/DOCKER_CLEANUP_SUMMARY.md` (15 min)
 
 ## 🔍 Testing the Setup
 
@@ -352,7 +352,7 @@ A clean, maintainable, and reliable build system that works consistently across 
 5. `Dockerfile` (new version)
 6. `.dockerignore`
 7. `BUILD_SYSTEM_ENHANCEMENT_SUMMARY.md`
-8. `DOCKER_CLEANUP_SUMMARY.md`
+8. `docs/archive/DOCKER_CLEANUP_SUMMARY.md`
 9. `COMPLETE_BUILD_SYSTEM_SETUP.md`
 
 ### Modified (3 files)

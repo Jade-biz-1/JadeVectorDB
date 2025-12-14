@@ -31,7 +31,7 @@ Key achievements:
 - `cli/python/`, `cli/js/`, `cli/shell/` - CLI implementations
 - `backend/src/rest_api.cpp` - REST API endpoints
 - `backend/src/services/auth_service.cpp` - Authentication service
-- `CLI_INFORMATION.md`, `cli/README.md` - Documentation
+- `docs/CLI_INFORMATION.md`, `cli/README.md` - Documentation
 
 ---
 

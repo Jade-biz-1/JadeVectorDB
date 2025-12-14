@@ -42,7 +42,7 @@ JadeVectorDB has reached **100% completion** (309/309 tasks) with all core and d
 ✅ **Docker** - Complete deployment configurations
 ✅ **Documentation** - 60+ comprehensive documentation files
 
-**Automated Testing Report**: See `AUTOMATED_TEST_REPORT.md` for full verification results  
+**Automated Testing Report**: See `docs/archive/AUTOMATED_TEST_REPORT_2025-12-13.md` for full verification results  
 
 
 ### 🤝 **Join Our Development Team!**
@@ -786,7 +786,7 @@ Complete documentation is available in the `docs/` directory:
 - [Quickstart Guide](docs/quickstart.md) - Getting started with JadeVectorDB
 - [Architecture Documentation](docs/architecture.md) - System architecture and design decisions
 - [API Documentation](docs/api_documentation.md) - Complete API reference
-- [Developer Guide](DEVELOPER_GUIDE.md) - Information for contributors
+- [Developer Guide](BOOTSTRAP.md) - Information for contributors
 - [Build Documentation](BUILD.md) - Complete build system documentation with troubleshooting
 - [Known Issues](docs/KNOWN_ISSUES.md) - Current issues and limitations
 - [Troubleshooting Guide](docs/TROUBLESHOOTING_GUIDE.md) - How to diagnose and resolve common issues
