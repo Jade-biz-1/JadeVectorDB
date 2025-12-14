@@ -29,16 +29,30 @@ usage() {
     echo "  --curl-only          Generate cURL commands instead of executing"
     echo ""
     echo "Commands:"
-    echo "  create-db NAME [DESCRIPTION] [DIMENSION] [INDEX_TYPE]    Create a new database"
-    echo "  list-dbs                                                 List all databases"
-    echo "  get-db ID                                                Get database info"
-    echo "  delete-db ID                                             Delete a database"
-    echo "  store ID VALUES [METADATA]                               Store a vector (requires --database-id)"
-    echo "  retrieve ID                                              Retrieve a vector (requires --database-id)"
-    echo "  delete ID                                                Delete a vector (requires --database-id)"
-    echo "  search QUERY_VECTOR [TOP_K] [THRESHOLD]                  Search for similar vectors (requires --database-id)"
-    echo "  status                                                   Get system status"
-    echo "  health                                                   Get system health"
+    echo "  Database Operations:"
+    echo "    create-db NAME [DESCRIPTION] [DIMENSION] [INDEX_TYPE]    Create a new database"
+    echo "    list-dbs                                                 List all databases"
+    echo "    get-db ID                                                Get database info"
+    echo "    delete-db ID                                             Delete a database"
+    echo ""
+    echo "  Vector Operations:"
+    echo "    store ID VALUES [METADATA]                               Store a vector (requires --database-id)"
+    echo "    retrieve ID                                              Retrieve a vector (requires --database-id)"
+    echo "    delete ID                                                Delete a vector (requires --database-id)"
+    echo "    search QUERY_VECTOR [TOP_K] [THRESHOLD]                  Search for similar vectors (requires --database-id)"
+    echo ""
+    echo "  User Management:"
+    echo "    user-add EMAIL ROLE [PASSWORD]                           Add a new user"
+    echo "    user-list [ROLE] [STATUS]                                List all users"
+    echo "    user-show EMAIL                                          Show user details"
+    echo "    user-update EMAIL [ROLE] [STATUS]                        Update user info"
+    echo "    user-delete EMAIL                                        Delete a user"
+    echo "    user-activate EMAIL                                      Activate a user"
+    echo "    user-deactivate EMAIL                                    Deactivate a user"
+    echo ""
+    echo "  System:"
+    echo "    status                                                   Get system status"
+    echo "    health                                                   Get system health"
     echo ""
     echo "Examples:"
     echo "  $0 --url http://localhost:8080 list-dbs"
@@ -375,6 +389,118 @@ EOF
             result=$(api_call "POST" "/v1/databases/$DATABASE_ID/search" "$DATA")
             echo "$result"
         fi
+        ;;
+    user-add)
+        if [ -z "$2" ] || [ -z "$3" ]; then
+            echo "Error: Email and role are required"
+            usage
+        fi
+
+        EMAIL="$2"
+        ROLE="$3"
+        PASSWORD="${4:-""}"
+
+        if [ -n "$PASSWORD" ]; then
+            DATA="{\"email\":\"$EMAIL\",\"role\":\"$ROLE\",\"password\":\"$PASSWORD\"}"
+        else
+            DATA="{\"email\":\"$EMAIL\",\"role\":\"$ROLE\"}"
+        fi
+
+        result=$(api_call "POST" "/api/v1/users" "$DATA")
+        echo "$result"
+        ;;
+    user-list)
+        ROLE_FILTER="${2:-}"
+        STATUS_FILTER="${3:-}"
+
+        QUERY_PARAMS=""
+        if [ -n "$ROLE_FILTER" ]; then
+            QUERY_PARAMS="?role=$ROLE_FILTER"
+        fi
+        if [ -n "$STATUS_FILTER" ]; then
+            if [ -n "$QUERY_PARAMS" ]; then
+                QUERY_PARAMS="${QUERY_PARAMS}&status=$STATUS_FILTER"
+            else
+                QUERY_PARAMS="?status=$STATUS_FILTER"
+            fi
+        fi
+
+        result=$(api_call "GET" "/api/v1/users${QUERY_PARAMS}" "")
+        echo "$result"
+        ;;
+    user-show)
+        if [ -z "$2" ]; then
+            echo "Error: Email is required"
+            usage
+        fi
+
+        EMAIL="$2"
+        result=$(api_call "GET" "/api/v1/users/$EMAIL" "")
+        echo "$result"
+        ;;
+    user-update)
+        if [ -z "$2" ]; then
+            echo "Error: Email is required"
+            usage
+        fi
+
+        EMAIL="$2"
+        NEW_ROLE="${3:-}"
+        NEW_STATUS="${4:-}"
+
+        if [ -z "$NEW_ROLE" ] && [ -z "$NEW_STATUS" ]; then
+            echo "Error: At least one of role or status must be provided"
+            exit 1
+        fi
+
+        DATA="{"
+        FIRST=true
+        if [ -n "$NEW_ROLE" ]; then
+            DATA="${DATA}\"role\":\"$NEW_ROLE\""
+            FIRST=false
+        fi
+        if [ -n "$NEW_STATUS" ]; then
+            if [ "$FIRST" = false ]; then
+                DATA="${DATA},"
+            fi
+            DATA="${DATA}\"status\":\"$NEW_STATUS\""
+        fi
+        DATA="${DATA}}"
+
+        result=$(api_call "PUT" "/api/v1/users/$EMAIL" "$DATA")
+        echo "$result"
+        ;;
+    user-delete)
+        if [ -z "$2" ]; then
+            echo "Error: Email is required"
+            usage
+        fi
+
+        EMAIL="$2"
+        result=$(api_call "DELETE" "/api/v1/users/$EMAIL" "")
+        echo "$result"
+        ;;
+    user-activate)
+        if [ -z "$2" ]; then
+            echo "Error: Email is required"
+            usage
+        fi
+
+        EMAIL="$2"
+        DATA="{\"status\":\"active\"}"
+        result=$(api_call "PUT" "/api/v1/users/$EMAIL" "$DATA")
+        echo "$result"
+        ;;
+    user-deactivate)
+        if [ -z "$2" ]; then
+            echo "Error: Email is required"
+            usage
+        fi
+
+        EMAIL="$2"
+        DATA="{\"status\":\"inactive\"}"
+        result=$(api_call "PUT" "/api/v1/users/$EMAIL" "$DATA")
+        echo "$result"
         ;;
     status)
         if [ "$CURL_ONLY" = true ]; then
