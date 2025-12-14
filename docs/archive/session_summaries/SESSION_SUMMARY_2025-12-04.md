@@ -138,7 +138,7 @@ All components implemented:
 
 ### New Files
 - `BOOTSTRAP.md` - Build system quick reference for future sessions
-- `RECOVERY_SUMMARY.md` - Previous session recovery notes
+- `docs/archive/RECOVERY_SUMMARY_2025-12-03.md` - Previous session recovery notes
 - `backend/src/api/grpc/distributed_types.h` - New distributed types header
 - `docs/archive/CONSISTENCY_REPORT_2025-12-03.md` - Archived report
 

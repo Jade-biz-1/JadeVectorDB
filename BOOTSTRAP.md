@@ -125,7 +125,7 @@ cd backend && ./build.sh --no-tests --no-benchmarks
 1. **`BUILD.md`** (root) - **CRITICAL: Main build system guide - READ THIS for all build-related information**
 2. **`docs/COMPLETE_BUILD_SYSTEM_SETUP.md`** - Complete build system overview
 3. **`backend/BUILD_QUICK_REFERENCE.md`** - Quick command reference
-4. **`RECOVERY_SUMMARY.md`** - Last session status (if exists)
+4. **`docs/archive/RECOVERY_SUMMARY_2025-12-03.md`** - Last session status (if exists)
 5. **`TasksTracking/status-dashboard.md`** - **Current focus and recent work - CHECK THIS FIRST**
 6. **`TasksTracking/README.md`** - **Task tracking system guide - ALWAYS update status when completing tasks**
 7. **`TasksTracking/overview.md`** - **Overall project progress and completion status**
@@ -138,7 +138,7 @@ cd backend && ./build.sh --no-tests --no-benchmarks
 | `docs/COMPLETE_BUILD_SYSTEM_SETUP.md` | Build system overview & features |
 | `backend/BUILD_QUICK_REFERENCE.md` | Quick build commands |
 | `backend/build.sh` | **THE BUILD SCRIPT** |
-| `RECOVERY_SUMMARY.md` | Last session recovery summary |
+| `docs/archive/RECOVERY_SUMMARY_2025-12-03.md` | Last session recovery summary |
 | `BOOTSTRAP.md` | **THIS FILE - Complete developer onboarding and project overview** |
 | `TasksTracking/status-dashboard.md` | **Current focus and status - CHECK THIS** |
 | `TasksTracking/overview.md` | Overall progress and milestones |
@@ -274,7 +274,7 @@ JadeVectorDB/
 │   └── 09-distributed-tasks.md
 ├── specs/                     # Specifications
 ├── BUILD.md                   # Main build guide (root)
-├── RECOVERY_SUMMARY.md        # Last session status
+├── docs/archive/RECOVERY_SUMMARY_2025-12-03.md        # Last session status
 └── BOOTSTRAP.md               # This file
 ```
 
@@ -324,7 +324,7 @@ git branch
 
 ### Step 3: Read Recovery Summary (if exists)
 ```bash
-cat RECOVERY_SUMMARY.md
+cat docs/archive/RECOVERY_SUMMARY_2025-12-03.md
 ```
 
 ### Step 4: Build the Project (Correct Way!)
@@ -659,7 +659,7 @@ After **ANY** of the following activities, you **MUST** update documentation:
 10. ✅ **DO** use `cd backend && ./build.sh`
 11. ✅ **DO** read `BUILD.md` (root) for ALL build-related information
 12. ✅ **DO** use `TodoWrite` for complex tasks
-13. ✅ **DO** check `RECOVERY_SUMMARY.md` when resuming work
+13. ✅ **DO** check `docs/archive/RECOVERY_SUMMARY_2025-12-03.md` when resuming work
 14. ✅ **DO** verify API endpoint versions (/api/v1 vs /v1)
 15. ✅ **DO** update BOOTSTRAP.md, TasksTracking, and README.md after EVERY change
 16. ✅ **DO** update TasksTracking/status-dashboard.md when completing tasks
@@ -671,7 +671,7 @@ After **ANY** of the following activities, you **MUST** update documentation:
 
 1. **Greet user** and ask to load bootstrap
 2. **Read** `TasksTracking/status-dashboard.md` to understand current focus
-3. **Read** `RECOVERY_SUMMARY.md` if it exists
+3. **Read** `docs/archive/RECOVERY_SUMMARY_2025-12-03.md` if it exists
 4. **Read** `BUILD.md` for build-related information (if needed)
 5. **Check** git status and recent commits
 6. **Ask** user what they want to work on
@@ -940,7 +940,7 @@ When starting a new session, verify:
 
 - [ ] Did I ask user about loading bootstrap?
 - [ ] Did I read `TasksTracking/status-dashboard.md` for current focus?
-- [ ] Did I read `RECOVERY_SUMMARY.md`?
+- [ ] Did I read `docs/archive/RECOVERY_SUMMARY_2025-12-03.md`?
 - [ ] Did I check git status?
 - [ ] Did I read `BUILD.md` (root) for build-related information?
 - [ ] Am I in the `backend/` directory for building?
@@ -975,7 +975,7 @@ When starting a new session, verify:
 3. **Build Script**: `cd backend && ./build.sh`
 4. **Build Documentation**: Read `BUILD.md` (root) for ALL build information
 5. **Tests**: Currently broken, use `--no-tests --no-benchmarks`
-6. **Recovery**: Check `RECOVERY_SUMMARY.md` when resuming
+6. **Recovery**: Check `docs/archive/RECOVERY_SUMMARY_2025-12-03.md` when resuming
 7. **Current Focus**: Check `TasksTracking/status-dashboard.md` FIRST
 8. **Task Tracking**: Update TasksTracking files when completing tasks (NOT old specs/002-check-if-we/tasks.md)
 9. **Task System**: TasksTracking is the SINGLE SOURCE OF TRUTH for all tasks
