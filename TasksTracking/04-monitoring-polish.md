@@ -326,7 +326,7 @@ Complete all documentation including quickstart guide and architecture documenta
 
 ### T191: Create comprehensive developer onboarding guide
 **Cross-Cutting Task**
-**File**: `DEVELOPER_GUIDE.md`
+**File**: `BOOTSTRAP.md`
 **Dependencies**: All components
 Create a comprehensive guide for new developers to set up their local development environment.
 
