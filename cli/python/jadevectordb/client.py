@@ -302,14 +302,158 @@ class JadeVectorDB:
     def get_health(self) -> Dict:
         """
         Get system health information
-        
+
         :return: System health information
         """
         url = f"{self.base_url}/health"
-        
+
         response = self.session.get(url)
-        
+
         if response.status_code == 200:
             return response.json()
         else:
             raise JadeVectorDBError(f"Failed to get health: {response.text}")
+
+    # User Management Methods
+
+    def create_user(
+        self,
+        email: str,
+        role: str,
+        password: Optional[str] = None
+    ) -> Dict:
+        """
+        Create a new user
+
+        :param email: User email address
+        :param role: User role (admin, developer, viewer, etc.)
+        :param password: Optional password (if not provided, user must set on first login)
+        :return: Created user information
+        """
+        url = f"{self.base_url}/api/v1/users"
+
+        payload = {
+            "email": email,
+            "role": role
+        }
+
+        if password:
+            payload["password"] = password
+
+        response = self.session.post(url, json=payload)
+
+        if response.status_code == 201:
+            return response.json()
+        else:
+            raise JadeVectorDBError(f"Failed to create user: {response.text}")
+
+    def list_users(
+        self,
+        role: Optional[str] = None,
+        status: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        List all users
+
+        :param role: Optional filter by role
+        :param status: Optional filter by status (active, inactive)
+        :return: List of users
+        """
+        url = f"{self.base_url}/api/v1/users"
+
+        params = {}
+        if role:
+            params["role"] = role
+        if status:
+            params["status"] = status
+
+        response = self.session.get(url, params=params)
+
+        if response.status_code == 200:
+            return response.json().get('users', [])
+        else:
+            raise JadeVectorDBError(f"Failed to list users: {response.text}")
+
+    def get_user(self, email: str) -> Dict:
+        """
+        Get information about a specific user
+
+        :param email: User email address
+        :return: User information
+        """
+        url = f"{self.base_url}/api/v1/users/{email}"
+
+        response = self.session.get(url)
+
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code == 404:
+            raise JadeVectorDBError(f"User not found: {email}")
+        else:
+            raise JadeVectorDBError(f"Failed to get user: {response.text}")
+
+    def update_user(
+        self,
+        email: str,
+        role: Optional[str] = None,
+        status: Optional[str] = None
+    ) -> Dict:
+        """
+        Update user information
+
+        :param email: User email address
+        :param role: New role (optional)
+        :param status: New status (active/inactive) (optional)
+        :return: Updated user information
+        """
+        url = f"{self.base_url}/api/v1/users/{email}"
+
+        payload = {}
+        if role:
+            payload["role"] = role
+        if status:
+            payload["status"] = status
+
+        if not payload:
+            raise JadeVectorDBError("At least one of role or status must be provided")
+
+        response = self.session.put(url, json=payload)
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise JadeVectorDBError(f"Failed to update user: {response.text}")
+
+    def delete_user(self, email: str) -> bool:
+        """
+        Delete a user
+
+        :param email: User email address
+        :return: True if successful
+        """
+        url = f"{self.base_url}/api/v1/users/{email}"
+
+        response = self.session.delete(url)
+
+        if response.status_code == 200:
+            return True
+        else:
+            raise JadeVectorDBError(f"Failed to delete user: {response.text}")
+
+    def activate_user(self, email: str) -> Dict:
+        """
+        Activate a user
+
+        :param email: User email address
+        :return: Updated user information
+        """
+        return self.update_user(email, status="active")
+
+    def deactivate_user(self, email: str) -> Dict:
+        """
+        Deactivate a user
+
+        :param email: User email address
+        :return: Updated user information
+        """
+        return self.update_user(email, status="inactive")
