@@ -483,7 +483,7 @@ def setup_parser():
     parser.add_argument("--url", default=default_url, help=f"JadeVectorDB API URL (default: {default_url}, can be set via JADEVECTORDB_URL env var)")
     parser.add_argument("--api-key", default=default_api_key, help="API key for authentication (can be set via JADEVECTORDB_API_KEY env var)")
     parser.add_argument("--curl-only", action="store_true", help="Generate cURL commands instead of executing")
-    parser.add_argument("--format", choices=['json', 'yaml', 'table'], default='json', help="Output format (default: json)")
+    parser.add_argument("--format", choices=['json', 'yaml', 'table', 'csv'], default='json', help="Output format (default: json)")
     
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
     
