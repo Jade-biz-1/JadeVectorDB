@@ -1,10 +1,10 @@
 # Phase 16: CLI Enhancements - Specification Compliance
 
-**Status**: 60% Complete 🔄
+**Status**: 67% Complete 🔄
 **Start Date**: 2025-12-14
 **Completion Date**: In Progress
 **Tasks**: T259-T273 (15 tasks)
-**Progress**: 9/15 complete (60%)
+**Progress**: 10/15 complete (67%)
 
 ---
 
@@ -30,9 +30,9 @@ This phase addresses specification compliance gaps identified in the CLI audit (
 | Documentation | 1 | 1 | 0 | 100% ✅ |
 | User Management CLI | 5 | 4 | 1 | 80% ✅ |
 | Bulk Import/Export | 4 | 2 | 2 | 50% 🔄 |
-| Output Formats | 3 | 2 | 1 | 67% ✅ |
+| Output Formats | 3 | 3 | 0 | 100% ✅ |
 | Testing & Integration | 2 | 0 | 2 | 0% ⏳ |
-| **TOTAL** | **15** | **9** | **6** | **60%** |
+| **TOTAL** | **15** | **10** | **5** | **67%** |
 
 ---
 
@@ -332,22 +332,31 @@ jade-db export-status <job-id>
 ---
 
 ### T271: Add CSV Output Support
-**Status**: [ ] PENDING
+**Status**: [X] COMPLETE
 **Priority**: LOW
 **Dependencies**: None
 **Estimated Effort**: 0.5 days
-**Files**: `cli/python/jadevectordb/cli.py`, `cli/shell/scripts/jade-db.sh`, `cli/js/bin/jade-db.js`
+**Completion Date**: 2025-12-14
+**Files Modified**: `cli/python/jadevectordb/formatters.py`, `cli/python/jadevectordb/cli.py`, `cli/shell/scripts/jade-db.sh`, `cli/js/src/formatters.js`, `cli/js/bin/jade-db.js`
 
 **Description**: Add CSV output format support for data operations
 
-**Subtasks**:
-- [ ] Add `--format csv` to Python CLI
-- [ ] Add `--format csv` to Shell CLI
-- [ ] Add `--format csv` to JavaScript CLI
-- [ ] Design CSV format for vector data
-- [ ] Handle metadata serialization
+**Implementation**:
+- Added format_csv() function to Python formatters.py with proper CSV escaping
+- Added CSV case to Shell jade-db.sh using jq's @csv formatter
+- Added formatCsv() function to JavaScript formatters.js with CSV escaping
+- Updated --format option in all three CLIs to include 'csv'
+- Handles arrays of objects, single objects, and primitive values
+- Complex values (nested objects/arrays) are serialized as JSON within CSV cells
 
-**Notes**: CSV format particularly useful for vector list operations
+**Subtasks**:
+- [X] Add `--format csv` to Python CLI
+- [X] Add `--format csv` to Shell CLI
+- [X] Add `--format csv` to JavaScript CLI
+- [X] Design CSV format for vector data
+- [X] Handle metadata serialization
+
+**Notes**: CSV format particularly useful for vector list operations and data export
 
 ---
 
