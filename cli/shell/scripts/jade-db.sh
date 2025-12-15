@@ -28,7 +28,7 @@ usage() {
     echo "  --database-id ID     Database ID (required for vector operations)"
     echo "                       Can also be set via JADEVECTORDB_DATABASE_ID environment variable"
     echo "  --curl-only          Generate cURL commands instead of executing"
-    echo "  --format FORMAT      Output format: json (default), yaml, table"
+    echo "  --format FORMAT      Output format: json (default), yaml, table, csv"
     echo ""
     echo "Commands:"
     echo "  Database Operations:"
@@ -93,6 +93,18 @@ format_output() {
             elif echo "$data" | jq -e 'type == "object"' &> /dev/null; then
                 # Single object - format as key-value table
                 echo "$data" | jq -r 'to_entries | .[] | [.key, .value] | @tsv' | column -t -s $'\t' 2>/dev/null || echo "$data"
+            else
+                echo "$data"
+            fi
+            ;;
+        csv)
+            if echo "$data" | jq -e 'type == "array"' &> /dev/null; then
+                # Array of objects - format as CSV
+                echo "$data" | jq -r '(.[0] | keys_unsorted) as $keys | ($keys | @csv), (map([.[ $keys[] ]]) | .[] | @csv)' 2>/dev/null || echo "$data"
+            elif echo "$data" | jq -e 'type == "object"' &> /dev/null; then
+                # Single object - format as CSV with key-value pairs
+                echo "Key,Value"
+                echo "$data" | jq -r 'to_entries | .[] | [.key, .value] | @csv' 2>/dev/null || echo "$data"
             else
                 echo "$data"
             fi

@@ -2,9 +2,11 @@
 Output formatters for JadeVectorDB CLI
 
 This module provides formatting functions for different output formats
-(JSON, YAML, table) to improve CLI usability and integration.
+(JSON, YAML, table, CSV) to improve CLI usability and integration.
 """
 
+import csv
+import io
 import json
 import sys
 from typing import Any, Dict, List, Optional
@@ -75,13 +77,69 @@ def format_table(data: Any, headers: Optional[List[str]] = None) -> str:
         print("Falling back to JSON output:", file=sys.stderr)
         return format_json(data)
 
+def format_csv(data: Any, headers: Optional[List[str]] = None) -> str:
+    """
+    Format data as CSV
+
+    :param data: Data to format (dict, list of dicts, or list of lists)
+    :param headers: Optional custom headers for CSV columns
+    :return: CSV formatted string
+    """
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Handle different data types
+    if isinstance(data, dict):
+        # Single dictionary - show as key-value pairs
+        if headers is None:
+            headers = ["Key", "Value"]
+        writer.writerow(headers)
+        for key, value in data.items():
+            # Serialize complex values as JSON
+            val_str = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+            writer.writerow([key, val_str])
+
+    elif isinstance(data, list):
+        if not data:
+            return ""
+
+        # List of dictionaries - show as CSV table
+        if isinstance(data[0], dict):
+            if headers is None:
+                headers = list(data[0].keys())
+            writer.writerow(headers)
+            for item in data:
+                row = []
+                for h in headers:
+                    value = item.get(h, '')
+                    # Serialize complex values as JSON
+                    val_str = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+                    row.append(val_str)
+                writer.writerow(row)
+
+        # List of lists - show as CSV
+        else:
+            if headers:
+                writer.writerow(headers)
+            for item in data:
+                if isinstance(item, (list, tuple)):
+                    writer.writerow(item)
+                else:
+                    writer.writerow([item])
+
+    else:
+        # For other types, convert to string
+        writer.writerow([str(data)])
+
+    return output.getvalue()
+
 def format_output(data: Any, output_format: str = 'json', headers: Optional[List[str]] = None) -> str:
     """
     Format data according to specified output format
 
     :param data: Data to format
-    :param output_format: Output format (json, yaml, table)
-    :param headers: Optional headers for table format
+    :param output_format: Output format (json, yaml, table, csv)
+    :param headers: Optional headers for table/csv format
     :return: Formatted string
     """
     output_format = output_format.lower()
@@ -92,6 +150,8 @@ def format_output(data: Any, output_format: str = 'json', headers: Optional[List
         return format_yaml(data)
     elif output_format == 'table':
         return format_table(data, headers)
+    elif output_format == 'csv':
+        return format_csv(data, headers)
     else:
         raise ValueError(f"Unsupported output format: {output_format}")
 

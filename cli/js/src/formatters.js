@@ -2,7 +2,7 @@
  * Output formatters for JadeVectorDB JavaScript CLI
  *
  * Provides formatting functions for different output formats
- * (JSON, YAML, table) to improve CLI usability and integration.
+ * (JSON, YAML, table, CSV) to improve CLI usability and integration.
  */
 
 const yaml = require('js-yaml');
@@ -96,6 +96,77 @@ function formatTable(data, headers = null) {
 }
 
 /**
+ * Format data as CSV
+ */
+function formatCsv(data, headers = null) {
+  try {
+    const lines = [];
+
+    // Handle different data types
+    if (Array.isArray(data)) {
+      if (data.length === 0) {
+        return '';
+      }
+
+      // Array of objects - format as CSV table
+      if (typeof data[0] === 'object' && data[0] !== null) {
+        const actualHeaders = headers || Object.keys(data[0]);
+
+        // Add header row
+        lines.push(actualHeaders.map(h => escapeCSV(h)).join(','));
+
+        // Add data rows
+        data.forEach(item => {
+          const row = actualHeaders.map(h => {
+            const value = item[h];
+            if (value === null || value === undefined) return '';
+            if (typeof value === 'object') return escapeCSV(JSON.stringify(value));
+            return escapeCSV(String(value));
+          });
+          lines.push(row.join(','));
+        });
+      } else {
+        // Array of primitives
+        lines.push('Value');
+        data.forEach(item => {
+          lines.push(escapeCSV(String(item)));
+        });
+      }
+
+    } else if (typeof data === 'object' && data !== null) {
+      // Single object - format as key-value pairs
+      lines.push('Key,Value');
+      Object.entries(data).forEach(([key, value]) => {
+        const displayValue = typeof value === 'object' ?
+          JSON.stringify(value) : String(value);
+        lines.push(`${escapeCSV(key)},${escapeCSV(displayValue)}`);
+      });
+    } else {
+      // For other types, convert to string
+      return String(data);
+    }
+
+    return lines.join('\n');
+
+  } catch (error) {
+    console.error('Warning: Error formatting CSV, falling back to JSON');
+    return formatJson(data);
+  }
+}
+
+/**
+ * Escape CSV values (handle quotes and commas)
+ */
+function escapeCSV(value) {
+  const str = String(value);
+  // If value contains comma, quote, or newline, wrap in quotes and escape quotes
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+/**
  * Format data according to specified output format
  */
 function formatOutput(data, outputFormat = 'json', headers = null) {
@@ -108,6 +179,8 @@ function formatOutput(data, outputFormat = 'json', headers = null) {
       return formatYaml(data);
     case 'table':
       return formatTable(data, headers);
+    case 'csv':
+      return formatCsv(data, headers);
     default:
       throw new Error(`Unsupported output format: ${outputFormat}`);
   }
@@ -125,6 +198,7 @@ module.exports = {
   formatJson,
   formatYaml,
   formatTable,
+  formatCsv,
   formatOutput,
   printFormatted
 };

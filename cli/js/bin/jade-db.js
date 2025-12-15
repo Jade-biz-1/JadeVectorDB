@@ -36,7 +36,7 @@ let apiKey = '';
 program
   .option('--url <url>', 'JadeVectorDB API URL', 'http://localhost:8080')
   .option('--api-key <key>', 'API key for authentication')
-  .option('--format <format>', 'Output format: json, yaml, table', 'json');
+  .option('--format <format>', 'Output format: json, yaml, table, csv', 'json');
 
 // Database commands
 const databaseCommands = program
