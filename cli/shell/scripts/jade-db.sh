@@ -52,6 +52,10 @@ usage() {
     echo "    user-activate EMAIL                                      Activate a user"
     echo "    user-deactivate EMAIL                                    Deactivate a user"
     echo ""
+    echo "  Import/Export:"
+    echo "    import FILE DATABASE_ID                                  Import vectors from JSON file"
+    echo "    export FILE DATABASE_ID [VECTOR_IDS]                     Export vectors to JSON file"
+    echo ""
     echo "  System:"
     echo "    status                                                   Get system status"
     echo "    health                                                   Get system health"
@@ -543,6 +547,83 @@ EOF
         DATA="{\"status\":\"inactive\"}"
         result=$(api_call "PUT" "/api/v1/users/$EMAIL" "$DATA")
         echo "$result"
+        ;;
+    import)
+        if [ -z "$2" ] || [ -z "$3" ]; then
+            echo "Error: FILE and DATABASE_ID are required"
+            usage
+        fi
+
+        FILE="$2"
+        DB_ID="$3"
+
+        if [ ! -f "$FILE" ]; then
+            echo "Error: File not found: $FILE"
+            exit 1
+        fi
+
+        echo "Importing vectors from $FILE to database $DB_ID..."
+
+        # Read JSON file and import vectors one by one
+        IMPORTED=0
+        ERRORS=0
+
+        # Use jq to parse JSON array and iterate
+        while IFS= read -r vector_data; do
+            VECTOR_ID=$(echo "$vector_data" | jq -r '.id')
+            VALUES=$(echo "$vector_data" | jq -c '.values')
+            METADATA=$(echo "$vector_data" | jq -c '.metadata // {}')
+
+            DATA="{\"id\":\"$VECTOR_ID\",\"values\":$VALUES,\"metadata\":$METADATA}"
+
+            result=$(api_call "POST" "/v1/databases/$DB_ID/vectors" "$DATA" 2>&1)
+            if [ $? -eq 0 ]; then
+                IMPORTED=$((IMPORTED + 1))
+                echo -ne "\rImported: $IMPORTED vectors"
+            else
+                ERRORS=$((ERRORS + 1))
+            fi
+        done < <(jq -c '.[]' "$FILE")
+
+        echo ""
+        echo "Import completed: $IMPORTED vectors imported, $ERRORS errors"
+        ;;
+    export)
+        if [ -z "$2" ] || [ -z "$3" ]; then
+            echo "Error: FILE and DATABASE_ID are required"
+            usage
+        fi
+
+        FILE="$2"
+        DB_ID="$3"
+        VECTOR_IDS="$4"
+
+        echo "Exporting vectors from database $DB_ID to $FILE..."
+
+        # If vector IDs provided, export those
+        if [ -n "$VECTOR_IDS" ]; then
+            echo "[" > "$FILE"
+            FIRST=true
+
+            IFS=',' read -ra IDS <<< "$VECTOR_IDS"
+            for vid in "${IDS[@]}"; do
+                result=$(api_call "GET" "/v1/databases/$DB_ID/vectors/$vid" "")
+                if [ $? -eq 0 ]; then
+                    if [ "$FIRST" = false ]; then
+                        echo "," >> "$FILE"
+                    fi
+                    echo "$result" | jq -c '.' >> "$FILE"
+                    FIRST=false
+                fi
+            done
+
+            echo "]" >> "$FILE"
+            echo "Export completed: ${#IDS[@]} vectors exported to $FILE"
+        else
+            echo "Note: For export, provide vector IDs as comma-separated list"
+            echo "Usage: $0 export $FILE $DB_ID \"vec1,vec2,vec3\""
+            exit 1
+        fi
         ;;
     status)
         if [ "$CURL_ONLY" = true ]; then
