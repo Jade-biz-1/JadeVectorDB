@@ -2,6 +2,7 @@
 
 const { program } = require('commander');
 const chalk = require('chalk');
+const { printFormatted } = require('../src/formatters');
 const {
   createDatabase,
   listDatabases,
@@ -34,7 +35,8 @@ let apiKey = '';
 // Global options
 program
   .option('--url <url>', 'JadeVectorDB API URL', 'http://localhost:8080')
-  .option('--api-key <key>', 'API key for authentication');
+  .option('--api-key <key>', 'API key for authentication')
+  .option('--format <format>', 'Output format: json, yaml, table, csv', 'json');
 
 // Database commands
 const databaseCommands = program
@@ -80,11 +82,11 @@ databaseCommands
   .action(async () => {
     program.opts().url && (baseUrl = program.opts().url);
     program.opts().apiKey && (apiKey = program.opts().apiKey);
-    
+    const outputFormat = program.opts().format || 'json';
+
     try {
       const result = await listDatabases(baseUrl, apiKey);
-      console.log(chalk.green('Databases:'));
-      console.log(JSON.stringify(result, null, 2));
+      printFormatted(result, outputFormat);
     } catch (error) {
       console.error(chalk.red(`Error listing databases: ${error.message}`));
       process.exit(1);
@@ -301,11 +303,11 @@ userCommands
   .action(async (options) => {
     program.opts().url && (baseUrl = program.opts().url);
     program.opts().apiKey && (apiKey = program.opts().apiKey);
+    const outputFormat = program.opts().format || 'json';
 
     try {
       const result = await listUsers(baseUrl, apiKey, options.role, options.status);
-      console.log(chalk.green('Users:'));
-      console.log(JSON.stringify(result, null, 2));
+      printFormatted(result, outputFormat);
     } catch (error) {
       console.error(chalk.red(`Error listing users: ${error.message}`));
       process.exit(1);
@@ -411,11 +413,11 @@ program
   .action(async () => {
     program.opts().url && (baseUrl = program.opts().url);
     program.opts().apiKey && (apiKey = program.opts().apiKey);
+    const outputFormat = program.opts().format || 'json';
 
     try {
       const result = await getHealth(baseUrl, apiKey);
-      console.log(chalk.green('Health status:'));
-      console.log(JSON.stringify(result, null, 2));
+      printFormatted(result, outputFormat);
     } catch (error) {
       console.error(chalk.red(`Error getting health status: ${error.message}`));
       process.exit(1);
@@ -428,11 +430,11 @@ program
   .action(async () => {
     program.opts().url && (baseUrl = program.opts().url);
     program.opts().apiKey && (apiKey = program.opts().apiKey);
-    
+    const outputFormat = program.opts().format || 'json';
+
     try {
       const result = await getStatus(baseUrl, apiKey);
-      console.log(chalk.green('System status:'));
-      console.log(JSON.stringify(result, null, 2));
+      printFormatted(result, outputFormat);
     } catch (error) {
       console.error(chalk.red(`Error getting status: ${error.message}`));
       process.exit(1);
