@@ -8,10 +8,10 @@
 namespace jadevectordb {
 
 DatabaseService::DatabaseService(
-    std::unique_ptr<DatabaseLayer> db_layer,
+    std::shared_ptr<DatabaseLayer> db_layer,
     std::shared_ptr<ClusterService> cluster_service,
     std::shared_ptr<ShardingService> sharding_service
-) : db_layer_(std::move(db_layer)),
+) : db_layer_(db_layer),
     cluster_service_(cluster_service),
     sharding_service_(sharding_service) {
     logger_ = logging::LoggerManager::get_logger("DatabaseService");
@@ -23,10 +23,10 @@ Result<void> DatabaseService::initialize() {
         
         // Initialize database layer if not already initialized
         if (!db_layer_) {
-            db_layer_ = std::make_unique<DatabaseLayer>();
+            db_layer_ = std::make_shared<DatabaseLayer>();
             auto result = db_layer_->initialize();
             if (!result.has_value()) {
-                LOG_ERROR(logger_, "Failed to initialize database layer: " + 
+                LOG_ERROR(logger_, "Failed to initialize database layer: " +
                          ErrorHandler::format_error(result.error()));
                 return result;
             }

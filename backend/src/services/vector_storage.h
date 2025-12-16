@@ -23,7 +23,7 @@ namespace jadevectordb {
 
 class VectorStorageService {
 private:
-    std::unique_ptr<DatabaseLayer> db_layer_;
+    std::shared_ptr<DatabaseLayer> db_layer_;
     std::shared_ptr<logging::Logger> logger_;
     std::shared_ptr<ShardingService> sharding_service_;
     std::shared_ptr<QueryRouter> query_router_;
@@ -38,7 +38,7 @@ public:
     // Test accessor methods
     DatabaseLayer* get_db_layer_for_testing() { return db_layer_.get(); }
     explicit VectorStorageService(
-        std::unique_ptr<DatabaseLayer> db_layer = nullptr,
+        std::shared_ptr<DatabaseLayer> db_layer = nullptr,
         std::shared_ptr<ShardingService> sharding_service = nullptr,
         std::shared_ptr<QueryRouter> query_router = nullptr,
         std::shared_ptr<ReplicationService> replication_service = nullptr

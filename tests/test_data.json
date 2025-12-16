@@ -1,0 +1,54 @@
+{
+  "server": {
+    "url": "http://localhost:8080",
+    "default_timeout": 30
+  },
+  "auth": {
+    "test_user": {
+      "username": "cli_test_user",
+      "password": "CliTest123@",
+      "email": "cli_test@jadevectordb.com"
+    }
+  },
+  "databases": {
+    "python_test": {
+      "name": "python_test_db",
+      "description": "Test database for Python CLI",
+      "dimension": 128,
+      "index_type": "hnsw"
+    },
+    "shell_test": {
+      "name": "shell_test_db",
+      "description": "Test database for Shell CLI",
+      "dimension": 128,
+      "index_type": "hnsw"
+    }
+  },
+  "vectors": {
+    "test_vector_1": {
+      "id": "test_vec_1",
+      "dimension": 128,
+      "values": "auto_generate",
+      "metadata": {
+        "source": "test",
+        "category": "sample"
+      }
+    },
+    "test_vector_2": {
+      "id": "test_vec_2",
+      "dimension": 128,
+      "values": "auto_generate",
+      "metadata": {
+        "source": "test",
+        "category": "sample"
+      }
+    }
+  },
+  "search": {
+    "query_vector": {
+      "dimension": 128,
+      "values": "auto_generate"
+    },
+    "top_k": 5
+  }
+}

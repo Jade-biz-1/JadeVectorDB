@@ -74,14 +74,14 @@ public:
     };
 
 private:
-    std::unique_ptr<DatabaseLayer> db_layer_;
+    std::shared_ptr<DatabaseLayer> db_layer_;
     std::shared_ptr<logging::Logger> logger_;
     std::shared_ptr<ClusterService> cluster_service_;
     std::shared_ptr<ShardingService> sharding_service_;
 
 public:
     explicit DatabaseService(
-        std::unique_ptr<DatabaseLayer> db_layer = nullptr,
+        std::shared_ptr<DatabaseLayer> db_layer = nullptr,
         std::shared_ptr<ClusterService> cluster_service = nullptr,
         std::shared_ptr<ShardingService> sharding_service = nullptr
     );

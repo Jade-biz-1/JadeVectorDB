@@ -361,7 +361,11 @@ As a system administrator, I want to manage the lifecycle of vector data includi
 
 ### Functional Requirements
 
-- **FR-001**: System MUST store vector embeddings with associated metadata in a persistent storage system
+- **FR-001**: System MUST store vector embeddings with associated metadata in a persistent storage system using hybrid architecture:
+  - **FR-001.1**: SQLite database for transactional metadata (users, groups, roles, permissions, database configurations, authentication tokens)
+  - **FR-001.2**: Memory-mapped files for vector data (optimized for SIMD operations and large-scale storage)
+  - **FR-001.3**: Write-Ahead Logging (WAL) mode for SQLite durability with periodic checkpointing
+  - **FR-001.4**: Data directory structure: `/var/lib/jadevectordb/system.db` (SQLite) + `/var/lib/jadevectordb/databases/{db_id}/vectors.mmap` (per-database vector files)
 - **FR-002**: System MUST support similarity search using cosine similarity, Euclidean distance, and dot product metrics
 - **FR-003**: System MUST allow creation of database instances with configurable vector dimensions
 - **FR-004**: System MUST operate in a distributed master-worker architecture with automatic failover
@@ -382,7 +386,14 @@ As a system administrator, I want to manage the lifecycle of vector data includi
 - **FR-019**: System MUST implement caching mechanisms for frequently accessed vectors and query results
 - **FR-020**: System MUST support different embedding models (Word2Vec, GloVe, BERT, FastText, etc.) with model-specific parameters
 - **FR-021**: System MUST provide backup and recovery mechanisms for vector data and indexes
-- **FR-022**: System MUST support authentication and access control for vector database operations
+- **FR-022**: System MUST support authentication and access control for vector database operations with comprehensive RBAC:
+  - **FR-022.1**: User management with username/password authentication and bcrypt password hashing
+  - **FR-022.2**: Group management for organizing users with group ownership and membership tracking
+  - **FR-022.3**: Role-based access control with predefined system roles (Admin, User, ReadOnly, DataScientist)
+  - **FR-022.4**: Permission system with granular database-level permissions (read, write, delete, admin, create)
+  - **FR-022.5**: API key authentication for programmatic access with scopes and expiration
+  - **FR-022.6**: Session management with configurable timeouts and activity tracking
+  - **FR-022.7**: Audit logging for all authentication and authorization events
 - **FR-023**: System MUST implement load balancing and query routing across distributed nodes
 - **FR-024**: System MUST provide vector compression capabilities (quantization) to optimize storage and network usage
 - **FR-025**: System MUST support batch operations for efficient bulk vector ingestion
@@ -950,12 +961,29 @@ A feature-rich CLI SHALL be developed for power users and for automating adminis
 
 ## Data Persistence
 
+### Storage Architecture Overview
+
+JadeVectorDB implements a **hybrid persistent storage architecture** combining SQLite for transactional metadata with memory-mapped files for high-performance vector storage:
+
+**Hybrid Storage Model:**
+- **SQLite Database** (`system.db`): ACID-compliant storage for users, groups, roles, permissions, authentication tokens, sessions, database metadata, and indexes
+- **Memory-Mapped Files** (`.mmap`): Per-database vector storage with SIMD-aligned data layout for optimal performance
+- **Directory Structure**: Organized hierarchy with system database at root and per-database directories for vector files
+
+**Rationale:**
+- SQLite provides battle-tested ACID transactions for critical metadata
+- Memory-mapped files enable zero-copy vector access with operating system page caching
+- Hybrid approach optimizes both transactional integrity and vector operation performance
+- SIMD alignment in mmap files ensures maximum CPU vectorization efficiency
+
 ### Storage Format
 
-- **DP-001**: System SHALL implement custom binary format optimized for vector operations as the primary storage backend
-- **DP-002**: System SHALL design the binary format to support efficient serialization and deserialization of vector data with associated metadata
+- **DP-001**: System SHALL implement hybrid storage with SQLite for metadata and memory-mapped binary format for vectors
+- **DP-002**: System SHALL design the binary format to support efficient serialization and deserialization of vector data with SIMD-aligned memory layout
 - **DP-003**: System SHALL support configurable vector dimensions in the binary storage format to accommodate different embedding models
 - **DP-004**: System SHALL implement compression techniques within the binary format to optimize storage space
+- **DP-029**: System SHALL use SQLite Write-Ahead Logging (WAL) mode for durability and concurrent read performance
+- **DP-030**: System SHALL organize data in file system layout: `/var/lib/jadevectordb/system.db` and `/var/lib/jadevectordb/databases/{db_uuid}/vectors.mmap`
 
 ### Durability and Consistency
 

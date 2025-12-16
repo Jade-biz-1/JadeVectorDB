@@ -3,6 +3,8 @@
 #include <string>
 #include <thread>
 #include <chrono>
+#include <csignal>
+#include <atomic>
 
 #include "lib/logging.h"
 #include "lib/error_handling.h"
@@ -132,9 +134,11 @@ public:
         dist_config.seed_nodes = {}; // Empty for standalone mode
         
         // Enable all distributed features
-        dist_config.enable_sharding = true;
-        dist_config.enable_replication = true;
-        dist_config.enable_clustering = true;
+        // NOTE: Sharding is currently disabled to fix vector storage issues
+        // When enabled, it requires creating shard databases which is not yet implemented
+        dist_config.enable_sharding = false;
+        dist_config.enable_replication = false;
+        dist_config.enable_clustering = false;
         
         auto dist_result = distributed_service_manager_->initialize(dist_config);
         if (!dist_result.has_value()) {
@@ -188,16 +192,15 @@ public:
         }
         
         LOG_INFO(logger_, "JadeVectorDB application started successfully");
-        
-        // Main application loop would be here in real implementation
-        // For now, just run for a few seconds to demonstrate startup
-        int count = 0;
-        while (running_ && count < 10) { // Simple loop for demo purposes
+
+        // Main application loop - run until shutdown is requested
+        // The server will run continuously until SIGINT (Ctrl+C) or SIGTERM is received
+        LOG_INFO(logger_, "Server is running. Press Ctrl+C to stop.");
+        while (running_) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
-            LOG_DEBUG(logger_, "Application running...");
-            count++;
+            // Server continues running, processing requests via REST API and gRPC
         }
-        
+
         // Explicitly shutdown before returning
         auto shutdown_result = shutdown();
         
@@ -237,18 +240,44 @@ public:
     }
     
     bool is_running() const { return running_; }
+
+    void request_shutdown() {
+        running_ = false;
+    }
 };
 
 } // namespace jadevectordb
+
+// Global flag for signal handling
+static std::atomic<bool> g_shutdown_requested(false);
+static jadevectordb::JadeVectorDBApp* g_app_instance = nullptr;
+
+// Signal handler for graceful shutdown
+void signal_handler(int signal) {
+    if (signal == SIGINT || signal == SIGTERM) {
+        std::cout << "\nReceived shutdown signal. Shutting down gracefully..." << std::endl;
+        g_shutdown_requested = true;
+        if (g_app_instance) {
+            g_app_instance->request_shutdown();
+        }
+    }
+}
 
 int main(int argc, char* argv[]) {
     (void)argc; // Unused - future: parse command line args
     (void)argv; // Unused - future: parse command line args
     std::cout << "Starting JadeVectorDB..." << std::endl;
-    
+
+    // Register signal handlers for graceful shutdown
+    std::signal(SIGINT, signal_handler);
+    std::signal(SIGTERM, signal_handler);
+
     jadevectordb::JadeVectorDBApp app;
-    
+    g_app_instance = &app;
+
     auto result = app.start();
+
+    g_app_instance = nullptr;
     
     if (!result) {
         std::cerr << "Application failed to start: " << 
