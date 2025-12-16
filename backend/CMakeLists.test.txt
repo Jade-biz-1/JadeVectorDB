@@ -1,0 +1,26 @@
+# Minimal CMakeLists for testing SQLite persistence layer
+cmake_minimum_required(VERSION 3.20)
+project(sqlite_test)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Find SQLite3
+find_package(SQLite3 REQUIRED)
+
+# Include directories
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# Test executable
+add_executable(test_sqlite_persistence
+    test_sqlite_persistence.cpp
+    src/services/sqlite_persistence_layer.cpp
+    src/lib/logging.cpp
+    src/lib/error_handling.cpp
+)
+
+target_link_libraries(test_sqlite_persistence
+    SQLite3::SQLite3
+    pthread
+)

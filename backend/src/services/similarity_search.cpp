@@ -23,6 +23,10 @@ Result<void> SimilaritySearchService::initialize() {
         RETURN_ERROR(ErrorCode::INITIALIZE_ERROR, "Vector storage service not provided");
     }
     
+    if (!vector_ops_) {
+        RETURN_ERROR(ErrorCode::INITIALIZE_ERROR, "Vector operations not initialized");
+    }
+    
     // Initialize metrics
     auto metrics_registry = MetricsManager::get_registry();
     if (metrics_registry) {
@@ -159,6 +163,15 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
                 if (vec.values.size() != query_vector.values.size()) {
                     LOG_WARN(logger_, "Vector dimension mismatch, skipping vector: " + vec.id);
                     continue;
+                }
+                
+                // Ensure vector_ops_ is initialized
+                if (!vector_ops_) {
+                    LOG_ERROR(logger_, "Vector operations not initialized");
+                    if (active_searches_gauge_) {
+                        active_searches_gauge_->decrement();
+                    }
+                    RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Vector operations not initialized");
                 }
                 
                 // Use the vector operations abstraction (could be CPU or GPU based)

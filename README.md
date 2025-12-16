@@ -8,9 +8,47 @@ A high-performance distributed vector database designed for storing, retrieving,
 
 ## Current Implementation Status
 
-**Status**: 🎯 **Production-Ready** - December 13, 2025
+**Status**: 🚧 **Persistence & RBAC Implementation In Progress** - December 16, 2025
 
-JadeVectorDB has reached **100% completion** (309/309 tasks) with all core and distributed features fully implemented.
+### ⚠️ Important Notice: Major Architecture Upgrade
+
+**Current Limitation**: The existing implementation uses in-memory storage only. All data (users, databases, vectors) is lost on server restart.
+
+**In Progress**: We are implementing **persistent storage with full RBAC** to ensure data durability and enterprise-grade access control:
+
+**Backend Enhancements** (126 tasks):
+- **SQLite database** for users, groups, roles, permissions, and metadata  
+- **Memory-mapped files** for high-performance vector storage
+- **Full RBAC system** with groups, roles, and database-level permissions
+- **API key authentication** with scopes and expiration
+- **Audit logging** for security compliance
+- **Comprehensive testing** (42 testing tasks)
+
+**Frontend Enhancements** (43 tasks):
+- **Group management UI** - Create and manage user groups
+- **Role assignment UI** - Assign roles to users and groups
+- **Permission management UI** - Visual permission matrix and database-level permissions
+- **Enhanced API key UI** - Scopes, expiration dates, status indicators
+- **User profile pages** - View effective permissions, group memberships, activity timeline
+- **Admin dashboard** - Centralized RBAC administration
+
+**Timeline**: Expected completion in 6-7 weeks (January-February 2026)
+
+**Total Tasks**: 169 (60 backend core + 42 testing + 15 CLI + 9 API docs + 43 frontend)
+
+**Deliverables**:
+✅ Data persists across server restarts  
+✅ Fine-grained access control with groups and roles  
+✅ Database-level permissions (read/write/admin)  
+✅ API keys for service-to-service authentication  
+✅ Full-featured UI for all RBAC operations  
+✅ Audit logging and compliance tracking  
+
+**Documentation**: See `TasksTracking/11-persistent-storage-implementation.md` for backend plan and `docs/FRONTEND_RBAC_IMPLEMENTATION.md` for frontend details.
+
+---
+
+JadeVectorDB has reached **100% completion** (309/309 tasks) with all core and distributed features fully implemented. The persistent storage upgrade adds 169 new tasks for production-grade data durability and access control.
 
 ### Core Features (100% Complete)
 ✅ **Vector Storage Service** - Complete CRUD operations with validation
@@ -299,6 +337,70 @@ cd cli/js
 npm install
 node bin/jade-db.js --url http://localhost:8080 database create --name my_database
 ```
+
+## Testing
+
+JadeVectorDB includes a comprehensive CLI testing suite with centralized test data and single-command execution.
+
+### Running CLI Tests
+
+```bash
+# Start the server first
+cd backend/build
+./jadevectordb
+
+# In a new terminal, run all CLI tests
+cd /path/to/JadeVectorDB
+python3 tests/run_cli_tests.py
+
+# Or use the shell wrapper
+./tests/run_tests.sh
+```
+
+### Test Output
+
+The test runner provides a clear table showing pass/fail status:
+
+```
+================================================================================
+#     Tool            Test                           Result
+================================================================================
+1     Python CLI      Health Check                   ✓ PASS
+2     Python CLI      Status Check                   ✓ PASS
+3     Python CLI      Create Database                ✓ PASS
+4     Python CLI      Store Vector                   ✓ PASS
+...
+================================================================================
+
+Summary: 11/12 tests passed
+  Failed: 1
+```
+
+### Test Data Configuration
+
+All test data is centralized in `tests/test_data.json`:
+
+- **Authentication**: Test user credentials
+- **Databases**: Test database configurations
+- **Vectors**: Test vector data with auto-generated values
+- **Search**: Search query configuration
+
+Update this file to modify test parameters. See `tests/README.md` for detailed information.
+
+### Troubleshooting Test Failures
+
+The test runner provides specific hints for each failure:
+
+```
+[Test #6] Python CLI - Store Vector:
+  • Ensure database was created successfully
+  • Verify vector dimensions match database configuration
+  • Check that vector ID is unique
+```
+
+For more details, see:
+- **Testing Guide**: `tests/README.md`
+- **Bootstrap Guide**: `BOOTSTRAP.md`
 
 ## Complete Command Reference
 

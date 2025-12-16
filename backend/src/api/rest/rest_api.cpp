@@ -132,11 +132,20 @@ RestApiImpl::~RestApiImpl() {
 
 bool RestApiImpl::initialize(int port) {
     LOG_INFO(logger_, "Initializing REST API on port " << port);
+
+    // Create a shared database layer for all services to use
+    auto shared_db_layer = std::make_shared<DatabaseLayer>();
+    shared_db_layer->initialize();
+
+    // Initialize services with the shared database layer
+    db_service_ = std::make_unique<DatabaseService>(shared_db_layer);
+    vector_storage_service_ = std::make_unique<VectorStorageService>(shared_db_layer);
     
-    // Initialize services
-    db_service_ = std::make_unique<DatabaseService>();
-    vector_storage_service_ = std::make_unique<VectorStorageService>();
-    similarity_search_service_ = std::make_unique<SimilaritySearchService>();
+    // Create a separate VectorStorageService for SimilaritySearchService
+    auto search_vector_storage = std::make_unique<VectorStorageService>(shared_db_layer);
+    search_vector_storage->initialize();
+    similarity_search_service_ = std::make_unique<SimilaritySearchService>(std::move(search_vector_storage));
+    
     index_service_ = std::make_unique<IndexService>();
     lifecycle_service_ = std::make_unique<LifecycleService>();
     security_audit_logger_ = std::make_shared<SecurityAuditLogger>();
@@ -212,15 +221,18 @@ void RestApiImpl::register_routes() {
     handle_system_status();
     
     // Database management endpoints
-    app_->route_dynamic("/v1/databases")
+    // POST /v1/databases - Create database
+    CROW_ROUTE((*app_), "/v1/databases")
+        .methods(crow::HTTPMethod::POST)
         ([this](const crow::request& req) {
-            // Handle HTTP method
-            if (req.method == crow::HTTPMethod::POST) {
-                return handle_create_database_request(req);
-            } else if (req.method == crow::HTTPMethod::GET) {
-                return handle_list_databases_request(req);
-            }
-            return crow::response(405, "Method not allowed");
+            return handle_create_database_request(req);
+        });
+
+    // GET /v1/databases - List databases
+    CROW_ROUTE((*app_), "/v1/databases")
+        .methods(crow::HTTPMethod::GET)
+        ([this](const crow::request& req) {
+            return handle_list_databases_request(req);
         });
     
     app_->route_dynamic("/v1/databases/<string>")
@@ -236,12 +248,11 @@ void RestApiImpl::register_routes() {
         });
     
     // Vector management endpoints
-    app_->route_dynamic("/v1/databases/<string>/vectors")
+    // POST /v1/databases/<id>/vectors - Store vector
+    CROW_ROUTE((*app_), "/v1/databases/<string>/vectors")
+        .methods(crow::HTTPMethod::POST)
         ([this](const crow::request& req, std::string database_id) {
-            if (req.method == crow::HTTPMethod::POST) {
-                return handle_store_vector_request(req, database_id);
-            }
-            return crow::response(405, "Method not allowed");
+            return handle_store_vector_request(req, database_id);
         });
     app_->route_dynamic("/v1/databases/<string>/vectors/batch")
         ([this](const crow::request& req, std::string database_id) {
@@ -271,12 +282,11 @@ void RestApiImpl::register_routes() {
         });
     
     // Search endpoints
-    app_->route_dynamic("/v1/databases/<string>/search")
+    // POST /v1/databases/<id>/search - Similarity search
+    CROW_ROUTE((*app_), "/v1/databases/<string>/search")
+        .methods(crow::HTTPMethod::POST)
         ([this](const crow::request& req, std::string database_id) {
-            if (req.method == crow::HTTPMethod::POST) {
-                return handle_similarity_search_request(req, database_id);
-            }
-            return crow::response(405, "Method not allowed");
+            return handle_similarity_search_request(req, database_id);
         });
     app_->route_dynamic("/v1/databases/<string>/search/advanced")
         ([this](const crow::request& req, std::string database_id) {
@@ -564,6 +574,7 @@ crow::response RestApiImpl::handle_store_vector_request(const crow::request& req
         // Create a Vector object from JSON
         Vector vector_data;
         vector_data.id = body_json["id"].s();
+        vector_data.databaseId = database_id;  // Set the database ID
         if (body_json["values"].t() != crow::json::type::List) {
             return crow::response(400, "{\"error\":\"Vector values must be an array\"}");
         }
@@ -581,6 +592,11 @@ crow::response RestApiImpl::handle_store_vector_request(const crow::request& req
             if (meta.has("owner")) vector_data.metadata.owner = meta["owner"].s();
             if (meta.has("category")) vector_data.metadata.category = meta["category"].s();
             if (meta.has("status")) vector_data.metadata.status = meta["status"].s();
+        }
+
+        // Set default status if not provided
+        if (vector_data.metadata.status.empty()) {
+            vector_data.metadata.status = "active";
         }
 
         // Validate vector data
@@ -1016,6 +1032,8 @@ crow::response RestApiImpl::handle_batch_get_vectors_request(const crow::request
 
 crow::response RestApiImpl::handle_similarity_search_request(const crow::request& req, const std::string& database_id) {
     try {
+        LOG_DEBUG(logger_, "Search request received for database: " + database_id);
+        
         // Extract API key from header
         std::string api_key;
         auto auth_header = req.get_header_value("Authorization");
@@ -1027,24 +1045,28 @@ crow::response RestApiImpl::handle_similarity_search_request(const crow::request
             }
         }
 
+        LOG_DEBUG(logger_, "Authenticating request...");
         // Authenticate request
         auto auth_result = authenticate_request(api_key);
         if (!auth_result.has_value()) {
             return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
         }
 
+        LOG_DEBUG(logger_, "Checking database exists...");
         // Validate database exists
         auto db_exists_result = db_service_->database_exists(database_id);
         if (!db_exists_result.has_value() || !db_exists_result.value()) {
             return crow::response(404, "{\"error\":\"Database not found\"}");
         }
 
+        LOG_DEBUG(logger_, "Parsing request body...");
         // Parse query vector and search parameters from request body
         auto body_json = crow::json::load(req.body);
         if (!body_json) {
             return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
         }
 
+        LOG_DEBUG(logger_, "Parsing query vector...");
         // Parse query vector
         if (body_json["queryVector"].t() != crow::json::type::List) {
             return crow::response(400, "{\"error\":\"'queryVector' must be an array\"}");
@@ -1055,6 +1077,7 @@ crow::response RestApiImpl::handle_similarity_search_request(const crow::request
         for (size_t i = 0; i < query_array.size(); i++) {
             query_vector.values.push_back(query_array[i].d());
         }
+        LOG_DEBUG(logger_, "Query vector parsed, dimension: " + std::to_string(query_vector.values.size()));
 
         // Parse search parameters
         SearchParams search_params;
@@ -1074,15 +1097,18 @@ crow::response RestApiImpl::handle_similarity_search_request(const crow::request
             search_params.include_vector_data = body_json["includeValues"].b();
         }
 
+        LOG_DEBUG(logger_, "Validating search parameters...");
         // Validate search parameters
         auto validation_result = similarity_search_service_->validate_search_params(search_params);
         if (!validation_result.has_value()) {
             return crow::response(400, "{\"error\":\"Invalid search parameters\"}");
         }
 
+        LOG_DEBUG(logger_, "Calling similarity_search service...");
         // Perform similarity search using the service
         auto result = similarity_search_service_->similarity_search(database_id, query_vector, search_params);
 
+        LOG_DEBUG(logger_, "Search service returned");
         if (result.has_value()) {
             auto search_results = result.value();
             crow::json::wvalue response;
@@ -2247,19 +2273,27 @@ void RestApiImpl::setup_authentication() {
     // API key validation is performed in authenticate_request()
 }
 
-Result<bool> RestApiImpl::authenticate_request(const std::string& api_key) const {
-    if (api_key.empty()) {
-        RETURN_ERROR(ErrorCode::UNAUTHENTICATED, "No API key provided");
+Result<bool> RestApiImpl::authenticate_request(const std::string& token_or_api_key) const {
+    if (token_or_api_key.empty()) {
+        RETURN_ERROR(ErrorCode::UNAUTHENTICATED, "No API key or token provided");
     }
 
-    // Use AuthenticationService to authenticate with the API key
-    auto auth_result = authentication_service_->authenticate_with_api_key(api_key, "0.0.0.0");
+    // Try validating as a JWT token first
+    auto token_result = authentication_service_->validate_token(token_or_api_key);
 
-    if (!auth_result.has_value()) {
-        RETURN_ERROR(ErrorCode::UNAUTHENTICATED, "Invalid API key");
+    if (token_result.has_value()) {
+        // Token validation successful, user_id is in token_result.value()
+        return true;
     }
 
-    // Authentication successful, user_id is in auth_result.value()
+    // If token validation failed, try as API key
+    auto api_key_result = authentication_service_->authenticate_with_api_key(token_or_api_key, "0.0.0.0");
+
+    if (!api_key_result.has_value()) {
+        RETURN_ERROR(ErrorCode::UNAUTHENTICATED, "Invalid token or API key");
+    }
+
+    // API key authentication successful, user_id is in api_key_result.value()
     return true;
 }
 

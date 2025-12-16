@@ -492,7 +492,7 @@ def setup_parser():
     create_db_parser.add_argument("--name", required=True, help="Name of the database")
     create_db_parser.add_argument("--description", default="", help="Description of the database")
     create_db_parser.add_argument("--dimension", type=int, default=128, help="Vector dimension (default: 128)")
-    create_db_parser.add_argument("--index-type", default="HNSW", help="Index type (default: HNSW)")
+    create_db_parser.add_argument("--index-type", default="hnsw", help="Index type (default: hnsw)")
     create_db_parser.set_defaults(func=create_database)
     
     # List databases subcommand
