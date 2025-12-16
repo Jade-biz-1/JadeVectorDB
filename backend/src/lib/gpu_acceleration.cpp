@@ -219,6 +219,7 @@ void OpenCLDevice::synchronize() {
 DeviceManager::DeviceManager() {
     cpu_device_ = std::make_shared<CPUDevice>();
     available_devices_.push_back(cpu_device_);
+    active_device_ = cpu_device_;  // Initialize to CPU device by default
 }
 
 DeviceManager& DeviceManager::get_instance() {

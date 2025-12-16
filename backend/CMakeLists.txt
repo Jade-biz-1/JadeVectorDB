@@ -25,6 +25,15 @@ find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 
+# Find SQLite3 for persistence layer
+find_package(SQLite3 REQUIRED)
+if(SQLite3_FOUND)
+    message(STATUS "Found SQLite3: ${SQLite3_VERSION}")
+    include_directories(${SQLite3_INCLUDE_DIRS})
+else()
+    message(FATAL_ERROR "SQLite3 not found. Please install: sudo apt-get install libsqlite3-dev")
+endif()
+
 # Use FetchContent to include all required libraries directly from source
 include(FetchContent)
 
@@ -243,6 +252,7 @@ set(CORE_SOURCES
     src/services/archival_service.cpp
     src/services/monitoring_service.cpp
     src/services/authentication_service.cpp
+    src/services/sqlite_persistence_layer.cpp
     src/services/index/pq_index.cpp
     src/services/index/opq_index.cpp
     src/services/index/sq_index.cpp
@@ -293,6 +303,7 @@ target_link_libraries(jadevectordb_core PUBLIC
     OpenSSL::SSL
     OpenSSL::Crypto
     ZLIB::ZLIB
+    SQLite::SQLite3
     $<$<BOOL:${GRPC_AVAILABLE}>:grpc++>
     $<$<BOOL:${GRPC_AVAILABLE}>:grpc>
     $<$<BOOL:${GRPC_AVAILABLE}>:gpr>
