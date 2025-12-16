@@ -118,6 +118,185 @@ cd backend && ./build.sh --no-tests --no-benchmarks
 
 ---
 
+## 🧪 CLI Testing System
+
+**IMPORTANT**: JadeVectorDB has a comprehensive CLI testing suite with centralized test data.
+
+### Quick Start
+
+```bash
+# 1. Start the server
+cd backend/build
+./jadevectordb
+
+# 2. In a new terminal, run all CLI tests
+cd /path/to/JadeVectorDB
+python3 tests/run_cli_tests.py
+
+# Or use the shell wrapper
+./tests/run_tests.sh
+```
+
+### Test Data Configuration
+
+All test data is centralized in `tests/test_data.json`:
+
+- **Authentication**: Test user credentials (username, password, email)
+- **Databases**: Test database configurations (name, dimension, index type)
+- **Vectors**: Test vector specifications (auto-generated values)
+- **Search**: Search query parameters
+
+**Password Requirements**: Test passwords must meet security standards:
+- At least 8 characters
+- Contains uppercase, lowercase, digit, and special character
+- Example: `CliTest123@`
+
+### Test Output Format
+
+```
+================================================================================
+#     Tool            Test                           Result
+================================================================================
+1     Python CLI      Health Check                   ✓ PASS
+2     Python CLI      Status Check                   ✓ PASS
+3     Python CLI      Create Database                ✓ PASS
+4     Python CLI      Store Vector                   ✓ PASS
+...
+================================================================================
+
+Summary: 11/12 tests passed
+  Failed: 1
+```
+
+### Troubleshooting Failed Tests
+
+The test runner provides specific hints for failures:
+
+```
+[Test #6] Python CLI - Store Vector:
+  • Ensure database was created successfully
+  • Verify vector dimensions match database configuration
+  • Check that vector ID is unique
+```
+
+### Test Coverage
+
+- **Python CLI Tests** (Tests 1-7): Health, Status, List DBs, Create DB, Get DB, Store Vector, Search
+- **Shell CLI Tests** (Tests 8-12): Health, Status, List DBs, Create DB, Get DB
+
+### Documentation
+
+- **Full Testing Guide**: `tests/README.md`
+- **Test Data File**: `tests/test_data.json`
+- **Test Runner**: `tests/run_cli_tests.py`
+
+---
+
+## 💾 DATA PERSISTENCE ARCHITECTURE (In Progress)
+
+### Current Status: TRANSITIONING TO PERSISTENT STORAGE
+
+**⚠️ CRITICAL**: The system currently uses in-memory storage. Implementation of persistent storage is underway.
+
+### Hybrid Storage Architecture
+
+JadeVectorDB uses a **two-tier hybrid storage** system:
+
+**Tier 1: SQLite Database** (`/var/lib/jadevectordb/system.db`)
+- **Purpose**: Transactional metadata with ACID guarantees
+- **Contents**: 
+  - User accounts (username, password hash, email)
+  - Groups and group memberships
+  - Roles and permissions (RBAC system)
+  - API keys and authentication tokens
+  - Sessions and audit logs
+  - Database metadata and configurations
+  - Index metadata and build status
+
+**Tier 2: Memory-Mapped Files** (`/var/lib/jadevectordb/databases/{db_id}/vectors.mmap`)
+- **Purpose**: High-performance vector data storage
+- **Format**: SIMD-aligned binary format
+- **Access**: Zero-copy via OS page caching
+- **Benefits**: Handles GB-TB datasets efficiently
+
+### Directory Structure
+
+```
+/var/lib/jadevectordb/
+├── system.db              # SQLite: All metadata
+└── databases/
+    ├── {uuid-1}/
+    │   ├── vectors.mmap   # Vector embeddings
+    │   └── indexes/       # Index files (HNSW, IVF, etc.)
+    ├── {uuid-2}/
+    │   ├── vectors.mmap
+    │   └── indexes/
+    └── ...
+```
+
+### Configuration
+
+**Environment Variable**:
+```bash
+export JADEVECTORDB_DATA_DIR=/var/lib/jadevectordb
+```
+
+**Config File** (`backend/config/jadevectordb.conf`):
+```ini
+[storage]
+data_directory=/var/lib/jadevectordb
+sqlite_wal_mode=true
+sqlite_checkpoint_interval=1000
+vector_sync_interval_sec=5
+vector_sync_on_write=false
+
+[security]
+enable_rbac=true
+api_key_expiry_days=365
+session_timeout_minutes=60
+```
+
+### Persistence Classes
+
+**Key Components**:
+- `SQLitePersistenceLayer` - Manages SQLite operations
+- `HybridDatabasePersistence` - Orchestrates SQLite + mmap
+- `MemoryMappedVectorStore` - Per-database vector file management
+- `AuthenticationService` - Enhanced with SQLite backing
+
+**Interface**: `DatabasePersistenceInterface` (unchanged for backward compatibility)
+
+### Durability Guarantees
+
+**SQLite (Metadata)**:
+- Write-Ahead Logging (WAL) mode
+- Atomic commits with crash recovery
+- Checkpoint every 1000 transactions or 5 minutes
+- **Guarantee**: No metadata loss on crash
+
+**Memory-Mapped Files (Vectors)**:
+- Periodic sync every 5 seconds (configurable)
+- Sync on graceful shutdown
+- **Trade-off**: May lose last few seconds on power failure
+- Set `vector_sync_on_write=true` for immediate durability (slower)
+
+### Implementation Timeline
+
+**Phase 1+2** (Weeks 1-3): SQLite + RBAC
+- Users, groups, roles, permissions
+- API keys and session management
+- Database metadata persistence
+- Audit logging
+
+**Phase 3** (Weeks 4-5): Vector Persistence
+- Memory-mapped file implementation
+- Vector serialization and SIMD alignment
+- Integration with search operations
+
+**See**: `TasksTracking/11-persistent-storage-implementation.md` for details
+
+---
+
 ## 📚 Essential Documentation Files
 
 **Read these in order when starting a session:**

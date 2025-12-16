@@ -28,7 +28,8 @@ Result<std::string> InMemoryDatabasePersistence::create_database(const Database&
         RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid database configuration");
     }
     
-    std::string database_id = generate_id();
+    // Use the database ID from the input if provided, otherwise generate a new one
+    std::string database_id = db.databaseId.empty() ? generate_id() : db.databaseId;
     Database new_db = db;
     new_db.databaseId = database_id;
     new_db.created_at = "2025-10-11T00:00:00Z"; // In a real system, use current timestamp

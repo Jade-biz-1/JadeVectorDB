@@ -142,21 +142,40 @@ api_call() {
     fi
 
     if [ "$method" = "GET" ]; then
-        curl -s -X GET \
-            -H "Content-Type: application/json" \
-            -H "$auth_header" \
-            "$BASE_URL$endpoint"
+        if [ -n "$auth_header" ]; then
+            curl -s -X GET \
+                -H "Content-Type: application/json" \
+                -H "$auth_header" \
+                "$BASE_URL$endpoint"
+        else
+            curl -s -X GET \
+                -H "Content-Type: application/json" \
+                "$BASE_URL$endpoint"
+        fi
     elif [ "$method" = "POST" ]; then
-        curl -s -X POST \
-            -H "Content-Type: application/json" \
-            -H "$auth_header" \
-            -d "$data" \
-            "$BASE_URL$endpoint"
+        if [ -n "$auth_header" ]; then
+            curl -s -X POST \
+                -H "Content-Type: application/json" \
+                -H "$auth_header" \
+                -d "$data" \
+                "$BASE_URL$endpoint"
+        else
+            curl -s -X POST \
+                -H "Content-Type: application/json" \
+                -d "$data" \
+                "$BASE_URL$endpoint"
+        fi
     elif [ "$method" = "DELETE" ]; then
-        curl -s -X DELETE \
-            -H "Content-Type: application/json" \
-            -H "$auth_header" \
-            "$BASE_URL$endpoint"
+        if [ -n "$auth_header" ]; then
+            curl -s -X DELETE \
+                -H "Content-Type: application/json" \
+                -H "$auth_header" \
+                "$BASE_URL$endpoint"
+        else
+            curl -s -X DELETE \
+                -H "Content-Type: application/json" \
+                "$BASE_URL$endpoint"
+        fi
     fi
 }
 
@@ -206,15 +225,15 @@ fi
 # Execute command
 case "$COMMAND" in
     create-db)
-        if [ -z "$2" ]; then
+        if [ -z "$1" ]; then
             echo "Error: Database name is required"
             usage
         fi
-        
-        DB_NAME="$2"
-        DESCRIPTION="${3:-""}"
-        DIMENSION="${4:-128}"
-        INDEX_TYPE="${5:-"HNSW"}"
+
+        DB_NAME="$1"
+        DESCRIPTION="${2:-""}"
+        DIMENSION="${3:-128}"
+        INDEX_TYPE="${4:-hnsw}"
         
         if [ "$CURL_ONLY" = true ]; then
             echo "# cURL command for creating database: $DB_NAME"
@@ -259,12 +278,12 @@ EOF
         fi
         ;;
     get-db)
-        if [ -z "$2" ]; then
+        if [ -z "$1" ]; then
             echo "Error: Database ID is required"
             usage
         fi
 
-        DB_ID="$2"
+        DB_ID="$1"
         if [ "$CURL_ONLY" = true ]; then
             echo "# cURL command for getting database: $DB_ID"
             echo "curl -X GET \\"
@@ -279,12 +298,12 @@ EOF
         fi
         ;;
     delete-db)
-        if [ -z "$2" ]; then
+        if [ -z "$1" ]; then
             echo "Error: Database ID is required"
             usage
         fi
 
-        DB_ID="$2"
+        DB_ID="$1"
         if [ "$CURL_ONLY" = true ]; then
             echo "# cURL command for deleting database: $DB_ID"
             echo "curl -X DELETE \\"
@@ -299,14 +318,14 @@ EOF
         fi
         ;;
     store)
-        if [ -z "$2" ] || [ -z "$3" ]; then
+        if [ -z "$1" ] || [ -z "$2" ]; then
             echo "Error: Vector ID and values are required"
             usage
         fi
-        
-        VECTOR_ID="$2"
-        VALUES="$3"
-        METADATA="${4:-""}"
+
+        VECTOR_ID="$1"
+        VALUES="$2"
+        METADATA="${3:-""}"
         
         if [ "$CURL_ONLY" = true ]; then
             echo "# cURL command for storing vector: $VECTOR_ID"
@@ -354,12 +373,12 @@ EOF
         fi
         ;;
     retrieve)
-        if [ -z "$2" ]; then
+        if [ -z "$1" ]; then
             echo "Error: Vector ID is required"
             usage
         fi
         
-        VECTOR_ID="$2"
+        VECTOR_ID="$1"
         if [ "$CURL_ONLY" = true ]; then
             echo "# cURL command for retrieving vector: $VECTOR_ID"
             echo "curl -X GET \\"
@@ -374,12 +393,12 @@ EOF
         fi
         ;;
     delete)
-        if [ -z "$2" ]; then
+        if [ -z "$1" ]; then
             echo "Error: Vector ID is required"
             usage
         fi
         
-        VECTOR_ID="$2"
+        VECTOR_ID="$1"
         if [ "$CURL_ONLY" = true ]; then
             echo "# cURL command for deleting vector: $VECTOR_ID"
             echo "curl -X DELETE \\"
@@ -394,14 +413,14 @@ EOF
         fi
         ;;
     search)
-        if [ -z "$2" ]; then
+        if [ -z "$1" ]; then
             echo "Error: Query vector is required"
             usage
         fi
         
-        QUERY_VECTOR="$2"
-        TOP_K="${3:-10}"
-        THRESHOLD="${4:-""}"
+        QUERY_VECTOR="$1"
+        TOP_K="${2:-10}"
+        THRESHOLD="${3:-""}"
         
         if [ "$CURL_ONLY" = true ]; then
             echo "# cURL command for similarity search"
@@ -449,14 +468,14 @@ EOF
         fi
         ;;
     user-add)
-        if [ -z "$2" ] || [ -z "$3" ]; then
+        if [ -z "$1" ] || [ -z "$2" ]; then
             echo "Error: Email and role are required"
             usage
         fi
 
-        EMAIL="$2"
-        ROLE="$3"
-        PASSWORD="${4:-""}"
+        EMAIL="$1"
+        ROLE="$2"
+        PASSWORD="${3:-""}"
 
         if [ -n "$PASSWORD" ]; then
             DATA="{\"email\":\"$EMAIL\",\"role\":\"$ROLE\",\"password\":\"$PASSWORD\"}"
@@ -487,24 +506,24 @@ EOF
         echo "$result"
         ;;
     user-show)
-        if [ -z "$2" ]; then
+        if [ -z "$1" ]; then
             echo "Error: Email is required"
             usage
         fi
 
-        EMAIL="$2"
+        EMAIL="$1"
         result=$(api_call "GET" "/api/v1/users/$EMAIL" "")
         echo "$result"
         ;;
     user-update)
-        if [ -z "$2" ]; then
+        if [ -z "$1" ]; then
             echo "Error: Email is required"
             usage
         fi
 
-        EMAIL="$2"
-        NEW_ROLE="${3:-}"
-        NEW_STATUS="${4:-}"
+        EMAIL="$1"
+        NEW_ROLE="${2:-}"
+        NEW_STATUS="${3:-}"
 
         if [ -z "$NEW_ROLE" ] && [ -z "$NEW_STATUS" ]; then
             echo "Error: At least one of role or status must be provided"
@@ -529,45 +548,45 @@ EOF
         echo "$result"
         ;;
     user-delete)
-        if [ -z "$2" ]; then
+        if [ -z "$1" ]; then
             echo "Error: Email is required"
             usage
         fi
 
-        EMAIL="$2"
+        EMAIL="$1"
         result=$(api_call "DELETE" "/api/v1/users/$EMAIL" "")
         echo "$result"
         ;;
     user-activate)
-        if [ -z "$2" ]; then
+        if [ -z "$1" ]; then
             echo "Error: Email is required"
             usage
         fi
 
-        EMAIL="$2"
+        EMAIL="$1"
         DATA="{\"status\":\"active\"}"
         result=$(api_call "PUT" "/api/v1/users/$EMAIL" "$DATA")
         echo "$result"
         ;;
     user-deactivate)
-        if [ -z "$2" ]; then
+        if [ -z "$1" ]; then
             echo "Error: Email is required"
             usage
         fi
 
-        EMAIL="$2"
+        EMAIL="$1"
         DATA="{\"status\":\"inactive\"}"
         result=$(api_call "PUT" "/api/v1/users/$EMAIL" "$DATA")
         echo "$result"
         ;;
     import)
-        if [ -z "$2" ] || [ -z "$3" ]; then
+        if [ -z "$1" ] || [ -z "$2" ]; then
             echo "Error: FILE and DATABASE_ID are required"
             usage
         fi
 
-        FILE="$2"
-        DB_ID="$3"
+        FILE="$1"
+        DB_ID="$2"
 
         if [ ! -f "$FILE" ]; then
             echo "Error: File not found: $FILE"
@@ -601,14 +620,14 @@ EOF
         echo "Import completed: $IMPORTED vectors imported, $ERRORS errors"
         ;;
     export)
-        if [ -z "$2" ] || [ -z "$3" ]; then
+        if [ -z "$1" ] || [ -z "$2" ]; then
             echo "Error: FILE and DATABASE_ID are required"
             usage
         fi
 
-        FILE="$2"
-        DB_ID="$3"
-        VECTOR_IDS="$4"
+        FILE="$1"
+        DB_ID="$2"
+        VECTOR_IDS="$3"
 
         echo "Exporting vectors from database $DB_ID to $FILE..."
 
