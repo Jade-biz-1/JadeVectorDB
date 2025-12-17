@@ -11,6 +11,7 @@
 
 #include "lib/error_handling.h"
 #include "lib/logging.h"
+#include "utils/circuit_breaker.h"
 
 namespace jadevectordb {
 
@@ -175,6 +176,15 @@ public:
     Result<void> begin_transaction();
     Result<void> commit_transaction();
     Result<void> rollback_transaction();
+    
+    // Health & Resilience
+    Result<void> reconnect();
+    bool is_healthy() const;
+    bool is_connected() const;
+    std::string get_health_status() const;
+    
+    // Circuit breaker access (for monitoring)
+    const utils::CircuitBreaker& get_circuit_breaker() const { return *circuit_breaker_; }
 
 private:
     sqlite3* db_;
@@ -182,6 +192,11 @@ private:
     std::string db_file_path_;
     std::mutex db_mutex_;
     std::shared_ptr<logging::Logger> logger_;
+    std::unique_ptr<utils::CircuitBreaker> circuit_breaker_;
+    std::atomic<bool> is_connected_;
+    std::atomic<int> connection_retry_count_;
+    static constexpr int MAX_RETRY_ATTEMPTS = 3;
+    static constexpr int RETRY_DELAY_MS = 100;
     
     // Helper methods
     Result<void> create_tables();
@@ -190,10 +205,13 @@ private:
     std::string generate_id() const;
     int64_t current_timestamp() const;
     
-    // SQL execution helpers
+    // SQL execution helpers with retry logic
     Result<void> execute_sql(const std::string& sql);
+    Result<void> execute_sql_with_retry(const std::string& sql);
     Result<sqlite3_stmt*> prepare_statement(const std::string& sql);
+    Result<sqlite3_stmt*> prepare_statement_with_retry(const std::string& sql);
     void finalize_statement(sqlite3_stmt* stmt);
+    void exponential_backoff(int attempt) const;
 };
 
 } // namespace jadevectordb

@@ -890,6 +890,11 @@ Result<std::vector<UserCredentials>> AuthenticationService::list_users() const {
     return users;
 }
 
+Result<size_t> AuthenticationService::get_user_count() const {
+    std::lock_guard<std::mutex> lock(users_mutex_);
+    return users_.size();
+}
+
 Result<std::vector<std::pair<std::string, std::string>>> AuthenticationService::list_api_keys() const {
     std::lock_guard<std::mutex> lock(api_keys_mutex_);
 
