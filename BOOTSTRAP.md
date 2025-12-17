@@ -192,6 +192,42 @@ The test runner provides specific hints for failures:
 
 ---
 
+## 🧪 UNIT TESTING ORGANIZATION
+
+**CRITICAL: All unit test code belongs in dedicated testing directories!**
+
+### Unit Test Locations
+
+- **Backend Unit Tests**: `backend/unittesting/`
+  - All persistence layer unit tests (test_sprint_*.cpp)
+  - Test executables (compiled binaries)
+  - Comprehensive test documentation (README.md)
+  - 76 tests across Sprint 1.2, 1.3, and 1.4
+  
+- **Backend Helper Scripts**: `backend/scripts/`
+  - Python helper scripts (fix_*.py)
+  - Build and maintenance utilities
+
+### Rules for Test Code
+
+1. ❌ **NEVER** create test files in `backend/` root directory
+2. ✅ **ALWAYS** place unit tests in `backend/unittesting/`
+3. ✅ **ALWAYS** place helper scripts in `backend/scripts/`
+4. ✅ **UPDATE** `backend/unittesting/README.md` when adding new tests
+5. ✅ **USE** consistent naming: `test_sprint_X_Y.cpp` for persistence tests
+
+### Why This Matters
+
+- Keeps backend root directory clean and organized
+- Makes it easy to find and run all unit tests
+- Separates test code from production code
+- Professional project structure
+- Easy onboarding for new developers
+
+**See**: `backend/unittesting/README.md` for complete test documentation and build instructions
+
+---
+
 ## 💾 DATA PERSISTENCE ARCHITECTURE (In Progress)
 
 ### Current Status: TRANSITIONING TO PERSISTENT STORAGE
