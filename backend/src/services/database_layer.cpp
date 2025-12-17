@@ -3,6 +3,7 @@
 #include "services/sharding_service.h"
 #include "services/replication_service.h"
 #include "services/query_router.h"
+#include "storage/memory_mapped_vector_store.h"
 #include <random>
 #include <algorithm>
 #include <sstream>
@@ -687,6 +688,427 @@ Result<void> DatabaseLayer::replicate_vector(const Vector& vector, const std::st
     
     LOG_DEBUG(logger_, "Successfully replicated vector: " << vector.id);
     return {};
+}
+
+// ============================================================================
+// PersistentDatabasePersistence implementation
+// ============================================================================
+
+PersistentDatabasePersistence::PersistentDatabasePersistence(
+    const std::string& vector_storage_path,
+    std::shared_ptr<ShardingService> sharding_service,
+    std::shared_ptr<QueryRouter> query_router,
+    std::shared_ptr<ReplicationService> replication_service)
+    : sharding_service_(sharding_service)
+    , query_router_(query_router)
+    , replication_service_(replication_service) {
+    
+    logger_ = logging::LoggerManager::get_logger("PersistentDatabasePersistence");
+    vector_store_ = std::make_unique<MemoryMappedVectorStore>(vector_storage_path);
+    
+    LOG_INFO(logger_, "Initialized PersistentDatabasePersistence with vector storage at: " << vector_storage_path);
+}
+
+Result<std::string> PersistentDatabasePersistence::create_database(const Database& db) {
+    std::unique_lock<std::shared_mutex> lock(databases_mutex_);
+    
+    if (!db.validate()) {
+        RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid database configuration");
+    }
+    
+    std::string database_id = db.databaseId.empty() ? generate_id() : db.databaseId;
+    Database new_db = db;
+    new_db.databaseId = database_id;
+    new_db.created_at = "2025-12-17T00:00:00Z";
+    new_db.updated_at = "2025-12-17T00:00:00Z";
+    
+    databases_[database_id] = new_db;
+    indexes_by_db_[database_id] = std::unordered_map<std::string, Index>();
+    
+    // Create vector file for this database
+    if (!vector_store_->create_vector_file(database_id, new_db.vectorDimension, 1000)) {
+        LOG_ERROR(logger_, "Failed to create vector file for database: " << database_id);
+        databases_.erase(database_id);
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to create vector storage file");
+    }
+    
+    LOG_INFO(logger_, "Created database with persistent storage: " << database_id);
+    return database_id;
+}
+
+Result<Database> PersistentDatabasePersistence::get_database(const std::string& database_id) {
+    std::shared_lock<std::shared_mutex> lock(databases_mutex_);
+    
+    auto it = databases_.find(database_id);
+    if (it == databases_.end()) {
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "Database not found: " + database_id);
+    }
+    
+    return it->second;
+}
+
+Result<std::vector<Database>> PersistentDatabasePersistence::list_databases() {
+    std::shared_lock<std::shared_mutex> lock(databases_mutex_);
+    
+    std::vector<Database> result;
+    for (const auto& [id, db] : databases_) {
+        result.push_back(db);
+    }
+    
+    return result;
+}
+
+Result<void> PersistentDatabasePersistence::update_database(const std::string& database_id, const Database& db) {
+    std::unique_lock<std::shared_mutex> lock(databases_mutex_);
+    
+    if (!db.validate()) {
+        RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid database configuration");
+    }
+    
+    auto it = databases_.find(database_id);
+    if (it == databases_.end()) {
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "Database not found: " + database_id);
+    }
+    
+    Database updated_db = db;
+    updated_db.databaseId = database_id;
+    updated_db.updated_at = "2025-12-17T00:00:00Z";
+    
+    databases_[database_id] = updated_db;
+    
+    LOG_INFO(logger_, "Updated database: " << database_id);
+    return {};
+}
+
+Result<void> PersistentDatabasePersistence::delete_database(const std::string& database_id) {
+    std::unique_lock<std::shared_mutex> lock(databases_mutex_);
+    
+    auto it = databases_.find(database_id);
+    if (it == databases_.end()) {
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "Database not found: " + database_id);
+    }
+    
+    // Delete vector storage
+    if (!vector_store_->delete_database_vectors(database_id)) {
+        LOG_WARN(logger_, "Failed to delete vector storage for database: " << database_id);
+    }
+    
+    databases_.erase(it);
+    
+    // Clean up indexes
+    auto idx_it = indexes_by_db_.find(database_id);
+    if (idx_it != indexes_by_db_.end()) {
+        indexes_by_db_.erase(idx_it);
+    }
+    
+    LOG_INFO(logger_, "Deleted database: " << database_id);
+    return {};
+}
+
+Result<void> PersistentDatabasePersistence::store_vector(const std::string& database_id, const Vector& vector) {
+    // Check database exists
+    {
+        std::shared_lock<std::shared_mutex> lock(databases_mutex_);
+        if (databases_.find(database_id) == databases_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "Database not found: " + database_id);
+        }
+        
+        // Validate dimensions
+        const auto& db = databases_[database_id];
+        if (!validate_vector_dimensions(vector, db.vectorDimension)) {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, 
+                        "Vector dimension mismatch. Expected: " + std::to_string(db.vectorDimension) +
+                        ", Got: " + std::to_string(vector.values.size()));
+        }
+    }
+    
+    // Store in memory-mapped file
+    if (!vector_store_->store_vector(database_id, vector.id, vector.values)) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to store vector in persistent storage");
+    }
+    
+    LOG_DEBUG(logger_, "Stored vector " << vector.id << " in database " << database_id);
+    return {};
+}
+
+Result<Vector> PersistentDatabasePersistence::retrieve_vector(const std::string& database_id, const std::string& vector_id) {
+    // Check database exists
+    {
+        std::shared_lock<std::shared_mutex> lock(databases_mutex_);
+        if (databases_.find(database_id) == databases_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "Database not found: " + database_id);
+        }
+    }
+    
+    // Retrieve from memory-mapped file
+    auto values = vector_store_->retrieve_vector(database_id, vector_id);
+    if (!values.has_value()) {
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "Vector not found: " + vector_id);
+    }
+    
+    // Construct Vector object
+    Vector vec;
+    vec.id = vector_id;
+    vec.values = *values;
+    vec.databaseId = database_id;
+    
+    return vec;
+}
+
+Result<std::vector<Vector>> PersistentDatabasePersistence::retrieve_vectors(
+    const std::string& database_id,
+    const std::vector<std::string>& vector_ids) {
+    
+    // Check database exists
+    {
+        std::shared_lock<std::shared_mutex> lock(databases_mutex_);
+        if (databases_.find(database_id) == databases_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "Database not found: " + database_id);
+        }
+    }
+    
+    // Batch retrieve from memory-mapped file
+    auto results = vector_store_->batch_retrieve(database_id, vector_ids);
+    
+    std::vector<Vector> vectors;
+    for (size_t i = 0; i < results.size(); i++) {
+        if (results[i].has_value()) {
+            Vector vec;
+            vec.id = vector_ids[i];
+            vec.values = *results[i];
+            vec.databaseId = database_id;
+            vectors.push_back(vec);
+        }
+    }
+    
+    return vectors;
+}
+
+Result<void> PersistentDatabasePersistence::update_vector(const std::string& database_id, const Vector& vector) {
+    // Update is same as store for memory-mapped storage
+    return store_vector(database_id, vector);
+}
+
+Result<void> PersistentDatabasePersistence::delete_vector(const std::string& database_id, const std::string& vector_id) {
+    // Check database exists
+    {
+        std::shared_lock<std::shared_mutex> lock(databases_mutex_);
+        if (databases_.find(database_id) == databases_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "Database not found: " + database_id);
+        }
+    }
+    
+    if (!vector_store_->delete_vector(database_id, vector_id)) {
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "Vector not found: " + vector_id);
+    }
+    
+    LOG_DEBUG(logger_, "Deleted vector " << vector_id << " from database " << database_id);
+    return {};
+}
+
+Result<void> PersistentDatabasePersistence::batch_store_vectors(
+    const std::string& database_id,
+    const std::vector<Vector>& vectors) {
+    
+    // Check database exists and get dimension
+    int expected_dimension;
+    {
+        std::shared_lock<std::shared_mutex> lock(databases_mutex_);
+        auto it = databases_.find(database_id);
+        if (it == databases_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "Database not found: " + database_id);
+        }
+        expected_dimension = it->second.vectorDimension;
+    }
+    
+    // Validate all vectors
+    for (const auto& vec : vectors) {
+        if (!validate_vector_dimensions(vec, expected_dimension)) {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT,
+                        "Vector dimension mismatch for vector: " + vec.id);
+        }
+    }
+    
+    // Prepare batch
+    std::vector<std::pair<std::string, std::vector<float>>> batch;
+    for (const auto& vec : vectors) {
+        batch.emplace_back(vec.id, vec.values);
+    }
+    
+    // Batch store
+    size_t stored = vector_store_->batch_store(database_id, batch);
+    if (stored != vectors.size()) {
+        LOG_WARN(logger_, "Only stored " << stored << " out of " << vectors.size() << " vectors");
+    }
+    
+    LOG_INFO(logger_, "Batch stored " << stored << " vectors in database " << database_id);
+    return {};
+}
+
+Result<void> PersistentDatabasePersistence::batch_delete_vectors(
+    const std::string& database_id,
+    const std::vector<std::string>& vector_ids) {
+    
+    // Check database exists
+    {
+        std::shared_lock<std::shared_mutex> lock(databases_mutex_);
+        if (databases_.find(database_id) == databases_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "Database not found: " + database_id);
+        }
+    }
+    
+    size_t deleted = 0;
+    for (const auto& vector_id : vector_ids) {
+        if (vector_store_->delete_vector(database_id, vector_id)) {
+            deleted++;
+        }
+    }
+    
+    LOG_INFO(logger_, "Batch deleted " << deleted << " vectors from database " << database_id);
+    return {};
+}
+
+// Index operations (keep in-memory for now, can be extended later)
+Result<void> PersistentDatabasePersistence::create_index(const std::string& database_id, const Index& index) {
+    std::unique_lock<std::shared_mutex> lock(indexes_mutex_);
+    
+    auto& indexes = indexes_by_db_[database_id];
+    std::string index_id = index.indexId.empty() ? generate_id() : index.indexId;
+    
+    Index new_index = index;
+    new_index.indexId = index_id;
+    indexes[index_id] = new_index;
+    
+    LOG_INFO(logger_, "Created index " << index_id << " for database " << database_id);
+    return {};
+}
+
+Result<Index> PersistentDatabasePersistence::get_index(const std::string& database_id, const std::string& index_id) {
+    std::shared_lock<std::shared_mutex> lock(indexes_mutex_);
+    
+    auto db_it = indexes_by_db_.find(database_id);
+    if (db_it == indexes_by_db_.end()) {
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "Database not found: " + database_id);
+    }
+    
+    auto idx_it = db_it->second.find(index_id);
+    if (idx_it == db_it->second.end()) {
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "Index not found: " + index_id);
+    }
+    
+    return idx_it->second;
+}
+
+Result<std::vector<Index>> PersistentDatabasePersistence::list_indexes(const std::string& database_id) {
+    std::shared_lock<std::shared_mutex> lock(indexes_mutex_);
+    
+    auto it = indexes_by_db_.find(database_id);
+    if (it == indexes_by_db_.end()) {
+        return std::vector<Index>();
+    }
+    
+    std::vector<Index> result;
+    for (const auto& [id, idx] : it->second) {
+        result.push_back(idx);
+    }
+    
+    return result;
+}
+
+Result<void> PersistentDatabasePersistence::update_index(const std::string& database_id, const std::string& index_id, const Index& index) {
+    std::unique_lock<std::shared_mutex> lock(indexes_mutex_);
+    
+    auto& indexes = indexes_by_db_[database_id];
+    auto it = indexes.find(index_id);
+    if (it == indexes.end()) {
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "Index not found: " + index_id);
+    }
+    
+    Index updated_index = index;
+    updated_index.indexId = index_id;
+    indexes[index_id] = updated_index;
+    
+    LOG_INFO(logger_, "Updated index " << index_id << " in database " << database_id);
+    return {};
+}
+
+Result<void> PersistentDatabasePersistence::delete_index(const std::string& database_id, const std::string& index_id) {
+    std::unique_lock<std::shared_mutex> lock(indexes_mutex_);
+    
+    auto db_it = indexes_by_db_.find(database_id);
+    if (db_it == indexes_by_db_.end()) {
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "Database not found: " + database_id);
+    }
+    
+    auto it = db_it->second.find(index_id);
+    if (it == db_it->second.end()) {
+        RETURN_ERROR(ErrorCode::NOT_FOUND, "Index not found: " + index_id);
+    }
+    
+    db_it->second.erase(it);
+    
+    LOG_INFO(logger_, "Deleted index " << index_id << " from database " << database_id);
+    return {};
+}
+
+Result<bool> PersistentDatabasePersistence::database_exists(const std::string& database_id) const {
+    std::shared_lock<std::shared_mutex> lock(databases_mutex_);
+    return databases_.find(database_id) != databases_.end();
+}
+
+Result<bool> PersistentDatabasePersistence::vector_exists(const std::string& database_id, const std::string& vector_id) const {
+    auto vec = const_cast<PersistentDatabasePersistence*>(this)->retrieve_vector(database_id, vector_id);
+    return vec.has_value();
+}
+
+Result<bool> PersistentDatabasePersistence::index_exists(const std::string& database_id, const std::string& index_id) const {
+    std::shared_lock<std::shared_mutex> lock(indexes_mutex_);
+    
+    auto db_it = indexes_by_db_.find(database_id);
+    if (db_it == indexes_by_db_.end()) {
+        return false;
+    }
+    
+    return db_it->second.find(index_id) != db_it->second.end();
+}
+
+Result<size_t> PersistentDatabasePersistence::get_vector_count(const std::string& database_id) const {
+    {
+        std::shared_lock<std::shared_mutex> lock(databases_mutex_);
+        if (databases_.find(database_id) == databases_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "Database not found: " + database_id);
+        }
+    }
+    
+    return vector_store_->get_vector_count(database_id);
+}
+
+Result<std::vector<std::string>> PersistentDatabasePersistence::get_all_vector_ids(const std::string& database_id) const {
+    return vector_store_->list_vector_ids(database_id);
+}
+
+void PersistentDatabasePersistence::flush_all() {
+    vector_store_->flush_all(false);
+    LOG_INFO(logger_, "Flushed all vector stores");
+}
+
+void PersistentDatabasePersistence::flush_database(const std::string& database_id) {
+    vector_store_->flush(database_id, false);
+    LOG_DEBUG(logger_, "Flushed vector store for database: " << database_id);
+}
+
+std::string PersistentDatabasePersistence::generate_id() const {
+    std::random_device rd;
+    std::mt19937_64 gen(rd());
+    std::uniform_int_distribution<uint64_t> dis;
+    
+    std::stringstream ss;
+    ss << std::hex << std::setw(16) << std::setfill('0') << dis(gen);
+    return ss.str();
+}
+
+bool PersistentDatabasePersistence::validate_vector_dimensions(const Vector& vector, int expected_dimension) const {
+    return vector.values.size() == static_cast<size_t>(expected_dimension);
 }
 
 } // namespace jadevectordb
