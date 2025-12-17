@@ -1,9 +1,11 @@
 #include "sqlite_persistence_layer.h"
 #include "models/auth.h"
+#include "metrics/prometheus_metrics.h"
 #include <random>
 #include <sstream>
 #include <iomanip>
 #include <ctime>
+#include <thread>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -17,8 +19,18 @@ namespace jadevectordb {
 SQLitePersistenceLayer::SQLitePersistenceLayer(const std::string& data_directory)
     : db_(nullptr)
     , data_directory_(data_directory)
-    , db_file_path_(data_directory + "/system.db") {
+    , db_file_path_(data_directory + "/system.db")
+    , is_connected_(false)
+    , connection_retry_count_(0) {
     logger_ = logging::LoggerManager::get_logger("SQLitePersistenceLayer");
+    
+    // Initialize circuit breaker for database operations
+    utils::CircuitBreaker::Config cb_config;
+    cb_config.failure_threshold = 5;      // Open after 5 failures
+    cb_config.success_threshold = 2;      // Close after 2 successes  
+    cb_config.timeout = std::chrono::seconds(30);  // Try recovery after 30s
+    cb_config.window = std::chrono::seconds(60);   // Count failures in 60s window
+    circuit_breaker_ = std::make_unique<utils::CircuitBreaker>("SQLiteDB", cb_config);
 }
 
 SQLitePersistenceLayer::~SQLitePersistenceLayer() {
@@ -43,6 +55,8 @@ Result<void> SQLitePersistenceLayer::initialize() {
     }
     
     LOG_INFO(logger_, "SQLite database opened: " << db_file_path_);
+    is_connected_.store(true);
+    connection_retry_count_.store(0);
     
     // Enable WAL mode for better concurrency
     auto wal_result = execute_sql("PRAGMA journal_mode=WAL");
@@ -88,6 +102,7 @@ Result<void> SQLitePersistenceLayer::close() {
     if (db_) {
         sqlite3_close(db_);
         db_ = nullptr;
+        is_connected_.store(false);
         LOG_INFO(logger_, "SQLite database closed");
     }
     
@@ -460,6 +475,10 @@ Result<std::string> SQLitePersistenceLayer::create_user(
     const std::string& password_hash,
     const std::string& salt) {
     
+    // Record metrics
+    auto metrics = PrometheusMetricsManager::get_instance();
+    auto timer = metrics->create_db_operation_timer("create_user");
+    
     std::lock_guard<std::mutex> lock(db_mutex_);
     
     std::string user_id = generate_id();
@@ -473,6 +492,7 @@ Result<std::string> SQLitePersistenceLayer::create_user(
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
+        metrics->record_db_operation("create_user", "error");
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
     }
     
@@ -489,17 +509,24 @@ Result<std::string> SQLitePersistenceLayer::create_user(
     
     if (rc != SQLITE_DONE) {
         std::string error = sqlite3_errmsg(db_);
+        metrics->record_db_operation("create_user", "error");
         if (error.find("UNIQUE constraint failed") != std::string::npos) {
             RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "Username or email already exists");
         }
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to create user: " + error);
     }
     
+    metrics->record_db_operation("create_user", "success");
+    metrics->record_user_operation("create");
     LOG_INFO(logger_, "Created user: " << username << " (ID: " << user_id << ")");
     return user_id;
 }
 
 Result<User> SQLitePersistenceLayer::get_user(const std::string& user_id) {
+    // Record metrics
+    auto metrics = PrometheusMetricsManager::get_instance();
+    auto timer = metrics->create_db_operation_timer("get_user");
+    
     std::lock_guard<std::mutex> lock(db_mutex_);
     
     const char* sql = R"(
@@ -511,6 +538,7 @@ Result<User> SQLitePersistenceLayer::get_user(const std::string& user_id) {
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
+        metrics->record_db_operation("get_user", "error");
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement");
     }
     
@@ -519,6 +547,7 @@ Result<User> SQLitePersistenceLayer::get_user(const std::string& user_id) {
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_ROW) {
         sqlite3_finalize(stmt);
+        metrics->record_db_operation("get_user", "not_found");
         RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
     }
     
@@ -540,6 +569,7 @@ Result<User> SQLitePersistenceLayer::get_user(const std::string& user_id) {
     }
     
     sqlite3_finalize(stmt);
+    metrics->record_db_operation("get_user", "success");
     return user;
 }
 
@@ -2627,6 +2657,172 @@ Result<void> SQLitePersistenceLayer::commit_transaction() {
 
 Result<void> SQLitePersistenceLayer::rollback_transaction() {
     return execute_sql("ROLLBACK");
+}
+
+// Health & Resilience methods
+Result<void> SQLitePersistenceLayer::reconnect() {
+    LOG_INFO(logger_, "Attempting to reconnect to database...");
+    
+    // Close existing connection if any
+    if (db_) {
+        sqlite3_close(db_);
+        db_ = nullptr;
+        is_connected_.store(false);
+    }
+    
+    // Try to reconnect with exponential backoff
+    for (int attempt = 0; attempt < MAX_RETRY_ATTEMPTS; ++attempt) {
+        if (attempt > 0) {
+            exponential_backoff(attempt);
+        }
+        
+        int rc = sqlite3_open(db_file_path_.c_str(), &db_);
+        if (rc == SQLITE_OK) {
+            // Re-enable foreign keys
+            auto fk_result = execute_sql("PRAGMA foreign_keys=ON");
+            if (fk_result.has_value()) {
+                is_connected_.store(true);
+                connection_retry_count_.store(0);
+                LOG_INFO(logger_, "Database reconnection successful");
+                return {};
+            }
+        }
+        
+        if (db_) {
+            std::string error = sqlite3_errmsg(db_);
+            LOG_WARN(logger_, "Reconnection attempt " << (attempt + 1) << " failed: " << error);
+            sqlite3_close(db_);
+            db_ = nullptr;
+        }
+    }
+    
+    connection_retry_count_.fetch_add(1);
+    RETURN_ERROR(ErrorCode::INTERNAL_ERROR, 
+                 "Failed to reconnect to database after " + 
+                 std::to_string(MAX_RETRY_ATTEMPTS) + " attempts");
+}
+
+bool SQLitePersistenceLayer::is_healthy() const {
+    if (!is_connected_.load()) {
+        return false;
+    }
+    
+    if (!db_) {
+        return false;
+    }
+    
+    // Check circuit breaker state
+    if (circuit_breaker_->is_open()) {
+        return false;
+    }
+    
+    // Try a simple query to verify connection
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db_, "SELECT 1", -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        return false;
+    }
+    
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    return rc == SQLITE_ROW;
+}
+
+bool SQLitePersistenceLayer::is_connected() const {
+    return is_connected_.load() && db_ != nullptr;
+}
+
+std::string SQLitePersistenceLayer::get_health_status() const {
+    std::ostringstream oss;
+    oss << "{"
+        << "\"connected\":" << (is_connected() ? "true" : "false") << ","
+        << "\"healthy\":" << (is_healthy() ? "true" : "false") << ","
+        << "\"circuit_breaker\":\"" << circuit_breaker_->get_state_string() << "\","
+        << "\"failure_count\":" << circuit_breaker_->get_failure_count() << ","
+        << "\"retry_count\":" << connection_retry_count_.load() << ","
+        << "\"database_path\":\"" << db_file_path_ << "\""
+        << "}";
+    return oss.str();
+}
+
+// Retry logic helpers
+void SQLitePersistenceLayer::exponential_backoff(int attempt) const {
+    // Exponential backoff: 100ms, 200ms, 400ms, ...
+    int delay_ms = RETRY_DELAY_MS * (1 << attempt);
+    LOG_DEBUG_DEFAULT("Retrying after " << delay_ms << "ms (attempt " << attempt << ")");
+    std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+}
+
+Result<void> SQLitePersistenceLayer::execute_sql_with_retry(const std::string& sql) {
+    Result<void> last_result;
+    
+    // Wrap in circuit breaker
+    bool success = circuit_breaker_->execute([this, &sql, &last_result]() -> bool {
+        for (int attempt = 0; attempt < MAX_RETRY_ATTEMPTS; ++attempt) {
+            if (attempt > 0) {
+                exponential_backoff(attempt);
+            }
+            
+            last_result = execute_sql(sql);
+            if (last_result.has_value()) {
+                return true;  // Success
+            }
+            
+            LOG_WARN_DEFAULT("Retryable error on attempt " << (attempt + 1) << ": " << last_result.error().message);
+        }
+        
+        // All attempts failed
+        LOG_ERROR_DEFAULT("Database operation failed after " << MAX_RETRY_ATTEMPTS << " retries");
+        return false;
+    });
+    
+    if (success) {
+        return {};  // Success
+    }
+    
+    // Return the last error if available, otherwise circuit breaker is open
+    if (last_result.has_value()) {
+        // This shouldn't happen if success == true
+        return last_result;
+    } else {
+        return last_result;  // Return the error from last attempt
+    }
+}
+
+Result<sqlite3_stmt*> SQLitePersistenceLayer::prepare_statement_with_retry(const std::string& sql) {
+    Result<sqlite3_stmt*> last_result;
+    
+    // Wrap in circuit breaker
+    bool success = circuit_breaker_->execute([this, &sql, &last_result]() -> bool {
+        for (int attempt = 0; attempt < MAX_RETRY_ATTEMPTS; ++attempt) {
+            if (attempt > 0) {
+                exponential_backoff(attempt);
+            }
+            
+            last_result = prepare_statement(sql);
+            if (last_result.has_value()) {
+                return true;  // Success
+            }
+            
+            LOG_WARN_DEFAULT("Retryable error preparing statement on attempt " << (attempt + 1));
+        }
+        
+        // All attempts failed
+        LOG_ERROR_DEFAULT("Failed to prepare statement after " << MAX_RETRY_ATTEMPTS << " retries");
+        return false;
+    });
+    
+    if (success && last_result.has_value()) {
+        return last_result;  // Success
+    }
+    
+    // Return the last error if available, otherwise circuit breaker is open
+    if (last_result.has_value()) {
+        return last_result;
+    } else {
+        return last_result;  // Return the error from last attempt
+    }
 }
 
 } // namespace jadevectordb

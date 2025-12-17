@@ -22,6 +22,8 @@
 #include "services/query_router.h"
 #include "services/authentication_service.h"
 #include "services/security_audit_logger.h"
+#include "middleware/rate_limiter.h"
+#include "middleware/ip_blocker.h"
 
 // Forward declarations for services
 namespace jadevectordb {
@@ -130,9 +132,17 @@ private:
     std::unordered_map<std::string, AlertRecord> alert_store_;
     std::string runtime_environment_;
     
+    // Security middleware
+    std::unique_ptr<middleware::RateLimiter> login_rate_limiter_;
+    std::unique_ptr<middleware::RateLimiter> registration_rate_limiter_;
+    std::unique_ptr<middleware::RateLimiter> api_rate_limiter_;
+    std::unique_ptr<middleware::RateLimiter> password_reset_rate_limiter_;
+    std::unique_ptr<middleware::IPBlocker> ip_blocker_;
+    
     // Crow app instance
     std::unique_ptr<crow::App<>> app_;
     int server_port_;
+    bool server_stopped_;  // Track if stop() has been called
     
 public:
     explicit RestApiImpl(std::shared_ptr<DistributedServiceManager> distributed_service_manager = nullptr);
@@ -152,6 +162,8 @@ public:
     
     // Individual route handlers
     void handle_health_check();           // GET /health
+    void handle_database_health_check();  // GET /health/db
+    void handle_metrics();                // GET /metrics (Prometheus)
     void handle_system_status();          // GET /status
     void handle_database_status();        // GET /v1/databases/{databaseId}/status
     

@@ -4,6 +4,7 @@
 #include "lib/logging.h"
 #include "lib/error_handling.h"
 #include "security_audit_logger.h"
+#include "cache/permission_cache.h"
 #include <string>
 #include <memory>
 #include <unordered_map>
@@ -96,6 +97,9 @@ private:
 
     // Access Control Lists
     std::unordered_map<std::string, std::vector<ACLEntry>> acls_;  // resource_id -> ACL entries
+
+    // Permission cache for performance
+    std::unique_ptr<cache::PermissionCache> permission_cache_;
 
     mutable std::mutex roles_mutex_;
     mutable std::mutex user_roles_mutex_;

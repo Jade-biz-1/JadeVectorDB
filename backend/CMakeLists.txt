@@ -277,6 +277,11 @@ set(CORE_SOURCES
     src/lib/field_encryption_service.cpp
     src/lib/gpu_acceleration.cpp
     src/lib/vector_operations.cpp
+    src/middleware/rate_limiter.cpp
+    src/middleware/ip_blocker.cpp
+    src/config/config_loader.cpp
+    src/metrics/prometheus_metrics.cpp
+    src/storage/memory_mapped_vector_store.cpp
 )
 
 set(API_SOURCES

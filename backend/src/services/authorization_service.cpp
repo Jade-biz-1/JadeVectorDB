@@ -7,6 +7,8 @@ namespace jadevectordb {
 
 AuthorizationService::AuthorizationService() {
     logger_ = logging::LoggerManager::get_logger("AuthorizationService");
+    // Initialize permission cache: 100k entries, 5 minute TTL
+    permission_cache_ = std::make_unique<cache::PermissionCache>(100000, 300);
 }
 
 bool AuthorizationService::initialize(const AuthorizationConfig& config,
@@ -90,6 +92,20 @@ Result<bool> AuthorizationService::authorize(const std::string& user_id,
             return true;  // Authorization disabled
         }
 
+        // Check cache first
+        std::string cache_key = resource_type + ":" + resource_id;
+        auto cached = permission_cache_->get(user_id, cache_key, action);
+        if (cached.has_value()) {
+            // Cache hit - return cached result
+            if (!cached.value()) {
+                RETURN_ERROR(ErrorCode::PERMISSION_DENIED,
+                            "Access denied (cached): " + user_id + " cannot " + action +
+                            " " + resource_type + ":" + resource_id);
+            }
+            return true;
+        }
+
+        // Cache miss - perform full authorization check
         bool granted = false;
         std::string reason;
 
@@ -125,6 +141,10 @@ Result<bool> AuthorizationService::authorize(const std::string& user_id,
 
         // Log decision
         log_authz_decision(user_id, resource_type, resource_id, action, granted, reason);
+
+        // Cache the result
+        std::string cache_key = resource_type + ":" + resource_id;
+        permission_cache_->put(user_id, cache_key, action, granted);
 
         if (!granted) {
             RETURN_ERROR(ErrorCode::PERMISSION_DENIED,
@@ -346,11 +366,133 @@ Result<bool> AuthorizationService::assign_role_to_user(const std::string& user_i
         }
 
         LOG_INFO(logger_, "Role " + role_id + " assigned to user " + user_id);
+        
+        // Invalidate user's permission cache
+        invalidate_user_cache(user_id);
+        
         return true;
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in assign_role_to_user: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR,
                     "Role assignment failed: " + std::string(e.what()));
+    }
+}
+
+Result<bool> AuthorizationService::remove_role_from_user(const std::string& user_id,
+                                                         const std::string& role_id) {
+    try {
+        std::lock_guard<std::mutex> lock(user_roles_mutex_);
+
+        auto it = user_roles_.find(user_id);
+        if (it == user_roles_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found");
+        }
+
+        auto& roles = it->second;
+        auto role_it = std::find(roles.begin(), roles.end(), role_id);
+        if (role_it == roles.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "User does not have this role");
+        }
+
+        roles.erase(role_it);
+        
+        // Invalidate user's permission cache
+        invalidate_user_cache(user_id);
+        
+        return true;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in remove_role_from_user: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR,
+                    "Role removal failed: " + std::string(e.what()));
+    }
+}
+
+Result<bool> AuthorizationService::add_permission_to_role(const std::string& role_id,
+                                                          const Permission& permission) {
+    try {
+        std::lock_guard<std::mutex> lock(roles_mutex_);
+
+        auto it = roles_.find(role_id);
+        if (it == roles_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "Role not found");
+        }
+
+        it->second.permissions.push_back(permission);
+        
+        // Invalidate cache for all users with this role
+        std::lock_guard<std::mutex> user_roles_lock(user_roles_mutex_);
+        for (const auto& [user_id, user_roles] : user_roles_) {
+            if (std::find(user_roles.begin(), user_roles.end(), role_id) != user_roles.end()) {
+                invalidate_user_cache(user_id);
+            }
+        }
+        
+        return true;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in add_permission_to_role: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR,
+                    "Add permission to role failed: " + std::string(e.what()));
+    }
+}
+
+Result<bool> AuthorizationService::remove_permission_from_role(const std::string& role_id,
+                                                               const Permission& permission) {
+    try {
+        std::lock_guard<std::mutex> lock(roles_mutex_);
+
+        auto it = roles_.find(role_id);
+        if (it == roles_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "Role not found");
+        }
+
+        auto& permissions = it->second.permissions;
+        auto perm_it = std::find_if(permissions.begin(), permissions.end(),
+            [&permission](const Permission& p) {
+                return p.resource == permission.resource && 
+                       p.action == permission.action;
+            });
+        
+        if (perm_it == permissions.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "Permission not found in role");
+        }
+
+        permissions.erase(perm_it);
+        
+        // Invalidate cache for all users with this role
+        std::lock_guard<std::mutex> user_roles_lock(user_roles_mutex_);
+        for (const auto& [user_id, user_roles] : user_roles_) {
+            if (std::find(user_roles.begin(), user_roles.end(), role_id) != user_roles.end()) {
+                invalidate_user_cache(user_id);
+            }
+        }
+        
+        return true;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in remove_permission_from_role: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR,
+                    "Remove permission from role failed: " + std::string(e.what()));
+    }
+}
+
+Result<bool> AuthorizationService::revoke_all_user_roles(const std::string& user_id) {
+    try {
+        std::lock_guard<std::mutex> lock(user_roles_mutex_);
+
+        auto it = user_roles_.find(user_id);
+        if (it == user_roles_.end()) {
+            return true;  // Already no roles
+        }
+
+        it->second.clear();
+        
+        // Invalidate user's permission cache
+        invalidate_user_cache(user_id);
+        
+        return true;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in revoke_all_user_roles: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR,
+                    "Revoke all roles failed: " + std::string(e.what()));
     }
 }
 
@@ -408,11 +550,49 @@ Result<bool> AuthorizationService::add_acl_entry(const ACLEntry& entry) {
         acls_[entry.resource_id].push_back(entry);
         LOG_INFO(logger_, "ACL entry added for resource: " + entry.resource_id);
 
+        // Invalidate cache for the affected principal (user)
+        invalidate_user_cache(entry.principal_id);
+
         return true;
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in add_acl_entry: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR,
                     "Add ACL entry failed: " + std::string(e.what()));
+    }
+}
+
+Result<bool> AuthorizationService::remove_acl_entry(const std::string& resource_id,
+                                                    const std::string& principal_id) {
+    try {
+        std::lock_guard<std::mutex> lock(acls_mutex_);
+
+        auto it = acls_.find(resource_id);
+        if (it == acls_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "Resource ACL not found");
+        }
+
+        auto& entries = it->second;
+        auto entry_it = std::find_if(entries.begin(), entries.end(),
+            [&principal_id](const ACLEntry& e) {
+                return e.principal_id == principal_id;
+            });
+        
+        if (entry_it == entries.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "ACL entry not found for principal");
+        }
+
+        entries.erase(entry_it);
+        LOG_INFO(logger_, "ACL entry removed for resource: " + resource_id + 
+                 ", principal: " + principal_id);
+
+        // Invalidate cache for the affected principal (user)
+        invalidate_user_cache(principal_id);
+
+        return true;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in remove_acl_entry: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR,
+                    "Remove ACL entry failed: " + std::string(e.what()));
     }
 }
 
@@ -455,6 +635,21 @@ bool AuthorizationService::validate_config(const AuthorizationConfig& config) co
 bool AuthorizationService::is_system_role(const std::string& role_id) const {
     auto it = roles_.find(role_id);
     return it != roles_.end() && it->second.is_system_role;
+}
+
+// Cache management methods
+cache::PermissionCache::CacheStats AuthorizationService::get_cache_stats() const {
+    return permission_cache_->get_stats();
+}
+
+void AuthorizationService::clear_cache() {
+    permission_cache_->clear();
+    LOG_INFO(logger_, "Permission cache cleared");
+}
+
+void AuthorizationService::invalidate_user_cache(const std::string& user_id) {
+    permission_cache_->invalidate_user(user_id);
+    LOG_DEBUG(logger_, "Invalidated cache for user: " + user_id);
 }
 
 } // namespace jadevectordb

@@ -1,0 +1,12 @@
+{
+  "database": {
+    "connection_pool_size": 20,
+    "query_timeout_seconds": 30,
+    "max_retries": 3
+  },
+  "cache": {
+    "permission_cache_size": 100000,
+    "permission_cache_ttl_seconds": 300,
+    "enable_query_cache": true
+  }
+}
