@@ -1364,6 +1364,48 @@ Result<bool> SQLitePersistenceLayer::email_exists(const std::string& email) {
     return exists;
 }
 
+Result<bool> SQLitePersistenceLayer::group_exists(const std::string& group_name) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    
+    const char* sql = "SELECT COUNT(*) FROM groups WHERE group_name = ?";
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement");
+    }
+    
+    sqlite3_bind_text(stmt, 1, group_name.c_str(), -1, SQLITE_TRANSIENT);
+    
+    bool exists = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        exists = sqlite3_column_int(stmt, 0) > 0;
+    }
+    
+    sqlite3_finalize(stmt);
+    return exists;
+}
+
+Result<bool> SQLitePersistenceLayer::database_name_exists(const std::string& name) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    
+    const char* sql = "SELECT COUNT(*) FROM databases WHERE name = ?";
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement");
+    }
+    
+    sqlite3_bind_text(stmt, 1, name.c_str(), -1, SQLITE_TRANSIENT);
+    
+    bool exists = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        exists = sqlite3_column_int(stmt, 0) > 0;
+    }
+    
+    sqlite3_finalize(stmt);
+    return exists;
+}
+
 // === Permission Management Implementation ===
 
 Result<std::vector<Permission>> SQLitePersistenceLayer::list_permissions() {
@@ -2169,6 +2211,363 @@ Result<void> SQLitePersistenceLayer::cleanup_expired_sessions() {
     }
     
     return {};
+}
+
+// === DATABASE METADATA MANAGEMENT ===
+
+Result<std::string> SQLitePersistenceLayer::store_database_metadata(
+    const std::string& name,
+    const std::string& description,
+    const std::string& owner_user_id,
+    int vector_dimension,
+    const std::string& index_type,
+    const std::string& metadata_json) {
+    
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    
+    std::string database_id = generate_id();
+    int64_t now = current_timestamp();
+    
+    const char* sql = R"(
+        INSERT INTO databases (database_id, name, description, owner_user_id,
+                              vector_dimension, index_type, vector_count, index_count,
+                              created_at, updated_at, metadata)
+        VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)
+    )";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
+    }
+    
+    sqlite3_bind_text(stmt, 1, database_id.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, description.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, owner_user_id.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 5, vector_dimension);
+    sqlite3_bind_text(stmt, 6, index_type.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 7, now);
+    sqlite3_bind_int64(stmt, 8, now);
+    sqlite3_bind_text(stmt, 9, metadata_json.c_str(), -1, SQLITE_TRANSIENT);
+    
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    if (rc != SQLITE_DONE) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to store database metadata: " + std::string(sqlite3_errmsg(db_)));
+    }
+    
+    return database_id;
+}
+
+Result<DatabaseMetadata> SQLitePersistenceLayer::get_database_metadata(const std::string& database_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    
+    const char* sql = R"(
+        SELECT database_id, name, description, owner_user_id,
+               vector_dimension, index_type, vector_count, index_count,
+               created_at, updated_at, metadata
+        FROM databases WHERE database_id = ?
+    )";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
+    }
+    
+    sqlite3_bind_text(stmt, 1, database_id.c_str(), -1, SQLITE_TRANSIENT);
+    
+    rc = sqlite3_step(stmt);
+    
+    if (rc == SQLITE_ROW) {
+        DatabaseMetadata metadata;
+        metadata.database_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        metadata.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        metadata.description = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        metadata.owner_user_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        metadata.vector_dimension = sqlite3_column_int(stmt, 4);
+        metadata.index_type = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+        metadata.vector_count = sqlite3_column_int64(stmt, 6);
+        metadata.index_count = sqlite3_column_int64(stmt, 7);
+        metadata.created_at = sqlite3_column_int64(stmt, 8);
+        metadata.updated_at = sqlite3_column_int64(stmt, 9);
+        
+        const char* metadata_text = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10));
+        metadata.metadata = metadata_text ? metadata_text : "";
+        
+        sqlite3_finalize(stmt);
+        return metadata;
+    }
+    
+    sqlite3_finalize(stmt);
+    RETURN_ERROR(ErrorCode::NOT_FOUND, "Database metadata not found");
+}
+
+Result<std::vector<DatabaseMetadata>> SQLitePersistenceLayer::list_database_metadata(int limit, int offset) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    
+    const char* sql = R"(
+        SELECT database_id, name, description, owner_user_id,
+               vector_dimension, index_type, vector_count, index_count,
+               created_at, updated_at, metadata
+        FROM databases
+        ORDER BY created_at DESC
+        LIMIT ? OFFSET ?
+    )";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
+    }
+    
+    sqlite3_bind_int(stmt, 1, limit);
+    sqlite3_bind_int(stmt, 2, offset);
+    
+    std::vector<DatabaseMetadata> databases_list;
+    
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        DatabaseMetadata metadata;
+        metadata.database_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        metadata.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        metadata.description = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        metadata.owner_user_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        metadata.vector_dimension = sqlite3_column_int(stmt, 4);
+        metadata.index_type = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+        metadata.vector_count = sqlite3_column_int64(stmt, 6);
+        metadata.index_count = sqlite3_column_int64(stmt, 7);
+        metadata.created_at = sqlite3_column_int64(stmt, 8);
+        metadata.updated_at = sqlite3_column_int64(stmt, 9);
+        
+        const char* metadata_text = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10));
+        metadata.metadata = metadata_text ? metadata_text : "";
+        
+        databases_list.push_back(metadata);
+    }
+    
+    sqlite3_finalize(stmt);
+    
+    if (rc != SQLITE_DONE) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to list database metadata");
+    }
+    
+    return databases_list;
+}
+
+Result<void> SQLitePersistenceLayer::update_database_metadata(
+    const std::string& database_id,
+    const DatabaseMetadata& metadata) {
+    
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    
+    int64_t now = current_timestamp();
+    
+    const char* sql = R"(
+        UPDATE databases
+        SET name = ?, description = ?, vector_dimension = ?, index_type = ?,
+            updated_at = ?, metadata = ?
+        WHERE database_id = ?
+    )";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
+    }
+    
+    sqlite3_bind_text(stmt, 1, metadata.name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, metadata.description.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 3, metadata.vector_dimension);
+    sqlite3_bind_text(stmt, 4, metadata.index_type.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 5, now);
+    sqlite3_bind_text(stmt, 6, metadata.metadata.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 7, database_id.c_str(), -1, SQLITE_TRANSIENT);
+    
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    if (rc != SQLITE_DONE) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to update database metadata");
+    }
+    
+    return {};
+}
+
+Result<void> SQLitePersistenceLayer::delete_database_metadata(const std::string& database_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    
+    const char* sql = "DELETE FROM databases WHERE database_id = ?";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
+    }
+    
+    sqlite3_bind_text(stmt, 1, database_id.c_str(), -1, SQLITE_TRANSIENT);
+    
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    if (rc != SQLITE_DONE) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to delete database metadata");
+    }
+    
+    return {};
+}
+
+Result<void> SQLitePersistenceLayer::update_database_stats(
+    const std::string& database_id,
+    int64_t vector_count,
+    int64_t index_count) {
+    
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    
+    int64_t now = current_timestamp();
+    
+    const char* sql = R"(
+        UPDATE databases
+        SET vector_count = ?, index_count = ?, updated_at = ?
+        WHERE database_id = ?
+    )";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
+    }
+    
+    sqlite3_bind_int64(stmt, 1, vector_count);
+    sqlite3_bind_int64(stmt, 2, index_count);
+    sqlite3_bind_int64(stmt, 3, now);
+    sqlite3_bind_text(stmt, 4, database_id.c_str(), -1, SQLITE_TRANSIENT);
+    
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    if (rc != SQLITE_DONE) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to update database stats");
+    }
+    
+    return {};
+}
+
+// === AUDIT LOGGING ===
+
+Result<void> SQLitePersistenceLayer::log_audit_event(
+    const std::string& user_id,
+    const std::string& action,
+    const std::string& resource_type,
+    const std::string& resource_id,
+    const std::string& ip_address,
+    bool success,
+    const std::string& details) {
+    
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    
+    int64_t now = current_timestamp();
+    
+    const char* sql = R"(
+        INSERT INTO audit_logs (user_id, action, resource_type, resource_id,
+                               ip_address, success, details, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    )";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
+    }
+    
+    sqlite3_bind_text(stmt, 1, user_id.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, action.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, resource_type.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, resource_id.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, ip_address.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 6, success ? 1 : 0);
+    sqlite3_bind_text(stmt, 7, details.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 8, now);
+    
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    if (rc != SQLITE_DONE) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to log audit event: " + std::string(sqlite3_errmsg(db_)));
+    }
+    
+    return {};
+}
+
+Result<std::vector<AuditLogEntry>> SQLitePersistenceLayer::get_audit_logs(
+    int limit,
+    int offset,
+    const std::string& user_id,
+    const std::string& action) {
+    
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    
+    // Build dynamic query based on filters
+    std::string sql = R"(
+        SELECT id, user_id, action, resource_type, resource_id,
+               ip_address, success, details, timestamp
+        FROM audit_logs
+        WHERE 1=1
+    )";
+    
+    if (!user_id.empty()) {
+        sql += " AND user_id = ?";
+    }
+    if (!action.empty()) {
+        sql += " AND action = ?";
+    }
+    
+    sql += " ORDER BY timestamp DESC LIMIT ? OFFSET ?";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
+    }
+    
+    int param_idx = 1;
+    if (!user_id.empty()) {
+        sqlite3_bind_text(stmt, param_idx++, user_id.c_str(), -1, SQLITE_TRANSIENT);
+    }
+    if (!action.empty()) {
+        sqlite3_bind_text(stmt, param_idx++, action.c_str(), -1, SQLITE_TRANSIENT);
+    }
+    sqlite3_bind_int(stmt, param_idx++, limit);
+    sqlite3_bind_int(stmt, param_idx++, offset);
+    
+    std::vector<AuditLogEntry> logs;
+    
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        AuditLogEntry entry;
+        entry.id = sqlite3_column_int64(stmt, 0);
+        entry.user_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        entry.action = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        entry.resource_type = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        entry.resource_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+        entry.ip_address = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+        entry.success = sqlite3_column_int(stmt, 6) == 1;
+        
+        const char* details_text = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7));
+        entry.details = details_text ? details_text : "";
+        
+        entry.timestamp = sqlite3_column_int64(stmt, 8);
+        
+        logs.push_back(entry);
+    }
+    
+    sqlite3_finalize(stmt);
+    
+    if (rc != SQLITE_DONE) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to get audit logs");
+    }
+    
+    return logs;
 }
 
 // Transaction support
