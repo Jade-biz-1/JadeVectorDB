@@ -9,6 +9,7 @@
 #include "lib/logging.h"
 #include "lib/config.h"
 #include "lib/error_handling.h"
+#include "metrics/prometheus_metrics.h"
 #include "services/database_service.h"
 #include "services/vector_storage.h"
 #include "services/similarity_search.h"
@@ -238,6 +239,7 @@ void RestApiImpl::register_routes() {
     // Health and monitoring endpoints
     handle_health_check();
     handle_database_health_check();
+    handle_metrics();
     handle_system_status();
     
     // Database management endpoints
@@ -492,6 +494,27 @@ void RestApiImpl::handle_database_health_check() {
         } catch (const std::exception& e) {
             LOG_ERROR(logger_, "Error in database health check: " + std::string(e.what()));
             return crow::response(503, "{\"error\":\"Database health check failed\",\"message\":\"" + std::string(e.what()) + "\"}");
+        }
+    });
+}
+
+void RestApiImpl::handle_metrics() {
+    LOG_DEBUG(logger_, "Setting up Prometheus metrics endpoint at /metrics");
+    
+    app_->route_dynamic("/metrics")
+    ([this](const crow::request& req) {
+        try {
+            // Get metrics from PrometheusMetrics singleton
+            auto metrics = PrometheusMetricsManager::get_instance();
+            std::string metrics_text = metrics->get_metrics();
+            
+            // Return metrics in Prometheus text format
+            crow::response resp(200, metrics_text);
+            resp.set_header("Content-Type", "text/plain; version=0.0.4");
+            return resp;
+        } catch (const std::exception& e) {
+            LOG_ERROR(logger_, "Error in metrics endpoint: " + std::string(e.what()));
+            return crow::response(500, "# Error generating metrics\n");
         }
     });
 }

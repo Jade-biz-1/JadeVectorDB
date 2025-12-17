@@ -1,5 +1,6 @@
 #include "sqlite_persistence_layer.h"
 #include "models/auth.h"
+#include "metrics/prometheus_metrics.h"
 #include <random>
 #include <sstream>
 #include <iomanip>
@@ -474,6 +475,10 @@ Result<std::string> SQLitePersistenceLayer::create_user(
     const std::string& password_hash,
     const std::string& salt) {
     
+    // Record metrics
+    auto metrics = PrometheusMetricsManager::get_instance();
+    auto timer = metrics->create_db_operation_timer("create_user");
+    
     std::lock_guard<std::mutex> lock(db_mutex_);
     
     std::string user_id = generate_id();
@@ -487,6 +492,7 @@ Result<std::string> SQLitePersistenceLayer::create_user(
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
+        metrics->record_db_operation("create_user", "error");
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
     }
     
@@ -503,17 +509,24 @@ Result<std::string> SQLitePersistenceLayer::create_user(
     
     if (rc != SQLITE_DONE) {
         std::string error = sqlite3_errmsg(db_);
+        metrics->record_db_operation("create_user", "error");
         if (error.find("UNIQUE constraint failed") != std::string::npos) {
             RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "Username or email already exists");
         }
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to create user: " + error);
     }
     
+    metrics->record_db_operation("create_user", "success");
+    metrics->record_user_operation("create");
     LOG_INFO(logger_, "Created user: " << username << " (ID: " << user_id << ")");
     return user_id;
 }
 
 Result<User> SQLitePersistenceLayer::get_user(const std::string& user_id) {
+    // Record metrics
+    auto metrics = PrometheusMetricsManager::get_instance();
+    auto timer = metrics->create_db_operation_timer("get_user");
+    
     std::lock_guard<std::mutex> lock(db_mutex_);
     
     const char* sql = R"(
@@ -525,6 +538,7 @@ Result<User> SQLitePersistenceLayer::get_user(const std::string& user_id) {
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
+        metrics->record_db_operation("get_user", "error");
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement");
     }
     
@@ -533,6 +547,7 @@ Result<User> SQLitePersistenceLayer::get_user(const std::string& user_id) {
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_ROW) {
         sqlite3_finalize(stmt);
+        metrics->record_db_operation("get_user", "not_found");
         RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
     }
     
@@ -554,6 +569,7 @@ Result<User> SQLitePersistenceLayer::get_user(const std::string& user_id) {
     }
     
     sqlite3_finalize(stmt);
+    metrics->record_db_operation("get_user", "success");
     return user;
 }
 

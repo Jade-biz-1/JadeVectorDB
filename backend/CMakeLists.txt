@@ -280,6 +280,7 @@ set(CORE_SOURCES
     src/middleware/rate_limiter.cpp
     src/middleware/ip_blocker.cpp
     src/config/config_loader.cpp
+    src/metrics/prometheus_metrics.cpp
 )
 
 set(API_SOURCES
