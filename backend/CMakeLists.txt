@@ -281,6 +281,7 @@ set(CORE_SOURCES
     src/middleware/ip_blocker.cpp
     src/config/config_loader.cpp
     src/metrics/prometheus_metrics.cpp
+    src/storage/memory_mapped_vector_store.cpp
 )
 
 set(API_SOURCES
