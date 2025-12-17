@@ -163,6 +163,7 @@ public:
     // Individual route handlers
     void handle_health_check();           // GET /health
     void handle_database_health_check();  // GET /health/db
+    void handle_metrics();                // GET /metrics (Prometheus)
     void handle_system_status();          // GET /status
     void handle_database_status();        // GET /v1/databases/{databaseId}/status
     

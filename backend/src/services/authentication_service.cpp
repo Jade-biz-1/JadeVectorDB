@@ -1,6 +1,7 @@
 #include "authentication_service.h"
 #include "lib/logging.h"
 #include "lib/error_handling.h"
+#include "metrics/prometheus_metrics.h"
 #include <random>
 #include <sstream>
 #include <iomanip>
@@ -126,8 +127,15 @@ Result<AuthToken> AuthenticationService::authenticate(const std::string& usernam
                                                       const std::string& password,
                                                       const std::string& ip_address,
                                                       const std::string& user_agent) {
+    // Record metrics
+    auto metrics = PrometheusMetricsManager::get_instance();
+    auto timer = metrics->create_auth_timer("login");
+    metrics->record_auth_request("login", "initiated");
+    
     try {
         if (username.empty() || password.empty()) {
+            metrics->record_auth_request("login", "invalid_input");
+            metrics->record_auth_error("login", "empty_credentials");
             RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Username and password are required");
         }
 
@@ -146,6 +154,8 @@ Result<AuthToken> AuthenticationService::authenticate(const std::string& usernam
         }
 
         if (!user_creds) {
+            metrics->record_auth_request("login", "user_not_found");
+            metrics->record_failed_login();
             LOG_WARN(logger_, "Authentication failed: user not found - " + username);
             log_auth_event(SecurityEventType::AUTHENTICATION_FAILURE, "", ip_address, false,
                           "User not found");
@@ -154,6 +164,8 @@ Result<AuthToken> AuthenticationService::authenticate(const std::string& usernam
 
         // Check if user is active
         if (!user_creds->is_active) {
+            metrics->record_auth_request("login", "inactive_user");
+            metrics->record_failed_login();
             LOG_WARN(logger_, "Authentication failed: inactive user - " + username);
             log_auth_event(SecurityEventType::AUTHENTICATION_FAILURE, user_id, ip_address, false,
                           "User inactive");
@@ -162,6 +174,8 @@ Result<AuthToken> AuthenticationService::authenticate(const std::string& usernam
 
         // Check if user is locked out
         if (is_user_locked_out(user_id)) {
+            metrics->record_auth_request("login", "locked_out");
+            metrics->record_failed_login();
             LOG_WARN(logger_, "Authentication failed: user locked out - " + username);
             log_auth_event(SecurityEventType::AUTHENTICATION_FAILURE, user_id, ip_address, false,
                           "Account locked out");
@@ -171,6 +185,8 @@ Result<AuthToken> AuthenticationService::authenticate(const std::string& usernam
         // Verify password
         if (!verify_password(password, user_creds->password_hash, user_creds->salt)) {
             handle_failed_login(user_id, ip_address);
+            metrics->record_auth_request("login", "invalid_password");
+            metrics->record_failed_login();
             LOG_WARN(logger_, "Authentication failed: invalid password - " + username);
             log_auth_event(SecurityEventType::AUTHENTICATION_FAILURE, user_id, ip_address, false,
                           "Invalid password");
@@ -200,12 +216,15 @@ Result<AuthToken> AuthenticationService::authenticate(const std::string& usernam
         // Create session
         create_session(user_id, token.token_id, ip_address);
 
+        metrics->record_auth_request("login", "success");
+        metrics->increment_active_sessions();
         LOG_INFO(logger_, "User authenticated successfully: " + username);
         log_auth_event(SecurityEventType::AUTHENTICATION_SUCCESS, user_id, ip_address, true,
                       "Login successful");
 
         return token;
     } catch (const std::exception& e) {
+        metrics->record_auth_error("login", "exception");
         LOG_ERROR(logger_, "Exception in authenticate: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Authentication failed: " + std::string(e.what()));
     }
