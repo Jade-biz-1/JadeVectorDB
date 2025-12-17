@@ -412,20 +412,142 @@ crow::response RestApiImpl::handle_reset_password_request(const crow::request& r
 // This method registers all authentication endpoints with Crow
 // ============================================================================
 void RestApiImpl::handle_authentication_routes() {
-    LOG_INFO(logger_, "Registering authentication routes");
+    LOG_INFO(logger_, "Registering authentication routes with rate limiting and IP blocking");
+    
+    // Helper function to extract client IP from request
+    auto extract_client_ip = [](const crow::request& req) -> std::string {
+        // Try X-Forwarded-For header first (for proxies)
+        std::string forwarded_for = req.get_header_value("X-Forwarded-For");
+        if (!forwarded_for.empty()) {
+            // Take the first IP in the list
+            size_t comma = forwarded_for.find(',');
+            return comma != std::string::npos ? forwarded_for.substr(0, comma) : forwarded_for;
+        }
+        
+        // Try X-Real-IP header
+        std::string real_ip = req.get_header_value("X-Real-IP");
+        if (!real_ip.empty()) {
+            return real_ip;
+        }
+        
+        // Fall back to remote address
+        return req.remote_ip_address;
+    };
 
-    // POST /v1/auth/register
+    // POST /v1/auth/register - With rate limiting and IP blocking
     CROW_ROUTE((*app_), "/v1/auth/register")
         .methods(crow::HTTPMethod::POST)
-        ([this](const crow::request& req) {
+        ([this, extract_client_ip](const crow::request& req) {
+            std::string client_ip = extract_client_ip(req);
+            
+            // Check if IP is blocked
+            if (ip_blocker_->is_blocked(client_ip)) {
+                int remaining = ip_blocker_->remaining_block_seconds(client_ip);
+                crow::json::wvalue error_response;
+                error_response["error"] = "ip_blocked";
+                error_response["reason"] = "too_many_failures";
+                error_response["retry_after"] = remaining;
+                error_response["message"] = "IP address temporarily blocked due to too many failed attempts";
+                
+                LOG_WARN(logger_, "Blocked registration attempt from IP: " << client_ip);
+                if (security_audit_logger_) {
+                    security_audit_logger_->log_authentication_attempt("", client_ip, false, "Registration blocked - IP banned");
+                }
+                
+                crow::response resp(403, error_response);
+                resp.set_header("Content-Type", "application/json");
+                resp.set_header("Retry-After", std::to_string(remaining));
+                return resp;
+            }
+            
+            // Check registration rate limit
+            if (!registration_rate_limiter_->allow(client_ip)) {
+                double retry_after = registration_rate_limiter_->retry_after_seconds(client_ip);
+                crow::json::wvalue error_response;
+                error_response["error"] = "rate_limit_exceeded";
+                error_response["retry_after"] = static_cast<int>(std::ceil(retry_after));
+                error_response["message"] = "Too many registration attempts. Please try again later.";
+                
+                LOG_WARN(logger_, "Rate limit exceeded for registration from IP: " << client_ip);
+                if (security_audit_logger_) {
+                    security_audit_logger_->log_authentication_attempt("", client_ip, false, "Registration rate limited");
+                }
+                
+                crow::response resp(429, error_response);
+                resp.set_header("Content-Type", "application/json");
+                resp.set_header("Retry-After", std::to_string(static_cast<int>(std::ceil(retry_after))));
+                return resp;
+            }
+            
+            // Process registration (delegate to existing handler)
             return handle_register_request(req);
         });
 
-    // POST /v1/auth/login
+    // POST /v1/auth/login - With rate limiting and IP blocking
     CROW_ROUTE((*app_), "/v1/auth/login")
         .methods(crow::HTTPMethod::POST)
-        ([this](const crow::request& req) {
-            return handle_login_request(req);
+        ([this, extract_client_ip](const crow::request& req) {
+            std::string client_ip = extract_client_ip(req);
+            
+            // Check if IP is blocked
+            if (ip_blocker_->is_blocked(client_ip)) {
+                int remaining = ip_blocker_->remaining_block_seconds(client_ip);
+                crow::json::wvalue error_response;
+                error_response["error"] = "ip_blocked";
+                error_response["reason"] = "too_many_failed_login_attempts";
+                error_response["retry_after"] = remaining;
+                error_response["message"] = "IP address temporarily blocked due to too many failed login attempts";
+                
+                LOG_WARN(logger_, "Blocked login attempt from IP: " << client_ip);
+                if (security_audit_logger_) {
+                    security_audit_logger_->log_authentication_attempt("", client_ip, false, "Login blocked - IP banned");
+                }
+                
+                crow::response resp(403, error_response);
+                resp.set_header("Content-Type", "application/json");
+                resp.set_header("Retry-After", std::to_string(remaining));
+                return resp;
+            }
+            
+            // Check login rate limit
+            if (!login_rate_limiter_->allow(client_ip)) {
+                double retry_after = login_rate_limiter_->retry_after_seconds(client_ip);
+                crow::json::wvalue error_response;
+                error_response["error"] = "rate_limit_exceeded";
+                error_response["retry_after"] = static_cast<int>(std::ceil(retry_after));
+                error_response["message"] = "Too many login attempts. Please try again later.";
+                
+                LOG_WARN(logger_, "Rate limit exceeded for login from IP: " << client_ip);
+                if (security_audit_logger_) {
+                    security_audit_logger_->log_authentication_attempt("", client_ip, false, "Login rate limited");
+                }
+                
+                crow::response resp(429, error_response);
+                resp.set_header("Content-Type", "application/json");
+                resp.set_header("Retry-After", std::to_string(static_cast<int>(std::ceil(retry_after))));
+                return resp;
+            }
+            
+            // Process login
+            auto login_response = handle_login_request(req);
+            
+            // Check if login was successful or failed
+            if (login_response.code == 200) {
+                // Successful login - clear failure history
+                ip_blocker_->record_success(client_ip);
+                LOG_INFO(logger_, "Successful login from IP: " << client_ip);
+            } else {
+                // Failed login - record failure
+                bool now_blocked = ip_blocker_->record_failure(client_ip, "invalid_credentials");
+                if (now_blocked) {
+                    LOG_WARN(logger_, "IP address blocked after failed login: " << client_ip);
+                    if (security_audit_logger_) {
+                        security_audit_logger_->log_authentication_attempt("", client_ip, false, "IP auto-blocked after max failures");
+                    }
+                }
+            }
+            
+            return login_response;
         });
 
     // POST /v1/auth/logout
@@ -435,10 +557,57 @@ void RestApiImpl::handle_authentication_routes() {
             return handle_logout_request(req);
         });
 
-    // POST /v1/auth/forgot-password
+    // POST /v1/auth/forgot-password - With rate limiting and IP blocking
     CROW_ROUTE((*app_), "/v1/auth/forgot-password")
         .methods(crow::HTTPMethod::POST)
-        ([this](const crow::request& req) {
+        ([this, extract_client_ip](const crow::request& req) {
+            std::string client_ip = extract_client_ip(req);
+            
+            // Check if IP is blocked
+            if (ip_blocker_->is_blocked(client_ip)) {
+                int remaining = ip_blocker_->remaining_block_seconds(client_ip);
+                crow::json::wvalue error_response;
+                error_response["error"] = "ip_blocked";
+                error_response["reason"] = "too_many_failures";
+                error_response["retry_after"] = remaining;
+                error_response["message"] = "IP address temporarily blocked";
+                
+                crow::response resp(403, error_response);
+                resp.set_header("Content-Type", "application/json");
+                resp.set_header("Retry-After", std::to_string(remaining));
+                return resp;
+            }
+            
+            // Extract user ID from request to use for rate limiting
+            std::string user_id;
+            try {
+                auto body = crow::json::load(req.body);
+                if (body && body.has("username")) {
+                    user_id = body["username"].s();
+                } else if (body && body.has("email")) {
+                    user_id = body["email"].s();
+                }
+            } catch (...) {
+                // Use IP if we can't get user ID
+                user_id = client_ip;
+            }
+            
+            // Check password reset rate limit (per user)
+            if (!password_reset_rate_limiter_->allow(user_id)) {
+                double retry_after = password_reset_rate_limiter_->retry_after_seconds(user_id);
+                crow::json::wvalue error_response;
+                error_response["error"] = "rate_limit_exceeded";
+                error_response["retry_after"] = static_cast<int>(std::ceil(retry_after));
+                error_response["message"] = "Too many password reset requests. Please try again later.";
+                
+                LOG_WARN(logger_, "Rate limit exceeded for password reset from user: " << user_id);
+                
+                crow::response resp(429, error_response);
+                resp.set_header("Content-Type", "application/json");
+                resp.set_header("Retry-After", std::to_string(static_cast<int>(std::ceil(retry_after))));
+                return resp;
+            }
+            
             return handle_forgot_password_request(req);
         });
 
@@ -449,7 +618,7 @@ void RestApiImpl::handle_authentication_routes() {
             return handle_reset_password_request(req);
         });
 
-    LOG_INFO(logger_, "Authentication routes registered successfully");
+    LOG_INFO(logger_, "Authentication routes registered successfully with security middleware");
 }
 
 } // namespace jadevectordb

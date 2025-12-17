@@ -506,9 +506,25 @@ Sprint 1.6 focuses on production readiness after successful Sprint 1.5 testing. 
    - Library size: 9.4MB (libjadevectordb_core.a)
    - Fixed missing `#include <vector>` in rate_limiter.cpp
 
-**Status**: T11.6.5 ✅ **90% COMPLETE** (middleware implemented and tested, REST API integration remaining)
+6. ✅ **REST API Integration**
+   - Integrated rate limiting and IP blocking into authentication endpoints
+   - Login endpoint: IP blocker check → rate limiter check → process login → record success/failure
+   - Registration endpoint: IP blocker check → rate limiter check → process registration
+   - Password reset endpoint: IP blocker check → rate limiter check (per user) → process reset
+   - HTTP 403 responses for blocked IPs with Retry-After header
+   - HTTP 429 responses for rate limit exceeded with Retry-After header
+   - Automatic IP blocking after failed login attempts
+   - Audit logging for all security events (blocks, rate limits)
 
-**Next Steps**: Integrate RateLimiter and IPBlocker into REST API endpoints (login, registration, etc.) or proceed to T11.6.6 Production Configuration
+**Status**: T11.6.5 ✅ **COMPLETE** (December 17, 2025)
+
+**Final Build Status**: ✅ SUCCESS
+- Main executable compiled successfully
+- Rate limiting and IP blocking fully integrated into authentication routes
+- All middleware instantiated in RestApiImpl constructor
+- Security audit logging active for all blocks and rate limits
+
+**Next Steps**: Proceed to T11.6.6 Production Configuration (0.5 day) or T11.6.2 Prometheus Metrics (1 day)
 
 ---
 
@@ -731,7 +747,7 @@ Sprint 1.6 focuses on production readiness after successful Sprint 1.5 testing. 
 
 ## Sprint Summary
 
-**Overall Progress**: 45% Complete (3.05 / 7 tasks - T11.6.5 is 90% done, counting as 0.45 days)
+**Overall Progress**: 46% Complete (3.1 / 7 tasks - T11.6.5 fully complete)
 
 ### Completed Tasks ✅
 1. **T11.6.1: Error Handling & Recovery** (COMPLETE - December 17, 2025)
@@ -756,12 +772,12 @@ Sprint 1.6 focuses on production readiness after successful Sprint 1.5 testing. 
    - Resource limits: CPU 2.0/0.5, Memory 2GB/512MB
    - Non-root execution verified: uid=999(jadevectordb)
 
-### In Progress 🔄
-4. **T11.6.5: Rate Limiting & Security** (90% COMPLETE - December 17, 2025)
+4. **T11.6.5: Rate Limiting & Security** (COMPLETE - December 17, 2025)
    - RateLimiter with token bucket algorithm (0.0547 μs/request performance)
    - IPBlocker with automatic blocking (0.1969 μs/operation performance)
    - 31/31 comprehensive unit tests passing
-   - **Remaining**: REST API integration (~1-2 hours)
+   - REST API integration complete with HTTP 403/429 responses
+   - Audit logging active for all security events
 
 ### Pending Tasks ⏳
 4. **T11.6.2: Prometheus Metrics** (Est: 1 day)
@@ -769,7 +785,7 @@ Sprint 1.6 focuses on production readiness after successful Sprint 1.5 testing. 
 6. **T11.6.7: Operations Documentation** (Est: 0.5 days)
 
 ### Recommended Next Task
-**Complete T11.6.5 REST API Integration** (1-2 hours), then **T11.6.6: Production Configuration** (0.5 day) to maintain momentum before tackling T11.6.2 (1 day full effort).
+**T11.6.6: Production Configuration** (0.5 day) - Config loader, environment-specific settings, secrets management. Easier task to maintain momentum before tackling T11.6.2 Prometheus Metrics (1 day).
 
 ---
 
