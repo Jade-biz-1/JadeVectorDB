@@ -65,7 +65,8 @@ public:
                 // Error already logged by shutdown()
             }
         }
-        LOG_INFO(logger_, "JadeVectorDB Application terminated");
+        // Don't log after shutdown - LoggerManager is already shutdown
+        // LOG_INFO removed to prevent use-after-free
     }
 
     Result<void> initialize() {
@@ -219,23 +220,31 @@ public:
                 LOG_WARN(logger_, "Failed to stop distributed services: " << 
                          ErrorHandler::format_error(stop_result.error()));
             }
+            distributed_service_manager_.reset();  // Explicitly destroy
         }
         
         // Stop services in reverse order
         if (grpc_service_) {
             grpc_service_->stop();
+            grpc_service_.reset();  // Explicitly destroy
         }
         
         if (rest_api_service_) {
             rest_api_service_->stop();
+            rest_api_service_.reset();  // Explicitly destroy
         }
+        
+        // Clean up database layer
+        db_layer_.reset();
         
         // Wait for thread pool to finish
         thread_pool_.reset();
         
+        LOG_INFO(logger_, "JadeVectorDB application shutdown complete");
+        
+        // Shutdown logging LAST, after all log statements
         logging::LoggerManager::shutdown();
         
-        LOG_INFO(logger_, "JadeVectorDB application shutdown complete");
         return Result<void>{};
     }
     

@@ -210,6 +210,9 @@ public:
     // List all users
     Result<std::vector<UserCredentials>> list_users() const;
 
+    // Get user count (for health checks)
+    Result<size_t> get_user_count() const;
+
     // List all API keys
     Result<std::vector<std::pair<std::string, std::string>>> list_api_keys() const;
 
