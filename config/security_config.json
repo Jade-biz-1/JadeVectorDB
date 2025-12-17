@@ -1,0 +1,53 @@
+{
+  "rate_limiting": {
+    "enabled": true,
+    "login": {
+      "capacity": 5,
+      "refill_rate_per_second": 0.0833,
+      "comment": "5 login attempts per minute per IP"
+    },
+    "registration": {
+      "capacity": 3,
+      "refill_rate_per_second": 0.000833,
+      "comment": "3 registrations per hour per IP"
+    },
+    "api": {
+      "capacity": 1000,
+      "refill_rate_per_second": 16.67,
+      "comment": "1000 API requests per minute per key"
+    },
+    "password_reset": {
+      "capacity": 3,
+      "refill_rate_per_second": 0.000833,
+      "comment": "3 password resets per hour per user"
+    },
+    "global": {
+      "capacity": 10000,
+      "refill_rate_per_second": 10000,
+      "comment": "10,000 requests per second globally"
+    }
+  },
+  "ip_blocking": {
+    "enabled": true,
+    "max_failed_attempts": 10,
+    "block_duration_seconds": 3600,
+    "failure_window_seconds": 600,
+    "auto_unblock": true,
+    "log_blocks": true,
+    "comment": "Block IP after 10 failed logins within 10 minutes, block for 1 hour"
+  },
+  "ddos_protection": {
+    "enabled": true,
+    "max_connections_per_ip": 100,
+    "max_request_size_bytes": 1048576,
+    "slow_request_timeout_seconds": 30,
+    "comment": "DDoS protection: 100 connections per IP, 1MB request size limit, 30s timeout"
+  },
+  "security": {
+    "require_https": false,
+    "enable_cors": true,
+    "cors_allowed_origins": ["*"],
+    "enable_audit_logging": true,
+    "comment": "General security settings (require_https should be true in production)"
+  }
+}

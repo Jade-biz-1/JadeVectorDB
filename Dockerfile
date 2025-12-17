@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     libboost-all-dev \
     libssl-dev \
+    libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Verify installations
@@ -80,12 +81,14 @@ LABEL maintainer="JadeVectorDB Team"
 LABEL description="High-Performance Distributed Vector Database"
 LABEL version="1.0.0"
 
-# Install only runtime dependencies
+# Install only runtime dependencies + curl for health checks
 # Most libraries are statically linked, so we only need basic system libraries
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libstdc++6 \
-    && rm -rf /var/lib/apt/lists/*
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Create non-root user for security
 RUN groupadd -r jadevectordb && \
@@ -107,9 +110,19 @@ USER jadevectordb
 # Expose default port
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD ["/app/jadevectordb", "--health-check"] || exit 1
+# Health check using HTTP endpoint (already implemented in T11.6.1)
+# Checks every 30s, times out after 10s, starts checking after 10s, fails after 3 retries
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Set environment variables
+ENV JADEVECTORDB_PORT=8080 \
+    JADEVECTORDB_LOG_LEVEL=info \
+    JADEVECTORDB_DATA_DIR=/app/data
+
+# Graceful shutdown timeout (Docker sends SIGTERM, waits 10s by default, then SIGKILL)
+# Our app handles SIGTERM and shuts down within 30s
+STOPSIGNAL SIGTERM
 
 # Default command
 CMD ["/app/jadevectordb"]

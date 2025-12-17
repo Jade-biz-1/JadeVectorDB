@@ -1,0 +1,40 @@
+{
+  "authentication": {
+    "require_strong_passwords": true,
+    "min_password_length": 12,
+    "password_expiry_days": 90,
+    "enable_two_factor": true,
+    "session_timeout_seconds": 3600
+  },
+  "security": {
+    "enable_rate_limiting": true,
+    "enable_ip_blocking": true,
+    "max_failed_logins": 5,
+    "block_duration_seconds": 3600
+  },
+  "database": {
+    "connection_pool_size": 20,
+    "query_timeout_seconds": 30,
+    "max_retries": 3,
+    "db_path": "/data/jadevectordb.db",
+    "auth_db_path": "/data/jadevectordb_auth.db"
+  },
+  "cache": {
+    "permission_cache_size": 100000,
+    "permission_cache_ttl_seconds": 300,
+    "enable_query_cache": true
+  },
+  "logging": {
+    "level": "info",
+    "format": "json",
+    "output": "file",
+    "file_path": "/var/log/jadevectordb/app.log",
+    "max_file_size_mb": 100,
+    "max_files": 10,
+    "log_sql_queries": false
+  },
+  "server": {
+    "port": 8080,
+    "host": "0.0.0.0"
+  }
+}
