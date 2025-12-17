@@ -14,11 +14,12 @@
 #include "lib/error_handling.h"
 #include "lib/logging.h"
 
-// Forward declarations for distributed services
+// Forward declarations
 namespace jadevectordb {
     class ShardingService;
     class ReplicationService;
     class QueryRouter;
+    class MemoryMappedVectorStore;
 }
 
 namespace jadevectordb {
@@ -131,6 +132,79 @@ public:
     // Utility methods
     Result<size_t> get_vector_count(const std::string& database_id) const override;
     Result<std::vector<std::string>> get_all_vector_ids(const std::string& database_id) const override;
+    
+private:
+    std::string generate_id() const;
+    bool validate_vector_dimensions(const Vector& vector, int expected_dimension) const;
+};
+
+// Persistent implementation using MemoryMappedVectorStore
+class PersistentDatabasePersistence : public DatabasePersistenceInterface {
+private:
+    std::unordered_map<std::string, Database> databases_;
+    std::unordered_map<std::string, std::unordered_map<std::string, Index>> indexes_by_db_;
+    
+    std::unique_ptr<MemoryMappedVectorStore> vector_store_;
+    
+    mutable std::shared_mutex databases_mutex_;
+    mutable std::shared_mutex indexes_mutex_;
+    
+    std::shared_ptr<logging::Logger> logger_;
+    
+    // Distributed services
+    std::shared_ptr<ShardingService> sharding_service_;
+    std::shared_ptr<QueryRouter> query_router_;
+    std::shared_ptr<ReplicationService> replication_service_;
+
+public:
+    explicit PersistentDatabasePersistence(
+        const std::string& vector_storage_path,
+        std::shared_ptr<ShardingService> sharding_service = nullptr,
+        std::shared_ptr<QueryRouter> query_router = nullptr,
+        std::shared_ptr<ReplicationService> replication_service = nullptr
+    );
+    ~PersistentDatabasePersistence() = default;
+    
+    // Database operations
+    Result<std::string> create_database(const Database& db) override;
+    Result<Database> get_database(const std::string& database_id) override;
+    Result<std::vector<Database>> list_databases() override;
+    Result<void> update_database(const std::string& database_id, const Database& db) override;
+    Result<void> delete_database(const std::string& database_id) override;
+    
+    // Vector operations
+    Result<void> store_vector(const std::string& database_id, const Vector& vector) override;
+    Result<Vector> retrieve_vector(const std::string& database_id, const std::string& vector_id) override;
+    Result<std::vector<Vector>> retrieve_vectors(const std::string& database_id, 
+                                               const std::vector<std::string>& vector_ids) override;
+    Result<void> update_vector(const std::string& database_id, const Vector& vector) override;
+    Result<void> delete_vector(const std::string& database_id, const std::string& vector_id) override;
+    
+    // Batch operations
+    Result<void> batch_store_vectors(const std::string& database_id, 
+                                   const std::vector<Vector>& vectors) override;
+    Result<void> batch_delete_vectors(const std::string& database_id,
+                                    const std::vector<std::string>& vector_ids) override;
+    
+    // Index operations
+    Result<void> create_index(const std::string& database_id, const Index& index) override;
+    Result<Index> get_index(const std::string& database_id, const std::string& index_id) override;
+    Result<std::vector<Index>> list_indexes(const std::string& database_id) override;
+    Result<void> update_index(const std::string& database_id, const std::string& index_id, const Index& index) override;
+    Result<void> delete_index(const std::string& database_id, const std::string& index_id) override;
+    
+    // Validation
+    Result<bool> database_exists(const std::string& database_id) const override;
+    Result<bool> vector_exists(const std::string& database_id, const std::string& vector_id) const override;
+    Result<bool> index_exists(const std::string& database_id, const std::string& index_id) const override;
+    
+    // Utility methods
+    Result<size_t> get_vector_count(const std::string& database_id) const override;
+    Result<std::vector<std::string>> get_all_vector_ids(const std::string& database_id) const override;
+    
+    // Flush operations
+    void flush_all();
+    void flush_database(const std::string& database_id);
     
 private:
     std::string generate_id() const;
