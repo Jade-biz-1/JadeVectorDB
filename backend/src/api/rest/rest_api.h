@@ -22,6 +22,8 @@
 #include "services/query_router.h"
 #include "services/authentication_service.h"
 #include "services/security_audit_logger.h"
+#include "middleware/rate_limiter.h"
+#include "middleware/ip_blocker.h"
 
 // Forward declarations for services
 namespace jadevectordb {
@@ -129,6 +131,13 @@ private:
     std::mutex alert_mutex_;
     std::unordered_map<std::string, AlertRecord> alert_store_;
     std::string runtime_environment_;
+    
+    // Security middleware
+    std::unique_ptr<middleware::RateLimiter> login_rate_limiter_;
+    std::unique_ptr<middleware::RateLimiter> registration_rate_limiter_;
+    std::unique_ptr<middleware::RateLimiter> api_rate_limiter_;
+    std::unique_ptr<middleware::RateLimiter> password_reset_rate_limiter_;
+    std::unique_ptr<middleware::IPBlocker> ip_blocker_;
     
     // Crow app instance
     std::unique_ptr<crow::App<>> app_;

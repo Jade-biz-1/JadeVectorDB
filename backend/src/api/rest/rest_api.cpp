@@ -184,6 +184,24 @@ bool RestApiImpl::initialize(int port) {
     const char* env_ptr = std::getenv("JADE_ENV");
     runtime_environment_ = env_ptr ? std::string(env_ptr) : "development";
     
+    // Initialize security middleware (rate limiting and IP blocking)
+    // Login: 5 attempts per minute (capacity=5, refill_rate=5/60 per second)
+    login_rate_limiter_ = std::make_unique<middleware::RateLimiter>(5, 5.0 / 60.0);
+    
+    // Registration: 3 per hour (capacity=3, refill_rate=3/3600 per second)
+    registration_rate_limiter_ = std::make_unique<middleware::RateLimiter>(3, 3.0 / 3600.0);
+    
+    // API: 1000 per minute (capacity=1000, refill_rate=1000/60 per second)
+    api_rate_limiter_ = std::make_unique<middleware::RateLimiter>(1000, 1000.0 / 60.0);
+    
+    // Password reset: 3 per hour (capacity=3, refill_rate=3/3600 per second)
+    password_reset_rate_limiter_ = std::make_unique<middleware::RateLimiter>(3, 3.0 / 3600.0);
+    
+    // IP blocker: 10 failures, 3600s block duration, 600s failure window
+    ip_blocker_ = std::make_unique<middleware::IPBlocker>(10, 3600, 600);
+    
+    LOG_INFO(logger_, "Security middleware initialized (rate limiters and IP blocker)");
+    
     // Initialize distributed services if they exist
     initialize_distributed_services();
     
