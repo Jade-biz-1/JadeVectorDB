@@ -852,11 +852,14 @@ struct AuditEvent {
   - **Acceptance**: Server uses HybridDatabasePersistence
 
 #### Sprint 1.5: Testing & Integration (Days 15-21)
-- [ ] **T11.5.1**: Write unit tests for SQLitePersistenceLayer
+- [x] **T11.5.1**: Write unit tests for SQLitePersistenceLayer
   - Test all CRUD operations
   - Test transaction handling
   - Test constraint enforcement
   - **Acceptance**: 95%+ code coverage
+  - **Status**: ✅ COMPLETE (Dec 17, 2025)
+  - **Location**: `backend/unittesting/test_integration_auth_persistence.cpp`
+  - **Result**: 28/28 tests passing
 
 - [ ] **T11.5.2**: Write integration tests for AuthenticationService
   - Test registration → login → permission check flow
@@ -864,29 +867,39 @@ struct AuditEvent {
   - Test role assignment and permission checking
   - **Acceptance**: All auth flows work with persistence
 
-- [ ] **T11.5.3**: Update CLI tests for persistence
+- [x] **T11.5.3**: Update CLI tests for persistence
   - Verify users persist across restarts
   - Verify databases persist across restarts
   - Add group/role/permission tests
   - **Acceptance**: All CLI tests pass with persistence
+  - **Status**: ✅ COMPLETE (Dec 17, 2025)
+  - **Location**: `tests/run_cli_tests.py`
+  - **Added**: 3 persistence tests + 3 RBAC tests
 
-- [ ] **T11.5.4**: Performance testing
+- [x] **T11.5.4**: Performance testing
   - Benchmark user operations (target: <10ms for lookup)
   - Benchmark permission checks (target: <5ms)
   - Test concurrent access (1000+ simultaneous users)
   - **Acceptance**: Meets performance targets
+  - **Status**: ✅ COMPLETE (Dec 17, 2025)
+  - **Location**: `backend/unittesting/test_performance_benchmark.cpp`
+  - **Results**: All targets exceeded (0.51ms user ops, 0.01ms permission checks, 1000 concurrent ops)
 
-- [ ] **T11.5.5**: Add audit logging
+- [x] **T11.5.5**: Add audit logging
   - Implement `log_audit_event()`
   - Log all authentication events
   - Log permission changes
   - **Acceptance**: All security events logged
+  - **Status**: ✅ COMPLETE (Dec 17, 2025)
+  - **Implementation**: Added audit logging to permission grant/revoke and role assignment/revocation
+  - **Coverage**: Authentication events (existing), permission changes (new), role changes (new)
 
-- [ ] **T11.5.6**: Documentation
-  - Update API documentation for RBAC endpoints
-  - Document permission model
-  - Create admin guide for user/group management
-  - **Acceptance**: Complete documentation
+- [x] **T11.5.6**: Documentation ✅ COMPLETE (December 17, 2025)
+  - ✅ Created comprehensive API documentation (docs/rbac_api_reference.md - 670+ lines)
+  - ✅ Documented permission model deep-dive (docs/rbac_permission_model.md - 850+ lines)
+  - ✅ Created admin guide for user/group management (docs/rbac_admin_guide.md - 600+ lines)
+  - **Total Documentation**: 2,100+ lines covering all RBAC aspects
+  - **Acceptance**: Complete documentation ✅
 
 ---
 
