@@ -1132,6 +1132,17 @@ Result<void> SQLitePersistenceLayer::assign_role_to_user(
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to assign role to user");
     }
     
+    // Log audit event for role assignment
+    auto audit_result = log_audit_event(
+        "system",  // TODO: Pass actual user_id who assigned role
+        "assign_role",
+        "user",
+        user_id,
+        "",  // ip_address
+        true,
+        "Assigned role " + role_id + " to user " + user_id
+    );
+    
     return {};
 }
 
@@ -1155,6 +1166,17 @@ Result<void> SQLitePersistenceLayer::revoke_role_from_user(const std::string& us
     if (rc != SQLITE_DONE) {
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to revoke role from user");
     }
+    
+    // Log audit event for role revocation
+    auto audit_result = log_audit_event(
+        "system",  // TODO: Pass actual user_id who revoked role
+        "revoke_role",
+        "user",
+        user_id,
+        "",  // ip_address
+        true,
+        "Revoked role " + role_id + " from user " + user_id
+    );
     
     return {};
 }
@@ -1539,8 +1561,20 @@ Result<void> SQLitePersistenceLayer::grant_database_permission(
     sqlite3_finalize(stmt);
     
     if (rc != SQLITE_DONE) {
-        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to grant database permission");
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to grant database permission: " + std::string(sqlite3_errmsg(db_)));
     }
+    
+    // Log audit event for permission grant
+    auto audit_result = log_audit_event(
+        granted_by,
+        "grant_permission",
+        "database",
+        database_id,
+        "",  // ip_address
+        true,
+        "Granted permission " + permission_id + " on database " + database_id + 
+        " to " + principal_type + " " + principal_id
+    );
     
     return {};
 }
@@ -1575,6 +1609,18 @@ Result<void> SQLitePersistenceLayer::revoke_database_permission(
     if (rc != SQLITE_DONE) {
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to revoke database permission");
     }
+    
+    // Log audit event for permission revoke
+    auto audit_result = log_audit_event(
+        "system",  // TODO: Pass actual user_id who revoked
+        "revoke_permission",
+        "database",
+        database_id,
+        "",  // ip_address
+        true,
+        "Revoked permission " + permission_id + " on database " + database_id + 
+        " from " + principal_type + " " + principal_id
+    );
     
     return {};
 }

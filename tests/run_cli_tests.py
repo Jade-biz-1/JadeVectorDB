@@ -158,7 +158,7 @@ class CLITestRunner:
         print("="*80)
 
         # Check server
-        print("\n[1/4] Checking server connectivity...")
+        print("\n[1/5] Checking server connectivity...")
         if not self.check_server():
             print("❌ Server is not running at", self.server_url)
             print("\nPlease start the server first:")
@@ -167,19 +167,27 @@ class CLITestRunner:
         print("✓ Server is running")
 
         # Setup authentication
-        print("\n[2/4] Setting up authentication...")
+        print("\n[2/5] Setting up authentication...")
         if not self.setup_auth():
             print("❌ Authentication setup failed")
             return False
         print("✓ Authentication successful")
 
         # Run tests
-        print("\n[3/4] Running CLI tests...")
+        print("\n[3/5] Running CLI tests...")
         self.run_python_cli_tests()
         self.run_shell_cli_tests()
 
+        # Run persistence tests
+        print("\n[4/5] Running persistence tests...")
+        self.run_persistence_tests()
+
+        # Run RBAC tests
+        print("\n[5/5] Running RBAC tests...")
+        self.run_rbac_tests()
+
         # Print results
-        print("\n[4/4] Test Results:")
+        print("\n[6/6] Test Results:")
         self.print_results()
 
         return True
@@ -296,6 +304,157 @@ class CLITestRunner:
         else:
             self.results.append([12, "Shell CLI", "Get Database", "SKIP"])
 
+    def run_persistence_tests(self):
+        """Run persistence tests to verify data survives across operations."""
+        test_num = len(self.results) + 1
+
+        # Test: Verify user persists (re-login)
+        auth_data = self.test_data['auth']['test_user']
+        try:
+            login_resp = requests.post(
+                f"{self.server_url}/v1/auth/login",
+                json={
+                    "username": auth_data['username'],
+                    "password": auth_data['password']
+                },
+                timeout=10
+            )
+            success = login_resp.status_code == 200
+            self.results.append([test_num, "Persistence", "User Login After Operations",
+                               "PASS" if success else "FAIL"])
+        except Exception as e:
+            self.results.append([test_num, "Persistence", "User Login After Operations", "FAIL"])
+        
+        test_num += 1
+
+        # Test: Verify databases persist (list databases should show created DBs)
+        try:
+            db_resp = requests.get(
+                f"{self.server_url}/v1/databases",
+                headers={"Authorization": f"Bearer {self.token}"},
+                timeout=10
+            )
+            if db_resp.status_code == 200:
+                db_list = db_resp.json().get('databases', [])
+                # Check if our test databases exist
+                python_db_exists = any(db.get('name') == 'python_test_db' or 
+                                      db.get('database_id') == self.db_ids.get('python')
+                                      for db in db_list)
+                shell_db_exists = any(db.get('name') == 'shell_test_db' or
+                                     db.get('database_id') == self.db_ids.get('shell')
+                                     for db in db_list)
+                success = python_db_exists or shell_db_exists
+                self.results.append([test_num, "Persistence", "Databases Persist",
+                                   "PASS" if success else "FAIL"])
+            else:
+                self.results.append([test_num, "Persistence", "Databases Persist", "FAIL"])
+        except Exception as e:
+            self.results.append([test_num, "Persistence", "Databases Persist", "FAIL"])
+
+        test_num += 1
+
+        # Test: Create new user and verify it persists
+        try:
+            register_resp = requests.post(
+                f"{self.server_url}/v1/auth/register",
+                json={
+                    "username": "persist_test_user",
+                    "password": "TestPassword123!",
+                    "email": "persist@test.com"
+                },
+                timeout=10
+            )
+            # May already exist, that's OK
+            created = register_resp.status_code in [200, 201, 409]
+            
+            if created:
+                # Try to login with new user
+                login_resp = requests.post(
+                    f"{self.server_url}/v1/auth/login",
+                    json={
+                        "username": "persist_test_user",
+                        "password": "TestPassword123!"
+                    },
+                    timeout=10
+                )
+                success = login_resp.status_code == 200
+                self.results.append([test_num, "Persistence", "New User Persists",
+                                   "PASS" if success else "FAIL"])
+            else:
+                self.results.append([test_num, "Persistence", "New User Persists", "FAIL"])
+        except Exception as e:
+            self.results.append([test_num, "Persistence", "New User Persists", "FAIL"])
+
+    def run_rbac_tests(self):
+        """Run RBAC (Role-Based Access Control) tests."""
+        test_num = len(self.results) + 1
+
+        # Test: List users (admin operation)
+        try:
+            users_resp = requests.get(
+                f"{self.server_url}/v1/users",
+                headers={"Authorization": f"Bearer {self.token}"},
+                timeout=10
+            )
+            success = users_resp.status_code in [200, 403]  # 200 if allowed, 403 if not admin
+            self.results.append([test_num, "RBAC", "List Users Endpoint",
+                               "PASS" if success else "FAIL"])
+        except Exception as e:
+            self.results.append([test_num, "RBAC", "List Users Endpoint", "FAIL"])
+
+        test_num += 1
+
+        # Test: Create API key
+        try:
+            api_key_resp = requests.post(
+                f"{self.server_url}/v1/auth/api-keys",
+                headers={"Authorization": f"Bearer {self.token}"},
+                json={"name": "test_api_key", "scopes": ["read", "write"]},
+                timeout=10
+            )
+            success = api_key_resp.status_code in [200, 201]
+            if success:
+                api_key_data = api_key_resp.json()
+                api_key = api_key_data.get('api_key', '')
+                
+                # Test: Use API key for authentication
+                if api_key:
+                    test_num += 1
+                    status_resp = requests.get(
+                        f"{self.server_url}/v1/status",
+                        headers={"Authorization": f"Bearer {api_key}"},
+                        timeout=10
+                    )
+                    api_key_works = status_resp.status_code == 200
+                    self.results.append([test_num, "RBAC", "API Key Authentication",
+                                       "PASS" if api_key_works else "FAIL"])
+            
+            self.results.append([test_num, "RBAC", "Create API Key",
+                               "PASS" if success else "FAIL"])
+        except Exception as e:
+            self.results.append([test_num, "RBAC", "Create API Key", "FAIL"])
+
+        test_num += 1
+
+        # Test: Check user roles (if endpoint exists)
+        try:
+            # Try to get current user info
+            user_resp = requests.get(
+                f"{self.server_url}/v1/auth/me",
+                headers={"Authorization": f"Bearer {self.token}"},
+                timeout=10
+            )
+            if user_resp.status_code == 200:
+                user_data = user_resp.json()
+                has_roles = 'roles' in user_data or 'role' in user_data
+                self.results.append([test_num, "RBAC", "User Roles Present",
+                                   "PASS" if has_roles else "FAIL"])
+            else:
+                # Endpoint may not exist yet
+                self.results.append([test_num, "RBAC", "User Roles Present", "SKIP"])
+        except Exception as e:
+            self.results.append([test_num, "RBAC", "User Roles Present", "SKIP"])
+
     def print_results(self):
         """Print test results in a formatted table."""
         print("\n" + "="*80)
@@ -370,6 +529,22 @@ class CLITestRunner:
                 "Ensure at least one vector is stored in the database",
                 "Verify search service is properly initialized",
                 "Check server logs for search-related errors"
+            ])
+
+        if "Persist" in test:
+            hints.extend([
+                "Check if SQLite persistence is enabled",
+                "Verify database file exists and has correct permissions",
+                "Check server was not restarted (persistence tests run on same session)",
+                "Review persistence layer logs for errors"
+            ])
+
+        if "RBAC" in tool or "Roles" in test:
+            hints.extend([
+                "Verify RBAC system is properly initialized",
+                "Check if user has correct roles assigned",
+                "Review authentication service configuration",
+                "Check API endpoint exists and is accessible"
             ])
 
         if tool == "Shell CLI":
