@@ -1,0 +1,11 @@
+{
+  "logging": {
+    "level": "info",
+    "format": "json",
+    "output": "file",
+    "file_path": "/var/log/jadevectordb/app.log",
+    "max_file_size_mb": 100,
+    "max_files": 10,
+    "log_sql_queries": false
+  }
+}

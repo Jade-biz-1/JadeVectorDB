@@ -12,6 +12,7 @@
 #include "lib/thread_pool.h"
 // REMOVED: #include "lib/auth.h" - migrated to AuthenticationService
 #include "lib/metrics.h"
+#include "config/config_loader.h"
 #include "models/vector.h"
 #include "models/database.h"
 #include "models/index.h"
@@ -38,6 +39,7 @@ class JadeVectorDBApp {
 private:
     std::unique_ptr<logging::Logger> logger_;
     ConfigManager* config_mgr_;  // Raw pointer - singleton, not owned
+    AppConfig app_config_;  // New: Application configuration from ConfigLoader
     std::unique_ptr<ThreadPool> thread_pool_;
     // REMOVED: AuthManager* auth_mgr_ - migrated to AuthenticationService
     MetricsRegistry* metrics_registry_;  // Raw pointer - singleton, not owned
@@ -71,6 +73,18 @@ public:
 
     Result<void> initialize() {
         LOG_INFO(logger_, "Initializing JadeVectorDB services...");
+        
+        // Load application configuration from JSON files + environment variables
+        ConfigLoader config_loader;
+        auto config_result = config_loader.load_config("./config");
+        if (!config_result.has_value()) {
+            LOG_ERROR(logger_, "Failed to load configuration: " << 
+                     ErrorHandler::format_error(config_result.error()));
+            return tl::unexpected(config_result.error());
+        }
+        app_config_ = config_result.value();
+        LOG_INFO(logger_, "Configuration loaded for environment: " << 
+                ConfigLoader::environment_to_string(app_config_.environment));
         
         // Get configuration (singleton - not owned, don't delete)
         config_mgr_ = ConfigManager::get_instance();
