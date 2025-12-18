@@ -277,11 +277,14 @@ set(CORE_SOURCES
     src/lib/field_encryption_service.cpp
     src/lib/gpu_acceleration.cpp
     src/lib/vector_operations.cpp
+    src/utils/circuit_breaker.cpp
     src/middleware/rate_limiter.cpp
     src/middleware/ip_blocker.cpp
     src/config/config_loader.cpp
     src/metrics/prometheus_metrics.cpp
     src/storage/memory_mapped_vector_store.cpp
+    src/storage/vector_file_compactor.cpp
+    src/storage/incremental_backup_manager.cpp
 )
 
 set(API_SOURCES
@@ -375,6 +378,21 @@ if(BUILD_TESTS)
     )
 
     add_test(NAME VectorStorageTest COMMAND jadevectordb_tests)
+
+    # Sprint 2.2 Integration Tests
+    add_executable(sprint22_tests
+        tests/integration/test_sprint22_direct.cpp
+    )
+    
+    target_link_libraries(sprint22_tests PRIVATE
+        GTest::gtest
+        GTest::gtest_main
+        jadevectordb_core
+        OpenSSL::SSL
+        OpenSSL::Crypto
+    )
+    
+    add_test(NAME Sprint22Tests COMMAND sprint22_tests)
 endif()
 
 #############################################################################

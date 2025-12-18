@@ -1,0 +1,43 @@
+cmake_minimum_required(VERSION 3.16)
+project(Sprint22IntegrationTests)
+
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Find required packages
+find_package(GTest REQUIRED)
+find_package(Threads REQUIRED)
+find_package(OpenSSL REQUIRED)
+
+# Include directories from main project
+include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/build/_deps/eigen-src
+    ${CMAKE_CURRENT_SOURCE_DIR}/build/_deps/nlohmann_json-src/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/build/_deps/crow-src/include
+)
+
+# Create test executable for Sprint 2.2
+add_executable(sprint22_tests
+    tests/integration/test_compaction.cpp
+    tests/integration/test_incremental_backup.cpp
+    tests/integration/test_compaction_backup_integration.cpp
+)
+
+# Link against required libraries
+target_link_libraries(sprint22_tests
+    PRIVATE
+    jadevectordb_core
+    GTest::GTest
+    GTest::Main
+    Threads::Threads
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    sqlite3
+)
+
+# Add test discovery
+enable_testing()
+include(GoogleTest)
+gtest_discover_tests(sprint22_tests)

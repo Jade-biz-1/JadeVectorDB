@@ -233,10 +233,11 @@ export default function SimilaritySearchPage() {
                   </div>
                 ))}
               </div>
+              </div>
             )}
           </div>
         )}
-      </div>
+      </main>
     </Layout>
   );
 }
