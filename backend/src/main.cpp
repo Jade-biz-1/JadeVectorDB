@@ -189,7 +189,9 @@ public:
         }
         
         // Initialize REST API service with distributed service manager
-        rest_api_service_ = std::make_unique<RestApiService>(config.port, distributed_service_manager_);
+        // Pass the database layer to REST API so it uses persistent storage
+        auto shared_db_layer = std::shared_ptr<DatabaseLayer>(db_layer_.get(), [](DatabaseLayer*){/* Don't delete, owned by unique_ptr */});
+        rest_api_service_ = std::make_unique<RestApiService>(config.port, distributed_service_manager_, shared_db_layer);
         
         // Initialize gRPC service
         grpc_service_ = std::make_unique<VectorDatabaseService>(

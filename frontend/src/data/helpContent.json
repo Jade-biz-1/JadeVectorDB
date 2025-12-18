@@ -1,0 +1,237 @@
+{
+  "help_topics": [
+    {
+      "id": "assessments",
+      "title": "Module Assessments",
+      "category": "Assessments",
+      "content": "Each tutorial module includes an assessment to test your understanding. You need to score at least 70% to pass and unlock the next module.",
+      "keywords": ["quiz", "test", "assessment", "passing", "score"],
+      "relatedTopics": ["scoring", "retaking", "hints"]
+    },
+    {
+      "id": "scoring",
+      "title": "How Scoring Works",
+      "category": "Assessments",
+      "content": "Questions are worth different points based on difficulty. Easy questions are worth 10 points, medium questions 15 points, and hard questions 20 points. Your final score is calculated as a percentage of total points.",
+      "keywords": ["points", "grade", "percentage", "difficulty"],
+      "relatedTopics": ["assessments", "question-types"]
+    },
+    {
+      "id": "hints",
+      "title": "Using Hints",
+      "category": "Assessments",
+      "content": "Each question has three progressive hints. Click the lightbulb icon to reveal hints one at a time. Using hints doesn't affect your score, so don't hesitate to use them if you're stuck!",
+      "keywords": ["help", "clue", "stuck", "lightbulb"],
+      "relatedTopics": ["assessments", "question-types"]
+    },
+    {
+      "id": "retaking",
+      "title": "Retaking Assessments",
+      "category": "Assessments",
+      "content": "You can retake any assessment as many times as you want. Your best score is always saved. Use retakes to improve your understanding and achieve a perfect score!",
+      "keywords": ["retry", "repeat", "improve", "practice"],
+      "relatedTopics": ["assessments", "scoring"]
+    },
+    {
+      "id": "question-types",
+      "title": "Question Types",
+      "category": "Assessments",
+      "content": "Assessments include multiple choice questions, true/false questions, code challenges, and fill-in-the-blank questions. Each type tests different aspects of your knowledge.",
+      "keywords": ["multiple choice", "true false", "code", "fill blank"],
+      "relatedTopics": ["assessments", "scoring"]
+    },
+    {
+      "id": "readiness",
+      "title": "Production Readiness Assessment",
+      "category": "Readiness",
+      "content": "After completing all modules, take the Production Readiness Assessment to evaluate your overall expertise. This comprehensive evaluation provides detailed feedback on your strengths and areas for improvement.",
+      "keywords": ["production", "ready", "comprehensive", "overall", "evaluation"],
+      "relatedTopics": ["certificate", "proficiency-levels", "skill-areas"]
+    },
+    {
+      "id": "proficiency-levels",
+      "title": "Proficiency Levels",
+      "category": "Readiness",
+      "content": "Your readiness is rated on five levels: Beginner (0-39%), Intermediate (40-59%), Proficient (60-74%), Expert (75-89%), and Master (90-100%). Each level indicates your production readiness.",
+      "keywords": ["level", "beginner", "expert", "master", "rating"],
+      "relatedTopics": ["readiness", "scoring"]
+    },
+    {
+      "id": "skill-areas",
+      "title": "Skill Areas",
+      "category": "Readiness",
+      "content": "Your expertise is evaluated across four skill areas: Fundamentals (25%), Vector Search (30%), Optimization (25%), and Production (20%). Each area represents critical knowledge for production use.",
+      "keywords": ["fundamentals", "search", "optimization", "production", "areas"],
+      "relatedTopics": ["readiness", "proficiency-levels"]
+    },
+    {
+      "id": "certificate",
+      "title": "Completion Certificate",
+      "category": "Readiness",
+      "content": "Score 60% or higher on the readiness assessment to earn a certificate. You can download, print, or share your certificate on social media to showcase your expertise.",
+      "keywords": ["certification", "download", "share", "linkedin", "complete"],
+      "relatedTopics": ["readiness", "proficiency-levels"]
+    },
+    {
+      "id": "achievements",
+      "title": "Achievement System",
+      "category": "Achievements",
+      "content": "Earn achievements by completing modules, scoring perfectly, finishing quickly, and more. Achievements are ranked in four tiers: Bronze, Silver, Gold, and Platinum.",
+      "keywords": ["badges", "rewards", "gamification", "tiers", "unlock"],
+      "relatedTopics": ["achievement-tiers", "achievement-categories"]
+    },
+    {
+      "id": "achievement-tiers",
+      "title": "Achievement Tiers",
+      "category": "Achievements",
+      "content": "Bronze achievements (10 pts) are for basic milestones. Silver (25 pts) for consistent progress. Gold (50 pts) for mastery. Platinum (100 pts) for exceptional achievements.",
+      "keywords": ["bronze", "silver", "gold", "platinum", "points"],
+      "relatedTopics": ["achievements", "achievement-categories"]
+    },
+    {
+      "id": "achievement-categories",
+      "title": "Achievement Categories",
+      "category": "Achievements",
+      "content": "Achievements are organized into categories: Milestone, Mastery, Speed, Consistency, Exploration, Social, Special, Challenge, Time-based, and Persistence.",
+      "keywords": ["categories", "types", "milestone", "mastery", "speed"],
+      "relatedTopics": ["achievements", "achievement-tiers"]
+    },
+    {
+      "id": "navigation",
+      "title": "Tutorial Navigation",
+      "category": "Getting Started",
+      "content": "Navigate through tutorial modules using the sidebar menu. Complete each module in order, as later modules build on earlier concepts. Your progress is automatically saved.",
+      "keywords": ["menu", "sidebar", "modules", "progress", "order"],
+      "relatedTopics": ["progress-tracking", "unlocking-modules"]
+    },
+    {
+      "id": "progress-tracking",
+      "title": "Progress Tracking",
+      "category": "Getting Started",
+      "content": "Your progress is automatically saved to your browser's local storage. This includes assessment scores, unlocked achievements, and module completion status.",
+      "keywords": ["save", "storage", "local", "persist", "track"],
+      "relatedTopics": ["navigation", "assessments"]
+    },
+    {
+      "id": "unlocking-modules",
+      "title": "Unlocking Modules",
+      "category": "Getting Started",
+      "content": "Complete each module's assessment with a passing score (70%+) to unlock the next module. This ensures you have the necessary foundation before moving forward.",
+      "keywords": ["unlock", "access", "prerequisites", "locked", "next"],
+      "relatedTopics": ["assessments", "navigation"]
+    },
+    {
+      "id": "vector-basics",
+      "title": "Vector Database Basics",
+      "category": "Concepts",
+      "content": "Vector databases store data as high-dimensional vectors and use similarity search to find related items. They're essential for AI applications, semantic search, and recommendation systems.",
+      "keywords": ["vectors", "embeddings", "similarity", "ai", "search"],
+      "relatedTopics": ["jade-features", "use-cases"]
+    },
+    {
+      "id": "jade-features",
+      "title": "JadeVectorDB Features",
+      "category": "Concepts",
+      "content": "JadeVectorDB offers fast vector search, multiple index types (HNSW, IVF, Flat), horizontal scaling, real-time updates, and hybrid search combining vector and metadata filtering.",
+      "keywords": ["features", "hnsw", "ivf", "scaling", "hybrid"],
+      "relatedTopics": ["vector-basics", "performance"]
+    },
+    {
+      "id": "use-cases",
+      "title": "Common Use Cases",
+      "category": "Concepts",
+      "content": "Vector databases power semantic search, recommendation engines, image similarity, document retrieval, anomaly detection, and RAG (Retrieval-Augmented Generation) for LLMs.",
+      "keywords": ["use cases", "applications", "semantic", "rag", "recommendations"],
+      "relatedTopics": ["vector-basics", "jade-features"]
+    },
+    {
+      "id": "performance",
+      "title": "Performance Optimization",
+      "category": "Advanced",
+      "content": "Optimize performance by choosing the right index type, tuning query parameters, using appropriate vector dimensions, implementing caching, and scaling horizontally.",
+      "keywords": ["optimization", "tuning", "performance", "speed", "scaling"],
+      "relatedTopics": ["jade-features", "production-tips"]
+    },
+    {
+      "id": "production-tips",
+      "title": "Production Best Practices",
+      "category": "Advanced",
+      "content": "For production deployments: monitor query latency, implement proper error handling, use connection pooling, set up backups, plan for scaling, and test thoroughly before launch.",
+      "keywords": ["production", "deployment", "monitoring", "scaling", "best practices"],
+      "relatedTopics": ["performance", "readiness"]
+    },
+    {
+      "id": "keyboard-shortcuts",
+      "title": "Keyboard Shortcuts",
+      "category": "Getting Started",
+      "content": "Press F1 or ? to open help overlay. Press ESC to close overlays. Use Tab to navigate between input fields in assessments.",
+      "keywords": ["shortcuts", "keyboard", "f1", "esc", "keys"],
+      "relatedTopics": ["navigation"]
+    },
+    {
+      "id": "troubleshooting",
+      "title": "Troubleshooting",
+      "category": "Getting Started",
+      "content": "If you experience issues: refresh the page to reload data, check that JavaScript is enabled, clear browser cache if data seems stale, or try a different browser.",
+      "keywords": ["problems", "issues", "bugs", "errors", "help"],
+      "relatedTopics": ["progress-tracking"]
+    }
+  ],
+  "contextual_help": {
+    "quiz-question": {
+      "title": "Answering Questions",
+      "content": "Select your answer and click 'Submit Answer'. Use hints if you're stuck - they won't affect your score!",
+      "icon": "❓"
+    },
+    "quiz-results": {
+      "title": "Your Results",
+      "content": "Review your performance. Click 'Retry' to improve your score or 'Continue' to proceed if you passed.",
+      "icon": "📊"
+    },
+    "readiness-overview": {
+      "title": "Readiness Overview",
+      "content": "This assessment evaluates your overall expertise across all modules. Take your time and do your best!",
+      "icon": "🎯"
+    },
+    "achievement-badge": {
+      "title": "Achievement Badge",
+      "content": "Hover over badges to see details. Gray badges are locked - complete their requirements to unlock them!",
+      "icon": "🏆"
+    },
+    "certificate": {
+      "title": "Your Certificate",
+      "content": "Download, print, or share your certificate to showcase your JadeVectorDB expertise!",
+      "icon": "📜"
+    },
+    "skills-checklist": {
+      "title": "Skills Checklist",
+      "content": "Track your progress across all required skills. Green items are complete, orange items need improvement.",
+      "icon": "✓"
+    },
+    "recommendations": {
+      "title": "Personalized Recommendations",
+      "content": "Follow these recommendations to strengthen weak areas and advance to the next proficiency level.",
+      "icon": "💡"
+    }
+  },
+  "quick_tips": [
+    "You can retake any assessment to improve your score",
+    "Hints don't reduce your score - use them freely!",
+    "Complete all modules to unlock the Production Readiness Assessment",
+    "Achievements are saved automatically as you progress",
+    "Your best score for each module is always saved",
+    "Press F1 or ? anytime to open help",
+    "Aim for 90%+ to achieve Master proficiency",
+    "Each module builds on previous concepts - complete them in order",
+    "Perfect scores unlock special achievements",
+    "Share your certificate on LinkedIn to showcase your skills"
+  ],
+  "categories": [
+    "Getting Started",
+    "Assessments",
+    "Readiness",
+    "Achievements",
+    "Concepts",
+    "Advanced"
+  ]
+}

@@ -147,10 +147,11 @@ export default function QueryInterface() {
                   </div>
                 )}
               </div>
+              </div>
             )}
           </div>
         </div>
-      </div>
+      </main>
     </Layout>
   );
 }

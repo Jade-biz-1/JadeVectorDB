@@ -52,11 +52,11 @@ struct LifecycleConfig {
 // RestApiService Implementation
 // ============================================================================
 
-RestApiService::RestApiService(int port, std::shared_ptr<DistributedServiceManager> distributed_service_manager) 
+RestApiService::RestApiService(int port, std::shared_ptr<DistributedServiceManager> distributed_service_manager, std::shared_ptr<DatabaseLayer> db_layer) 
     : port_(port), running_(false) {
     logger_ = logging::LoggerManager::get_logger("RestApiService");
     server_address_ = "0.0.0.0:" + std::to_string(port_);
-    api_impl_ = std::make_unique<RestApiImpl>(distributed_service_manager);
+    api_impl_ = std::make_unique<RestApiImpl>(distributed_service_manager, db_layer);
 }
 
 RestApiService::~RestApiService() {
@@ -112,8 +112,10 @@ void RestApiService::run_server() {
 // RestApiImpl Implementation
 // ============================================================================
 
-RestApiImpl::RestApiImpl(std::shared_ptr<DistributedServiceManager> distributed_service_manager) 
-    : distributed_service_manager_(distributed_service_manager), server_stopped_(false) {
+RestApiImpl::RestApiImpl(std::shared_ptr<DistributedServiceManager> distributed_service_manager, std::shared_ptr<DatabaseLayer> db_layer) 
+    : distributed_service_manager_(distributed_service_manager), 
+      db_layer_(db_layer),
+      server_stopped_(false) {
     logger_ = logging::LoggerManager::get_logger("RestApiImpl");
 }
 
@@ -134,16 +136,19 @@ RestApiImpl::~RestApiImpl() {
 bool RestApiImpl::initialize(int port) {
     LOG_INFO(logger_, "Initializing REST API on port " << port);
 
-    // Create a shared database layer for all services to use
-    auto shared_db_layer = std::make_shared<DatabaseLayer>();
-    shared_db_layer->initialize();
+    // Use the provided database layer, or create a new one if not provided
+    if (!db_layer_) {
+        LOG_WARN(logger_, "No database layer provided to REST API, creating default in-memory instance");
+        db_layer_ = std::make_shared<DatabaseLayer>();
+        db_layer_->initialize();
+    }
 
     // Initialize services with the shared database layer
-    db_service_ = std::make_unique<DatabaseService>(shared_db_layer);
-    vector_storage_service_ = std::make_unique<VectorStorageService>(shared_db_layer);
+    db_service_ = std::make_unique<DatabaseService>(db_layer_);
+    vector_storage_service_ = std::make_unique<VectorStorageService>(db_layer_);
     
     // Create a separate VectorStorageService for SimilaritySearchService
-    auto search_vector_storage = std::make_unique<VectorStorageService>(shared_db_layer);
+    auto search_vector_storage = std::make_unique<VectorStorageService>(db_layer_);
     search_vector_storage->initialize();
     similarity_search_service_ = std::make_unique<SimilaritySearchService>(std::move(search_vector_storage));
     
