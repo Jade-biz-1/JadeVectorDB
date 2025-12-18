@@ -1,0 +1,182 @@
+{
+  "moduleId": "module4",
+  "moduleName": "Metadata Filtering",
+  "version": "1.0",
+  "passingScore": 70,
+  "timeLimit": null,
+  "questions": [
+    {
+      "id": "m4_q1",
+      "type": "multiple-choice",
+      "question": "What is the main advantage of combining similarity search with metadata filtering?",
+      "points": 10,
+      "difficulty": "easy",
+      "options": [
+        "You can filter semantically similar results by structured criteria",
+        "It makes searches faster",
+        "It reduces storage requirements",
+        "It eliminates the need for indexing"
+      ],
+      "correctAnswer": 0,
+      "explanation": "Combining similarity search with metadata filtering lets you find semantically similar items while applying structured filters (e.g., date ranges, categories, tags). This provides both semantic and structural search capabilities.",
+      "hints": [
+        "Think about combining semantic and structured search",
+        "Consider use cases like 'find similar products in a price range'",
+        "Review the metadata filtering introduction"
+      ]
+    },
+    {
+      "id": "m4_q2",
+      "type": "code-challenge",
+      "question": "Complete the code to search for vectors with metadata where category equals 'technology'.",
+      "points": 15,
+      "difficulty": "medium",
+      "codeTemplate": "const results = await client.search({\n  vector: queryVector,\n  topK: 10,\n  // Add metadata filter\n  filter: {\n    category: { '$eq': '' }\n  }\n});",
+      "correctAnswer": {
+        "filter": {
+          "category": { "$eq": "technology" }
+        }
+      },
+      "testCases": [
+        {
+          "description": "Filter should check category equals 'technology'",
+          "validate": "params.filter.category.$eq === 'technology'"
+        }
+      ],
+      "explanation": "Use the $eq operator in metadata filters to match exact values. Filters are combined with similarity search to return only matching vectors.",
+      "hints": [
+        "The category value is given in the question",
+        "Use the $eq operator for equality",
+        "Review the metadata filter examples"
+      ]
+    },
+    {
+      "id": "m4_q3",
+      "type": "multiple-choice",
+      "question": "Which filter operators are supported in JadeVectorDB?",
+      "points": 10,
+      "difficulty": "medium",
+      "multipleAnswers": true,
+      "options": [
+        "$eq (equals)",
+        "$ne (not equals)",
+        "$gt (greater than)",
+        "$lt (less than)",
+        "$in (in array)",
+        "$regex (regular expression)"
+      ],
+      "correctAnswer": [0, 1, 2, 3, 4],
+      "explanation": "JadeVectorDB supports common filter operators: $eq, $ne, $gt, $gte, $lt, $lte, $in, and $nin. Regular expression matching is not typically supported in vector databases due to performance considerations.",
+      "hints": [
+        "Multiple answers may be correct",
+        "Think about standard database comparison operators",
+        "Review the filter operators section"
+      ]
+    },
+    {
+      "id": "m4_q4",
+      "type": "code-challenge",
+      "question": "Complete the filter to find vectors where price is greater than 100 AND less than 500.",
+      "points": 15,
+      "difficulty": "hard",
+      "codeTemplate": "const results = await client.search({\n  vector: queryVector,\n  topK: 10,\n  filter: {\n    // Complete the price range filter\n    price: {\n      '$gt': 0,\n      '$lt': 0\n    }\n  }\n});",
+      "correctAnswer": {
+        "filter": {
+          "price": {
+            "$gt": 100,
+            "$lt": 500
+          }
+        }
+      },
+      "testCases": [
+        {
+          "description": "Price should be greater than 100",
+          "validate": "params.filter.price.$gt === 100"
+        },
+        {
+          "description": "Price should be less than 500",
+          "validate": "params.filter.price.$lt === 500"
+        }
+      ],
+      "explanation": "You can combine multiple operators on the same field to create range queries. This is useful for filtering by price ranges, date ranges, or other numerical ranges.",
+      "hints": [
+        "The range values are given in the question",
+        "Use $gt for 'greater than' and $lt for 'less than'",
+        "Multiple operators can be combined on one field"
+      ]
+    },
+    {
+      "id": "m4_q5",
+      "type": "true-false",
+      "question": "Metadata filters are applied before similarity search to reduce the search space.",
+      "points": 10,
+      "difficulty": "medium",
+      "correctAnswer": true,
+      "explanation": "For optimal performance, metadata filters are typically applied first to reduce the set of vectors that need similarity calculations. This is called 'pre-filtering' and can significantly improve search speed.",
+      "hints": [
+        "Think about performance optimization",
+        "Consider which operation is more expensive",
+        "Review the filter execution section"
+      ]
+    },
+    {
+      "id": "m4_q6",
+      "type": "code-challenge",
+      "question": "Complete the filter to find vectors where the 'tags' array contains 'featured'.",
+      "points": 15,
+      "difficulty": "medium",
+      "codeTemplate": "const results = await client.search({\n  vector: queryVector,\n  topK: 10,\n  filter: {\n    // Complete the tags filter\n    tags: { '$in': [] }\n  }\n});",
+      "correctAnswer": {
+        "filter": {
+          "tags": { "$in": ["featured"] }
+        }
+      },
+      "testCases": [
+        {
+          "description": "Tags filter should check for 'featured'",
+          "validate": "params.filter.tags.$in.includes('featured')"
+        }
+      ],
+      "explanation": "Use the $in operator to check if an array field contains any of the specified values. This is useful for tag-based filtering.",
+      "hints": [
+        "The tag value is given in the question",
+        "Use $in operator for array containment",
+        "Review the array filtering examples"
+      ]
+    },
+    {
+      "id": "m4_q7",
+      "type": "multiple-choice",
+      "question": "How do you combine multiple filter conditions with AND logic?",
+      "points": 10,
+      "difficulty": "medium",
+      "options": [
+        "Place all conditions at the same level in the filter object",
+        "Use the $and operator explicitly",
+        "Use the $all operator",
+        "Separate filters with commas in an array"
+      ],
+      "correctAnswer": 0,
+      "explanation": "By default, all conditions at the same level in a filter object are combined with AND logic. You don't need an explicit $and operator unless combining complex nested conditions.",
+      "hints": [
+        "Think about the default behavior",
+        "Consider the simplest approach",
+        "Review the complex filter examples"
+      ]
+    },
+    {
+      "id": "m4_q8",
+      "type": "true-false",
+      "question": "You can use OR logic to combine multiple metadata filter conditions.",
+      "points": 10,
+      "difficulty": "easy",
+      "correctAnswer": true,
+      "explanation": "JadeVectorDB supports both AND and OR logic in filters. Use the $or operator to create conditions where any of the specified criteria can match.",
+      "hints": [
+        "Think about logical operators in databases",
+        "Review the advanced filtering section",
+        "Consider common database query needs"
+      ]
+    }
+  ]
+}

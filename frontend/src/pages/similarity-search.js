@@ -1,5 +1,5 @@
-import Head from 'next/head';
 import { useState, useEffect } from 'react';
+import Layout from '../components/Layout';
 import { searchApi, databaseApi } from '../lib/api';
 
 export default function SimilaritySearchPage() {
@@ -233,10 +233,11 @@ export default function SimilaritySearchPage() {
                   </div>
                 ))}
               </div>
+              </div>
             )}
           </div>
         )}
       </main>
-    </div>
+    </Layout>
   );
 }

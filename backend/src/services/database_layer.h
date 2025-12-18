@@ -138,13 +138,13 @@ private:
     bool validate_vector_dimensions(const Vector& vector, int expected_dimension) const;
 };
 
-// Persistent implementation using MemoryMappedVectorStore
 class PersistentDatabasePersistence : public DatabasePersistenceInterface {
 private:
     std::unordered_map<std::string, Database> databases_;
     std::unordered_map<std::string, std::unordered_map<std::string, Index>> indexes_by_db_;
     
     std::unique_ptr<MemoryMappedVectorStore> vector_store_;
+    std::string storage_path_;
     
     mutable std::shared_mutex databases_mutex_;
     mutable std::shared_mutex indexes_mutex_;
@@ -155,6 +155,11 @@ private:
     std::shared_ptr<ShardingService> sharding_service_;
     std::shared_ptr<QueryRouter> query_router_;
     std::shared_ptr<ReplicationService> replication_service_;
+    
+    // Internal methods
+    Result<void> load_databases_from_disk();
+    Result<void> save_database_metadata(const Database& db);
+    Result<Database> load_database_metadata(const std::string& database_id);
 
 public:
     explicit PersistentDatabasePersistence(
@@ -163,7 +168,7 @@ public:
         std::shared_ptr<QueryRouter> query_router = nullptr,
         std::shared_ptr<ReplicationService> replication_service = nullptr
     );
-    ~PersistentDatabasePersistence() = default;
+    ~PersistentDatabasePersistence();  // Defined in .cpp to handle unique_ptr<MemoryMappedVectorStore>
     
     // Database operations
     Result<std::string> create_database(const Database& db) override;

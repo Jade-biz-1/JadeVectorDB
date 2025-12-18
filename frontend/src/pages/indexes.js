@@ -1,5 +1,5 @@
-import Head from 'next/head';
 import { useState, useEffect } from 'react';
+import Layout from '../components/Layout';
 import { indexApi, databaseApi } from '../lib/api';
 
 export default function IndexManagement() {
@@ -288,7 +288,7 @@ export default function IndexManagement() {
             </>
           )}
         </div>
-      </main>
-    </div>
+      </div>
+    </Layout>
   );
 }

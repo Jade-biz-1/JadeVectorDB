@@ -1,5 +1,5 @@
-import Head from 'next/head';
 import { useState, useEffect } from 'react';
+import Layout from '../components/Layout';
 import { alertApi } from '../lib/api';
 
 export default function Alerting() {
@@ -43,18 +43,9 @@ export default function Alerting() {
     : alerts.filter(alert => alert.type?.toLowerCase() === filter.toLowerCase());
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Head>
-        <title>Alerting - JadeVectorDB</title>
-        <meta name="description" content="System alerts and notifications" />
-      </Head>
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold text-gray-900">Alerting</h1>
-        </div>
-      </header>
-      <main>
-        <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <Layout title="Alerting - JadeVectorDB">
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold mb-8 text-gray-900">System Alerts</h1>
           <div className="bg-white p-6 rounded-lg shadow">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold text-gray-800">System Alerts ({filteredAlerts.length})</h2>
@@ -133,8 +124,7 @@ export default function Alerting() {
               </table>
             </div>
           </div>
-        </div>
-      </main>
-    </div>
+      </div>
+    </Layout>
   );
 }

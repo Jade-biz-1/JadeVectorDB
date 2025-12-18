@@ -14,6 +14,7 @@
 #include "lib/error_handling.h"
 #include "lib/logging.h"
 
+using namespace jadevectordb;
 
 // Helper function to convert Database to DatabaseCreationParams
 static DatabaseCreationParams to_creation_params(const Database& db) {
@@ -400,7 +401,7 @@ TEST_F(SearchApiIntegrationTest, SearchWithMetadataInclusion) {
     
     // All results should include metadata
     for (const auto& res : search_results) {
-        EXPECT_FALSE(res.vector_data.metadata.empty());
+        EXPECT_FALSE(res.vector_data.metadata.custom.empty());
     }
     
     // Check specific metadata

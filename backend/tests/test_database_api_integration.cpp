@@ -39,7 +39,7 @@ protected:
     std::unique_ptr<VectorStorageService> vector_service_;
 
     // Helper function to convert Database to DatabaseCreationParams
-    DatabaseCreationParams to_creation_params(const Database& db) {
+    static DatabaseCreationParams to_creation_params(const Database& db) {
         DatabaseCreationParams params;
         params.name = db.name;
         params.description = db.description;

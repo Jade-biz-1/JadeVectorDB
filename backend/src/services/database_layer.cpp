@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
+#include <filesystem>
+#include <fstream>
 
 namespace jadevectordb {
 
@@ -701,12 +703,164 @@ PersistentDatabasePersistence::PersistentDatabasePersistence(
     std::shared_ptr<ReplicationService> replication_service)
     : sharding_service_(sharding_service)
     , query_router_(query_router)
-    , replication_service_(replication_service) {
+    , replication_service_(replication_service)
+    , storage_path_(vector_storage_path) {
     
     logger_ = logging::LoggerManager::get_logger("PersistentDatabasePersistence");
     vector_store_ = std::make_unique<MemoryMappedVectorStore>(vector_storage_path);
     
     LOG_INFO(logger_, "Initialized PersistentDatabasePersistence with vector storage at: " << vector_storage_path);
+    
+    // Load existing databases from disk
+    auto load_result = load_databases_from_disk();
+    if (!load_result) {
+        LOG_ERROR(logger_, "Failed to load databases from disk: " << ErrorHandler::format_error(load_result.error()));
+    }
+}
+
+PersistentDatabasePersistence::~PersistentDatabasePersistence() = default;
+
+Result<void> PersistentDatabasePersistence::save_database_metadata(const Database& db) {
+    std::string metadata_file = storage_path_ + "/" + db.databaseId + "/metadata.json";
+    
+    try {
+        std::ofstream file(metadata_file);
+        if (!file.is_open()) {
+            RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to create metadata file: " + metadata_file);
+        }
+        
+        // Write simple JSON (we'll use manual formatting for simplicity)
+        file << "{\n";
+        file << "  \"database_id\": \"" << db.databaseId << "\",\n";
+        file << "  \"name\": \"" << db.name << "\",\n";
+        file << "  \"description\": \"" << db.description << "\",\n";
+        file << "  \"vector_dimension\": " << db.vectorDimension << ",\n";
+        file << "  \"index_type\": \"" << db.indexType << "\",\n";
+        file << "  \"created_at\": \"" << db.created_at << "\",\n";
+        file << "  \"updated_at\": \"" << db.updated_at << "\"\n";
+        file << "}\n";
+        
+        file.close();
+        return {};
+    } catch (const std::exception& e) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Exception saving metadata: " + std::string(e.what()));
+    }
+}
+
+Result<Database> PersistentDatabasePersistence::load_database_metadata(const std::string& database_id) {
+    std::string metadata_file = storage_path_ + "/" + database_id + "/metadata.json";
+    
+    try {
+        std::ifstream file(metadata_file);
+        if (!file.is_open()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "Metadata file not found: " + metadata_file);
+        }
+        
+        Database db;
+        std::string line;
+        
+        // Simple JSON parsing (just look for key-value pairs)
+        while (std::getline(file, line)) {
+            // Remove whitespace and quotes
+            size_t colon = line.find(':');
+            if (colon == std::string::npos) continue;
+            
+            std::string key = line.substr(0, colon);
+            std::string value = line.substr(colon + 1);
+            
+            // Trim whitespace and punctuation
+            auto trim = [](std::string& s) {
+                s.erase(0, s.find_first_not_of(" \t\n\r\f\v\""));
+                s.erase(s.find_last_not_of(" \t\n\r\f\v\",") + 1);
+            };
+            trim(key);
+            trim(value);
+            
+            if (key == "database_id") db.databaseId = value;
+            else if (key == "name") db.name = value;
+            else if (key == "description") db.description = value;
+            else if (key == "vector_dimension") db.vectorDimension = std::stoi(value);
+            else if (key == "index_type") db.indexType = value;
+            else if (key == "created_at") db.created_at = value;
+            else if (key == "updated_at") db.updated_at = value;
+        }
+        
+        file.close();
+        
+        if (db.databaseId.empty() || db.name.empty()) {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid metadata in file: " + metadata_file);
+        }
+        
+        return db;
+    } catch (const std::exception& e) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Exception loading metadata: " + std::string(e.what()));
+    }
+}
+
+Result<void> PersistentDatabasePersistence::load_databases_from_disk() {
+    LOG_INFO(logger_, "Loading databases from disk...");
+    
+    if (!std::filesystem::exists(storage_path_)) {
+        LOG_WARN(logger_, "Storage path does not exist: " << storage_path_);
+        return {};
+    }
+    
+    int loaded_count = 0;
+    int failed_count = 0;
+    
+    try {
+        // Iterate through database directories
+        for (const auto& entry : std::filesystem::directory_iterator(storage_path_)) {
+            if (!entry.is_directory()) continue;
+            
+            std::string database_id = entry.path().filename().string();
+            std::string vector_file = entry.path().string() + "/vectors.jvdb";
+            std::string metadata_file = entry.path().string() + "/metadata.json";
+            
+            // Check if both files exist
+            if (!std::filesystem::exists(vector_file)) {
+                LOG_WARN(logger_, "Vector file not found for database " << database_id);
+                failed_count++;
+                continue;
+            }
+            
+            if (!std::filesystem::exists(metadata_file)) {
+                LOG_WARN(logger_, "Metadata file not found for database " << database_id);
+                failed_count++;
+                continue;
+            }
+            
+            // Load metadata
+            auto metadata_result = load_database_metadata(database_id);
+            if (!metadata_result) {
+                LOG_ERROR(logger_, "Failed to load metadata for " << database_id << ": " 
+                         << ErrorHandler::format_error(metadata_result.error()));
+                failed_count++;
+                continue;
+            }
+            
+            // Open vector file
+            if (!vector_store_->open_vector_file(database_id)) {
+                LOG_ERROR(logger_, "Failed to open vector file for database: " << database_id);
+                failed_count++;
+                continue;
+            }
+            
+            // Store in memory
+            databases_[database_id] = *metadata_result;
+            indexes_by_db_[database_id] = std::unordered_map<std::string, Index>();
+            
+            loaded_count++;
+            LOG_INFO(logger_, "Loaded database: " << metadata_result->name << " (ID: " << database_id << ")");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception while scanning database directories: " << e.what());
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to scan storage directory: " + std::string(e.what()));
+    }
+    
+    LOG_INFO(logger_, "Database loading complete. Loaded: " << loaded_count << ", Failed: " << failed_count);
+    
+    return {};
 }
 
 Result<std::string> PersistentDatabasePersistence::create_database(const Database& db) {
@@ -730,6 +884,13 @@ Result<std::string> PersistentDatabasePersistence::create_database(const Databas
         LOG_ERROR(logger_, "Failed to create vector file for database: " << database_id);
         databases_.erase(database_id);
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to create vector storage file");
+    }
+    
+    // Save metadata to JSON file
+    auto metadata_result = save_database_metadata(new_db);
+    if (!metadata_result) {
+        LOG_ERROR(logger_, "Failed to save database metadata: " << ErrorHandler::format_error(metadata_result.error()));
+        // Continue - vector file is created, metadata can be synced later
     }
     
     LOG_INFO(logger_, "Created database with persistent storage: " << database_id);

@@ -1,303 +1,345 @@
-import React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-  CheckCircle2,
-  XCircle,
-  Trophy,
-  TrendingUp,
-  Clock,
-  RotateCcw,
-  Download,
-  ArrowRight
-} from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
+import React, { useState } from 'react';
+import { getGradeLetter, getPerformanceLevel } from '../../lib/quizScoring';
 
 /**
- * QuizResults Component
- * Displays comprehensive quiz results with feedback and actions
+ * QuizResults - Display quiz results and performance analysis
+ *
+ * Shows score, performance breakdown, and options to retry or continue.
  */
 const QuizResults = ({
-  scoreData,
-  moduleTitle,
-  timeSpent,
-  feedback,
+  results,
   onRetry,
-  onViewAnswers,
-  onContinue,
-  statistics
+  onContinue
 }) => {
-  const { earnedPoints, totalPoints, percentage, results } = scoreData;
+  const [showDetailedResults, setShowDetailedResults] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(true);
 
-  const getScoreColor = () => {
-    if (percentage >= 90) return 'text-green-600 dark:text-green-400';
-    if (percentage >= 70) return 'text-blue-600 dark:text-blue-400';
-    if (percentage >= 50) return 'text-yellow-600 dark:text-yellow-400';
-    return 'text-red-600 dark:text-red-400';
-  };
+  const performanceLevel = getPerformanceLevel(results.score);
+  const gradeLetter = getGradeLetter(results.score);
 
-  const getProgressColor = () => {
-    if (percentage >= 90) return 'bg-green-600';
-    if (percentage >= 70) return 'bg-blue-600';
-    if (percentage >= 50) return 'bg-yellow-600';
-    return 'bg-red-600';
-  };
+  /**
+   * Render score circle with animation
+   */
+  const renderScoreCircle = () => {
+    const circumference = 2 * Math.PI * 70; // radius = 70
+    const strokeDashoffset = circumference - (results.score / 100) * circumference;
 
-  const getFeedbackEmoji = () => {
-    if (percentage >= 90) return '🎉';
-    if (percentage >= 70) return '✅';
-    if (percentage >= 50) return '📚';
-    return '🔄';
-  };
-
-  const correctAnswers = results.filter(r => r.isCorrect).length;
-  const totalQuestions = results.length;
-
-  const formatTime = (seconds) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}m ${remainingSeconds}s`;
-  };
-
-  const exportResults = () => {
-    const exportData = {
-      module: moduleTitle,
-      date: new Date().toISOString(),
-      score: `${percentage}%`,
-      points: `${earnedPoints}/${totalPoints}`,
-      correctAnswers: `${correctAnswers}/${totalQuestions}`,
-      timeSpent: formatTime(timeSpent),
-      passed: scoreData.passed,
-      feedback: feedback.message,
-      results: results.map(r => ({
-        question: r.question,
-        correct: r.isCorrect,
-        points: `${r.points}/${r.maxPoints}`
-      }))
-    };
-
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `quiz-results-${moduleTitle.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    return (
+      <div className="relative w-48 h-48">
+        <svg className="transform -rotate-90 w-48 h-48">
+          {/* Background circle */}
+          <circle
+            cx="96"
+            cy="96"
+            r="70"
+            stroke="#e5e7eb"
+            strokeWidth="12"
+            fill="none"
+          />
+          {/* Progress circle */}
+          <circle
+            cx="96"
+            cy="96"
+            r="70"
+            stroke={performanceLevel.color}
+            strokeWidth="12"
+            fill="none"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            className="transition-all duration-1000 ease-out"
+          />
+        </svg>
+        {/* Score text */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-4xl font-bold" style={{ color: performanceLevel.color }}>
+            {results.score}%
+          </span>
+          <span className="text-lg font-semibold text-gray-600 mt-1">
+            Grade {gradeLetter}
+          </span>
+        </div>
+      </div>
+    );
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Main Score Card */}
-      <Card className="border-2">
-        <CardHeader className="text-center pb-4">
-          <div className="flex justify-center mb-4">
-            {scoreData.passed ? (
-              <div className="w-24 h-24 rounded-full bg-green-100 dark:bg-green-950 flex items-center justify-center">
-                <Trophy className="w-12 h-12 text-green-600 dark:text-green-400" />
+    <div className="max-w-4xl mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="text-center">
+        <h2 className="text-3xl font-bold text-gray-800 mb-2">
+          Assessment Complete!
+        </h2>
+        <p className="text-gray-600">
+          {results.moduleName}
+        </p>
+      </div>
+
+      {/* Pass/Fail Banner */}
+      <div className={`p-6 rounded-lg text-center ${
+        results.passed
+          ? 'bg-green-50 border-2 border-green-300'
+          : 'bg-orange-50 border-2 border-orange-300'
+      }`}>
+        <div className="text-6xl mb-3">
+          {results.passed ? '🎉' : '📚'}
+        </div>
+        <h3 className={`text-2xl font-bold mb-2 ${
+          results.passed ? 'text-green-900' : 'text-orange-900'
+        }`}>
+          {results.passed ? 'Congratulations! You Passed!' : 'Keep Learning!'}
+        </h3>
+        <p className={`text-lg ${
+          results.passed ? 'text-green-700' : 'text-orange-700'
+        }`}>
+          {results.passed
+            ? 'You have successfully completed this module assessment.'
+            : `You need ${results.passingScore}% to pass. Review the material and try again.`}
+        </p>
+      </div>
+
+      {/* Score Overview */}
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="flex flex-col md:flex-row items-center justify-around gap-8">
+          {/* Score circle */}
+          <div className="flex flex-col items-center">
+            {renderScoreCircle()}
+            <div className="mt-4 text-center">
+              <p className="font-semibold" style={{ color: performanceLevel.color }}>
+                {performanceLevel.level}
+              </p>
+              <p className="text-sm text-gray-600">
+                {performanceLevel.description}
+              </p>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-2 gap-6">
+            <div className="text-center">
+              <div className="text-3xl font-bold text-blue-600">
+                {results.correctCount}
               </div>
-            ) : (
-              <div className="w-24 h-24 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-                <TrendingUp className="w-12 h-12 text-gray-600 dark:text-gray-400" />
+              <div className="text-sm text-gray-600">Correct</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-gray-600">
+                {results.totalQuestions - results.correctCount}
+              </div>
+              <div className="text-sm text-gray-600">Incorrect</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-green-600">
+                {results.earnedPoints}
+              </div>
+              <div className="text-sm text-gray-600">Points Earned</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-gray-600">
+                {results.totalPoints}
+              </div>
+              <div className="text-sm text-gray-600">Total Points</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Additional info */}
+        <div className="mt-6 pt-6 border-t border-gray-200 flex justify-around text-sm text-gray-600">
+          <div>
+            <span className="font-semibold">Time:</span> {results.timeFormatted}
+          </div>
+          <div>
+            <span className="font-semibold">Attempt:</span> #{results.attemptNumber}
+          </div>
+          <div>
+            <span className="font-semibold">Passing Score:</span> {results.passingScore}%
+          </div>
+        </div>
+      </div>
+
+      {/* Performance Analysis */}
+      {showAnalysis && results.analysis && (
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold text-gray-800">Performance Analysis</h3>
+            <button
+              onClick={() => setShowAnalysis(false)}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              Hide
+            </button>
+          </div>
+
+          {/* By Difficulty */}
+          <div className="space-y-4">
+            <div>
+              <h4 className="font-semibold text-gray-700 mb-3">By Difficulty</h4>
+              <div className="space-y-2">
+                {Object.entries(results.analysis.byDifficulty).map(([difficulty, data]) => {
+                  if (data.total === 0) return null;
+                  return (
+                    <div key={difficulty} className="flex items-center gap-4">
+                      <div className="w-24 text-sm text-gray-600 capitalize">{difficulty}</div>
+                      <div className="flex-1">
+                        <div className="w-full bg-gray-200 rounded-full h-4">
+                          <div
+                            className={`h-4 rounded-full ${
+                              data.percentage >= 80 ? 'bg-green-500' :
+                              data.percentage >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                            }`}
+                            style={{ width: `${data.percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="w-24 text-sm text-gray-700 text-right">
+                        {data.correct}/{data.total} ({data.percentage}%)
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Strengths */}
+            {results.analysis.strengths.length > 0 && (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                <h4 className="font-semibold text-green-900 mb-2 flex items-center gap-2">
+                  <span>💪</span> Strengths
+                </h4>
+                <ul className="list-disc list-inside text-sm text-green-700 space-y-1">
+                  {results.analysis.strengths.map((strength, index) => (
+                    <li key={index}>{strength}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Weaknesses */}
+            {results.analysis.weaknesses.length > 0 && (
+              <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                <h4 className="font-semibold text-orange-900 mb-2 flex items-center gap-2">
+                  <span>📖</span> Areas for Improvement
+                </h4>
+                <ul className="list-disc list-inside text-sm text-orange-700 space-y-1">
+                  {results.analysis.weaknesses.map((weakness, index) => (
+                    <li key={index}>{weakness}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Recommendations */}
+            {results.analysis.recommendations.length > 0 && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                  <span>💡</span> Recommendations
+                </h4>
+                <ul className="list-disc list-inside text-sm text-blue-700 space-y-1">
+                  {results.analysis.recommendations.map((rec, index) => (
+                    <li key={index}>{rec}</li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
-          <CardTitle className="text-3xl mb-2">
-            {scoreData.passed ? 'Congratulations!' : 'Quiz Complete'}
-          </CardTitle>
-          <CardDescription className="text-lg">
-            {moduleTitle} Assessment
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent className="space-y-6">
-          {/* Score Display */}
-          <div className="text-center space-y-3">
-            <div className={`text-6xl font-bold ${getScoreColor()}`}>
-              {percentage}%
-            </div>
-            <div className="text-xl text-gray-600 dark:text-gray-400">
-              {earnedPoints} out of {totalPoints} points
-            </div>
-            <Progress value={percentage} className="h-3" indicatorClassName={getProgressColor()} />
-          </div>
-
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
-            <div className="text-center p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
-              <div className="flex justify-center mb-2">
-                <CheckCircle2 className="w-6 h-6 text-green-600 dark:text-green-400" />
-              </div>
-              <div className="text-2xl font-bold">{correctAnswers}</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Correct</div>
-            </div>
-
-            <div className="text-center p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
-              <div className="flex justify-center mb-2">
-                <XCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
-              </div>
-              <div className="text-2xl font-bold">{totalQuestions - correctAnswers}</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Incorrect</div>
-            </div>
-
-            <div className="text-center p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
-              <div className="flex justify-center mb-2">
-                <Clock className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div className="text-2xl font-bold">{formatTime(timeSpent)}</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Time Spent</div>
-            </div>
-          </div>
-
-          {/* Passing Status */}
-          <Alert className={scoreData.passed ? 'border-green-500 bg-green-50 dark:bg-green-950' : 'border-yellow-500 bg-yellow-50 dark:bg-yellow-950'}>
-            <AlertDescription className="flex items-center justify-between">
-              <div>
-                <span className="font-semibold">
-                  {scoreData.passed ? '✅ Passed' : '📚 Not Passed Yet'}
-                </span>
-                <span className="text-sm ml-2">
-                  (Passing score: 70%)
-                </span>
-              </div>
-              {scoreData.passed && (
-                <Badge variant="success" className="bg-green-600 text-white">
-                  Certified
-                </Badge>
-              )}
-            </AlertDescription>
-          </Alert>
-        </CardContent>
-      </Card>
-
-      {/* Feedback Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <span className="text-2xl">{getFeedbackEmoji()}</span>
-            Performance Feedback
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-lg font-medium">{feedback.message}</p>
-
-          {feedback.suggestions && feedback.suggestions.length > 0 && (
-            <div>
-              <h4 className="font-semibold mb-3">💡 Suggestions for improvement:</h4>
-              <ul className="space-y-2">
-                {feedback.suggestions.map((suggestion, index) => (
-                  <li key={index} className="flex items-start gap-2">
-                    <ArrowRight className="w-4 h-4 mt-1 text-blue-600 dark:text-blue-400 flex-shrink-0" />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">
-                      {suggestion}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Statistics Card (if available) */}
-      {statistics && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Your Progress</CardTitle>
-            <CardDescription>Historical performance for this module</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center p-3 bg-gray-50 dark:bg-gray-900 rounded">
-                <div className="text-xl font-bold">{statistics.attempts}</div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">Attempts</div>
-              </div>
-              <div className="text-center p-3 bg-gray-50 dark:bg-gray-900 rounded">
-                <div className="text-xl font-bold">{statistics.bestScore}%</div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">Best Score</div>
-              </div>
-              <div className="text-center p-3 bg-gray-50 dark:bg-gray-900 rounded">
-                <div className="text-xl font-bold">{statistics.averageScore}%</div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">Average</div>
-              </div>
-              <div className="text-center p-3 bg-gray-50 dark:bg-gray-900 rounded">
-                <div className="text-xl font-bold">{formatTime(statistics.totalTimeSpent)}</div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">Total Time</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        </div>
       )}
 
-      {/* Actions */}
-      <div className="flex flex-col sm:flex-row gap-3 justify-center">
-        <Button onClick={onViewAnswers} variant="outline" size="lg">
-          📋 Review Answers
-        </Button>
+      {/* Detailed Results */}
+      {showDetailedResults && (
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold text-gray-800">Detailed Results</h3>
+            <button
+              onClick={() => setShowDetailedResults(false)}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              Hide
+            </button>
+          </div>
 
-        <Button onClick={onRetry} variant="outline" size="lg">
-          <RotateCcw className="w-4 h-4 mr-2" />
-          Retake Quiz
-        </Button>
-
-        <Button onClick={exportResults} variant="outline" size="lg">
-          <Download className="w-4 h-4 mr-2" />
-          Export Results
-        </Button>
-
-        {scoreData.passed && onContinue && (
-          <Button onClick={onContinue} size="lg" className="bg-green-600 hover:bg-green-700">
-            Continue Learning →
-          </Button>
-        )}
-      </div>
-
-      {/* Detailed Results Summary */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Question Summary</CardTitle>
-          <CardDescription>
-            Overview of your answers for each question
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {results.map((result, index) => (
+          <div className="space-y-4">
+            {results.gradedResults.map((result, index) => (
               <div
-                key={index}
-                className={`flex items-start gap-3 p-3 rounded-lg border-2 ${
+                key={result.questionId}
+                className={`p-4 rounded-lg border-2 ${
                   result.isCorrect
-                    ? 'border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-800'
-                    : 'border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800'
+                    ? 'bg-green-50 border-green-300'
+                    : 'bg-red-50 border-red-300'
                 }`}
               >
-                <div className="flex-shrink-0 mt-1">
-                  {result.isCorrect ? (
-                    <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
-                  ) : (
-                    <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm mb-1">
-                    Question {index + 1}
+                <div className="flex items-start gap-3">
+                  <span className={`text-2xl ${
+                    result.isCorrect ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {result.isCorrect ? '✓' : '✗'}
+                  </span>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-start mb-2">
+                      <h4 className="font-semibold text-gray-800">
+                        Question {index + 1}
+                      </h4>
+                      <span className={`text-sm font-semibold ${
+                        result.isCorrect ? 'text-green-700' : 'text-red-700'
+                      }`}>
+                        {result.earnedPoints}/{result.points} pts
+                        {result.partialCredit && ' (Partial Credit)'}
+                      </span>
+                    </div>
+                    {result.explanation && (
+                      <p className="text-sm text-gray-700 mt-2">
+                        {result.explanation}
+                      </p>
+                    )}
                   </div>
-                  <div className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
-                    {result.question}
-                  </div>
-                </div>
-                <div className="flex-shrink-0 text-right">
-                  <div className={`font-bold ${result.isCorrect ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                    {result.points}/{result.maxPoints}
-                  </div>
-                  <div className="text-xs text-gray-500">points</div>
                 </div>
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      )}
+
+      {/* Toggle detailed results button */}
+      {!showDetailedResults && (
+        <div className="text-center">
+          <button
+            onClick={() => setShowDetailedResults(true)}
+            className="text-blue-600 hover:text-blue-700 font-medium"
+          >
+            📊 Show Detailed Results
+          </button>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex justify-center gap-4">
+        {!results.passed && onRetry && (
+          <button
+            onClick={onRetry}
+            className="px-8 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 shadow-lg"
+          >
+            🔄 Retry Assessment
+          </button>
+        )}
+
+        {results.passed && onContinue && (
+          <button
+            onClick={() => onContinue(results)}
+            className="px-8 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 shadow-lg"
+          >
+            Continue to Next Module →
+          </button>
+        )}
+
+        {results.passed && (
+          <button
+            onClick={onRetry}
+            className="px-8 py-3 bg-gray-600 text-white rounded-lg font-semibold hover:bg-gray-700"
+          >
+            Retake to Improve Score
+          </button>
+        )}
+      </div>
     </div>
   );
 };

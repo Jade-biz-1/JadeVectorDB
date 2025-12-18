@@ -175,6 +175,20 @@ public:
      */
     std::vector<std::string> list_vector_ids(const std::string& database_id);
 
+    /**
+     * @brief Get count of deleted vectors in a database
+     * @param database_id Database identifier
+     * @return Number of deleted vectors
+     */
+    size_t get_deleted_count(const std::string& database_id);
+
+    /**
+     * @brief Get the file path for a database's vector file
+     * @param database_id Database identifier
+     * @return Full path to the vector file
+     */
+    std::string get_database_vector_file_path(const std::string& database_id) const;
+
 private:
     // Storage configuration
     std::string storage_path_;
@@ -188,6 +202,9 @@ private:
         VectorFileHeader* header = nullptr;
         std::mutex mutex;  // Per-database mutex for thread safety
         uint64_t last_access_time = 0;  // For LRU eviction
+        
+        // Vector ID index for tracking active/deleted vectors
+        std::unordered_map<std::string, bool> vector_id_index_;  // true=active, false=deleted
     };
     
     std::unordered_map<std::string, std::unique_ptr<DatabaseFile>> open_files_;
@@ -207,7 +224,8 @@ private:
     
     // Vector index operations
     VectorIndexEntry* find_index_entry(DatabaseFile* db_file, const std::string& vector_id);
-    VectorIndexEntry* allocate_index_entry(DatabaseFile* db_file);
+    VectorIndexEntry* allocate_index_entry(DatabaseFile* db_file, const std::string& vector_id);
+    void rebuild_vector_id_index(DatabaseFile* db_file);
     uint64_t hash_vector_id(const std::string& vector_id) const;
     
     // Memory operations
@@ -221,9 +239,9 @@ private:
 };
 
 /**
- * @brief Vector file header (64 bytes, 32-byte aligned)
+ * @brief Vector file header (128 bytes, 64-byte aligned)
  */
-struct alignas(32) VectorFileHeader {
+struct alignas(64) VectorFileHeader {
     uint32_t magic_number;      // 0x4A564442 ("JVDB")
     uint32_t version;           // Format version (currently 1)
     uint32_t dimension;         // Vector dimension
@@ -232,21 +250,23 @@ struct alignas(32) VectorFileHeader {
     uint64_t active_count;      // Active vectors (excluding deleted)
     uint64_t index_offset;      // Byte offset to vector index
     uint64_t data_offset;       // Byte offset to vector data
+    uint64_t vector_ids_offset; // Byte offset to vector ID strings
     uint64_t index_capacity;    // Max index entries
     uint64_t data_capacity;     // Data section size in bytes
-    uint8_t reserved2[16];      // Reserved for future use
+    uint8_t reserved2[48];      // Reserved for future use (padding to 128 bytes)
 };
 
 /**
- * @brief Vector index entry (32 bytes per vector, 32-byte aligned)
+ * @brief Vector index entry (64 bytes per vector, 64-byte aligned)
  */
-struct alignas(32) VectorIndexEntry {
+struct alignas(64) VectorIndexEntry {
     uint64_t vector_id_hash;    // Hash of vector ID string
     uint64_t data_offset;       // Byte offset in data section
+    uint64_t string_offset;     // Byte offset to vector ID string
     uint32_t size;              // Vector size in bytes
     uint32_t flags;             // Status flags
     uint64_t timestamp;         // Creation/modification timestamp
-    uint64_t reserved;          // Reserved for future use
+    uint64_t reserved[3];       // Reserved for future use (padding to 64 bytes)
     
     // Flags
     static constexpr uint32_t FLAG_ACTIVE = 0x01;
