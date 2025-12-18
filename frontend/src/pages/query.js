@@ -1,5 +1,5 @@
-import Head from 'next/head';
 import { useState, useEffect } from 'react';
+import Layout from '../components/Layout';
 import { searchApi, databaseApi } from '../lib/api';
 
 export default function QueryInterface() {
@@ -147,10 +147,11 @@ export default function QueryInterface() {
                   </div>
                 )}
               </div>
+              </div>
             )}
           </div>
         </div>
       </main>
-    </div>
+    </Layout>
   );
 }

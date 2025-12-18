@@ -1,0 +1,168 @@
+{
+  "moduleId": "module3",
+  "moduleName": "Advanced Search",
+  "version": "1.0",
+  "passingScore": 70,
+  "timeLimit": null,
+  "questions": [
+    {
+      "id": "m3_q1",
+      "type": "multiple-choice",
+      "question": "Which similarity metric is best for normalized vectors?",
+      "points": 10,
+      "difficulty": "medium",
+      "options": [
+        "Cosine similarity",
+        "Euclidean distance",
+        "Manhattan distance",
+        "Hamming distance"
+      ],
+      "correctAnswer": 0,
+      "explanation": "Cosine similarity is ideal for normalized vectors because it measures the angle between vectors regardless of magnitude. For normalized vectors, cosine similarity and dot product produce equivalent results.",
+      "hints": [
+        "Think about what 'normalized' means",
+        "Consider which metric ignores vector magnitude",
+        "Review the similarity metrics comparison section"
+      ]
+    },
+    {
+      "id": "m3_q2",
+      "type": "code-challenge",
+      "question": "Complete the code to perform a similarity search for the top 5 similar vectors using cosine similarity.",
+      "points": 15,
+      "difficulty": "medium",
+      "codeTemplate": "const results = await client.search({\n  vector: queryVector,\n  // Complete the search parameters\n  topK: 0,\n  metric: ''\n});",
+      "correctAnswer": {
+        "topK": 5,
+        "metric": "cosine"
+      },
+      "testCases": [
+        {
+          "description": "topK should be 5",
+          "validate": "params.topK === 5"
+        },
+        {
+          "description": "metric should be 'cosine'",
+          "validate": "params.metric === 'cosine'"
+        }
+      ],
+      "explanation": "To search for the top K similar vectors, specify the topK parameter and the similarity metric. Common metrics include 'cosine', 'euclidean', and 'dotproduct'.",
+      "hints": [
+        "The question asks for top 5 vectors",
+        "The metric name is typically lowercase",
+        "Review the search examples"
+      ]
+    },
+    {
+      "id": "m3_q3",
+      "type": "true-false",
+      "question": "Euclidean distance returns lower values for more similar vectors.",
+      "points": 10,
+      "difficulty": "easy",
+      "correctAnswer": true,
+      "explanation": "For Euclidean distance, lower values indicate closer (more similar) vectors, with 0 meaning identical vectors. This is opposite to cosine similarity where higher values indicate more similarity.",
+      "hints": [
+        "Think about what 'distance' means",
+        "Consider what a distance of 0 would indicate",
+        "Review the Euclidean distance section"
+      ]
+    },
+    {
+      "id": "m3_q4",
+      "type": "multiple-choice",
+      "question": "What is the purpose of setting a similarity threshold in search queries?",
+      "points": 10,
+      "difficulty": "medium",
+      "options": [
+        "To filter out results below a minimum similarity score",
+        "To limit the number of returned results",
+        "To speed up the search operation",
+        "To change the similarity metric used"
+      ],
+      "correctAnswer": 0,
+      "explanation": "A similarity threshold filters out results that don't meet a minimum similarity requirement. This ensures you only get high-quality matches, even if it means returning fewer than K results.",
+      "hints": [
+        "Think about quality vs quantity of results",
+        "Consider what 'threshold' means",
+        "Review the threshold filtering section"
+      ]
+    },
+    {
+      "id": "m3_q5",
+      "type": "code-challenge",
+      "question": "Complete the code to search with a minimum similarity threshold of 0.8.",
+      "points": 15,
+      "difficulty": "medium",
+      "codeTemplate": "const results = await client.search({\n  vector: queryVector,\n  topK: 10,\n  metric: 'cosine',\n  // Add the threshold parameter\n  minScore: 0\n});",
+      "correctAnswer": {
+        "minScore": 0.8
+      },
+      "testCases": [
+        {
+          "description": "minScore should be 0.8",
+          "validate": "params.minScore === 0.8"
+        }
+      ],
+      "explanation": "Use the minScore parameter to set a similarity threshold. Results with scores below this threshold will be excluded from the results.",
+      "hints": [
+        "The threshold value is given in the question",
+        "The parameter is typically called minScore or threshold",
+        "Review the threshold examples"
+      ]
+    },
+    {
+      "id": "m3_q6",
+      "type": "multiple-choice",
+      "question": "What is the range of values for cosine similarity?",
+      "points": 10,
+      "difficulty": "medium",
+      "options": [
+        "-1 to 1",
+        "0 to 1",
+        "0 to infinity",
+        "-infinity to infinity"
+      ],
+      "correctAnswer": 0,
+      "explanation": "Cosine similarity ranges from -1 to 1, where 1 indicates identical direction, 0 indicates orthogonal (perpendicular) vectors, and -1 indicates opposite direction.",
+      "hints": [
+        "Think about the cosine function's range",
+        "Consider what cosine of angles between 0° and 180° produces",
+        "Review the cosine similarity section"
+      ]
+    },
+    {
+      "id": "m3_q7",
+      "type": "true-false",
+      "question": "Dot product similarity accounts for both the angle and magnitude of vectors.",
+      "points": 10,
+      "difficulty": "medium",
+      "correctAnswer": true,
+      "explanation": "Unlike cosine similarity which only considers angle, dot product considers both the angle between vectors and their magnitudes. This makes it sensitive to vector length.",
+      "hints": [
+        "Compare dot product to cosine similarity",
+        "Think about how magnitude affects dot product",
+        "Review the dot product section"
+      ]
+    },
+    {
+      "id": "m3_q8",
+      "type": "multiple-choice",
+      "question": "When would you use approximate nearest neighbor (ANN) search instead of exact search?",
+      "points": 10,
+      "difficulty": "hard",
+      "options": [
+        "When dealing with large datasets where speed is more important than perfect accuracy",
+        "When you need 100% accurate results",
+        "When working with small datasets (< 1000 vectors)",
+        "When using Euclidean distance only"
+      ],
+      "correctAnswer": 0,
+      "explanation": "ANN algorithms trade a small amount of accuracy for significant speed improvements, making them ideal for large-scale datasets where exact search would be too slow. For small datasets, exact search is usually fast enough.",
+      "hints": [
+        "Think about the trade-offs between speed and accuracy",
+        "Consider what 'approximate' means",
+        "Review the indexing algorithms section"
+      ]
+    }
+  ]
+}

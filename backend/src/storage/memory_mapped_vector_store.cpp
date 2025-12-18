@@ -19,8 +19,8 @@ namespace jadevectordb {
 namespace {
     constexpr uint32_t MAGIC_NUMBER = 0x4A564442;  // "JVDB"
     constexpr uint32_t FORMAT_VERSION = 1;
-    constexpr size_t HEADER_SIZE = 64;
-    constexpr size_t INDEX_ENTRY_SIZE = 32;
+    constexpr size_t HEADER_SIZE = 128;  // Increased for vector_ids_offset field
+    constexpr size_t INDEX_ENTRY_SIZE = 64;  // Increased for string_offset field
     constexpr size_t ALIGNMENT = 32;  // AVX alignment
     
     uint64_t get_timestamp() {
@@ -178,7 +178,8 @@ bool MemoryMappedVectorStore::create_vector_file(const std::string& database_id,
     // Calculate initial file size
     size_t index_size = initial_capacity * INDEX_ENTRY_SIZE;
     size_t data_size = initial_capacity * dimension * sizeof(float);
-    size_t total_size = HEADER_SIZE + index_size + data_size;
+    size_t string_size = initial_capacity * 64;  // 64 bytes per vector ID string
+    size_t total_size = HEADER_SIZE + index_size + data_size + string_size;
     
     // Resize file
     if (!handle->resize(total_size)) {
@@ -201,11 +202,12 @@ bool MemoryMappedVectorStore::create_vector_file(const std::string& database_id,
     header->active_count = 0;
     header->index_offset = HEADER_SIZE;
     header->data_offset = HEADER_SIZE + index_size;
+    header->vector_ids_offset = HEADER_SIZE + index_size + data_size;
     header->index_capacity = initial_capacity;
     header->data_capacity = data_size;
     
-    // Zero out index and data sections
-    std::memset(static_cast<char*>(mapped) + HEADER_SIZE, 0, index_size + data_size);
+    // Zero out index, data, and string sections
+    std::memset(static_cast<char*>(mapped) + HEADER_SIZE, 0, index_size + data_size + string_size);
     
     // Flush to disk
     sync_file(mapped, total_size, true);
@@ -277,6 +279,9 @@ bool MemoryMappedVectorStore::open_vector_file(const std::string& database_id) {
     db_file->last_access_time = get_timestamp();
     
     open_files_[database_id] = std::move(db_file);
+    
+    // Rebuild in-memory vector ID index from file
+    rebuild_vector_id_index(open_files_[database_id].get());
     
     return true;
 }
@@ -391,7 +396,7 @@ VectorIndexEntry* MemoryMappedVectorStore::find_index_entry(DatabaseFile* db_fil
     return nullptr;
 }
 
-VectorIndexEntry* MemoryMappedVectorStore::allocate_index_entry(DatabaseFile* db_file) {
+VectorIndexEntry* MemoryMappedVectorStore::allocate_index_entry(DatabaseFile* db_file, const std::string& vector_id) {
     if (!db_file || !db_file->header) return nullptr;
     
     auto* header = db_file->header;
@@ -402,15 +407,21 @@ VectorIndexEntry* MemoryMappedVectorStore::allocate_index_entry(DatabaseFile* db
         return nullptr;  // TODO: Implement index resize
     }
     
+    uint64_t hash = hash_vector_id(vector_id);
     auto* index_base = reinterpret_cast<VectorIndexEntry*>(
         static_cast<char*>(db_file->mapped_memory) + header->index_offset);
     
-    // Find empty slot
-    for (size_t i = 0; i < header->index_capacity; i++) {
-        auto* entry = &index_base[i];
+    // Use hash-based probing to find slot (same as find_index_entry)
+    size_t probe = hash % header->index_capacity;
+    size_t attempts = 0;
+    
+    while (attempts < header->index_capacity) {
+        auto* entry = &index_base[probe];
         if (entry->vector_id_hash == 0 || (entry->flags & VectorIndexEntry::FLAG_DELETED)) {
             return entry;
         }
+        probe = (probe + 1) % header->index_capacity;
+        attempts++;
     }
     
     return nullptr;
@@ -463,7 +474,7 @@ bool MemoryMappedVectorStore::store_vector(const std::string& database_id,
     }
     
     // Allocate new entry
-    auto* entry = allocate_index_entry(db_file);
+    auto* entry = allocate_index_entry(db_file, vector_id);
     if (!entry) return false;
     
     // Allocate space for vector data
@@ -481,9 +492,26 @@ bool MemoryMappedVectorStore::store_vector(const std::string& database_id,
     entry->flags = VectorIndexEntry::FLAG_ACTIVE;
     entry->timestamp = get_timestamp();
     
+    // Store vector ID string at vector_ids_offset + current position
+    if (db_file->header->vector_ids_offset > 0) {
+        size_t entry_index = (reinterpret_cast<char*>(entry) - 
+                              (static_cast<char*>(db_file->mapped_memory) + db_file->header->index_offset)) 
+                             / INDEX_ENTRY_SIZE;
+        uint64_t string_offset = db_file->header->vector_ids_offset + (entry_index * 64);
+        entry->string_offset = string_offset;
+        
+        // Write vector ID string
+        char* string_ptr = static_cast<char*>(db_file->mapped_memory) + string_offset;
+        std::strncpy(string_ptr, vector_id.c_str(), 63);
+        string_ptr[63] = '\0';  // Ensure null termination
+    }
+    
     // Update header
     db_file->header->vector_count++;
     db_file->header->active_count++;
+    
+    // Track vector ID in index (active)
+    db_file->vector_id_index_[vector_id] = true;
     
     return true;
 }
@@ -529,6 +557,9 @@ bool MemoryMappedVectorStore::delete_vector(const std::string& database_id,
     entry->flags |= VectorIndexEntry::FLAG_DELETED;
     entry->flags &= ~VectorIndexEntry::FLAG_ACTIVE;
     db_file->header->active_count--;
+    
+    // Mark as deleted in index (false = deleted)
+    db_file->vector_id_index_[vector_id] = false;
     
     return true;
 }
@@ -615,9 +646,79 @@ bool MemoryMappedVectorStore::has_database(const std::string& database_id) {
 }
 
 std::vector<std::string> MemoryMappedVectorStore::list_vector_ids(const std::string& database_id) {
-    // Not implemented yet - requires storing vector IDs in index
-    // For now, return empty vector
-    return {};
+    auto* db_file = get_or_open_file(database_id);
+    if (!db_file) return {};
+    
+    std::lock_guard<std::mutex> lock(db_file->mutex);
+    
+    std::vector<std::string> active_ids;
+    active_ids.reserve(db_file->header->active_count);
+    
+    // Return only active vector IDs (where value is true)
+    for (const auto& [vector_id, is_active] : db_file->vector_id_index_) {
+        if (is_active) {
+            active_ids.push_back(vector_id);
+        }
+    }
+    
+    return active_ids;
+}
+
+size_t MemoryMappedVectorStore::get_deleted_count(const std::string& database_id) {
+    auto* db_file = get_or_open_file(database_id);
+    if (!db_file) return 0;
+    
+    std::lock_guard<std::mutex> lock(db_file->mutex);
+    
+    size_t deleted_count = 0;
+    for (const auto& [vector_id, is_active] : db_file->vector_id_index_) {
+        if (!is_active) {
+            deleted_count++;
+        }
+    }
+    
+    return deleted_count;
+}
+
+std::string MemoryMappedVectorStore::get_database_vector_file_path(const std::string& database_id) const {
+    return get_vector_file_path(database_id);
+}
+
+void MemoryMappedVectorStore::rebuild_vector_id_index(DatabaseFile* db_file) {
+    if (!db_file || !db_file->header) return;
+    
+    // Clear existing index
+    db_file->vector_id_index_.clear();
+    
+    // If no vector_ids_offset, file was created with old format
+    if (db_file->header->vector_ids_offset == 0) {
+        return;  // Can't rebuild without stored strings
+    }
+    
+    auto* header = db_file->header;
+    auto* index_base = reinterpret_cast<VectorIndexEntry*>(
+        static_cast<char*>(db_file->mapped_memory) + header->index_offset);
+    
+    // Scan through all index entries
+    for (size_t i = 0; i < header->index_capacity; i++) {
+        auto* entry = &index_base[i];
+        
+        // Skip empty entries
+        if (entry->vector_id_hash == 0) {
+            continue;
+        }
+        
+        // Check if entry has a string offset
+        if (entry->string_offset > 0 && entry->string_offset < db_file->file_size) {
+            // Read vector ID string
+            const char* string_ptr = static_cast<const char*>(db_file->mapped_memory) + entry->string_offset;
+            std::string vector_id(string_ptr);
+            
+            // Add to in-memory index based on active/deleted flag
+            bool is_active = (entry->flags & VectorIndexEntry::FLAG_ACTIVE) != 0;
+            db_file->vector_id_index_[vector_id] = is_active;
+        }
+    }
 }
 
 // Platform-specific mmap operations

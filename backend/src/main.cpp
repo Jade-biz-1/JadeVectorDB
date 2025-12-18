@@ -109,8 +109,23 @@ public:
         // Initialize metrics registry (singleton - not owned, don't delete)
         metrics_registry_ = MetricsManager::get_registry();
         
-        // Initialize database layer
-        db_layer_ = std::make_unique<DatabaseLayer>();
+        // Initialize database layer with persistent storage
+        // Use PersistentDatabasePersistence for Sprint 2.1 persistence features
+        std::string vector_storage_path = "./data/jadevectordb/databases";
+        auto persistent_storage = std::make_unique<PersistentDatabasePersistence>(
+            vector_storage_path,
+            nullptr,  // sharding_service - not used in standalone mode
+            nullptr,  // query_router - not used in standalone mode
+            nullptr   // replication_service - not used in standalone mode
+        );
+        
+        db_layer_ = std::make_unique<DatabaseLayer>(
+            std::move(persistent_storage),
+            nullptr,  // sharding_service
+            nullptr,  // query_router
+            nullptr   // replication_service
+        );
+        
         auto db_result = db_layer_->initialize();
         if (!db_result) {
             LOG_ERROR(logger_, "Failed to initialize database layer: " << 
@@ -174,7 +189,9 @@ public:
         }
         
         // Initialize REST API service with distributed service manager
-        rest_api_service_ = std::make_unique<RestApiService>(config.port, distributed_service_manager_);
+        // Pass the database layer to REST API so it uses persistent storage
+        auto shared_db_layer = std::shared_ptr<DatabaseLayer>(db_layer_.get(), [](DatabaseLayer*){/* Don't delete, owned by unique_ptr */});
+        rest_api_service_ = std::make_unique<RestApiService>(config.port, distributed_service_manager_, shared_db_layer);
         
         // Initialize gRPC service
         grpc_service_ = std::make_unique<VectorDatabaseService>(

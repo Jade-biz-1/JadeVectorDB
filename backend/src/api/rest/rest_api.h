@@ -60,7 +60,9 @@ private:
     std::shared_ptr<logging::Logger> logger_;
 
 public:
-    explicit RestApiService(int port = 8080, std::shared_ptr<DistributedServiceManager> distributed_service_manager = nullptr);
+    explicit RestApiService(int port = 8080, 
+                           std::shared_ptr<DistributedServiceManager> distributed_service_manager = nullptr,
+                           std::shared_ptr<DatabaseLayer> db_layer = nullptr);
     ~RestApiService();
     
     // Start the REST API server
@@ -90,6 +92,9 @@ class ClusterService;
 class RestApiImpl {
 private:
     std::shared_ptr<logging::Logger> logger_;
+    
+    // Database layer (shared with main application)
+    std::shared_ptr<DatabaseLayer> db_layer_;
     
     // Services that the API will use
     std::unique_ptr<DatabaseService> db_service_;
@@ -145,7 +150,8 @@ private:
     bool server_stopped_;  // Track if stop() has been called
     
 public:
-    explicit RestApiImpl(std::shared_ptr<DistributedServiceManager> distributed_service_manager = nullptr);
+    explicit RestApiImpl(std::shared_ptr<DistributedServiceManager> distributed_service_manager = nullptr,
+                        std::shared_ptr<DatabaseLayer> db_layer = nullptr);
     ~RestApiImpl();
     
     // Initialize the web server framework
@@ -222,9 +228,6 @@ public:
     
     // Embedding generation routes
     void handle_generate_embedding();     // POST /v1/embeddings/generate
-    
-    // Metrics and monitoring routes
-    void handle_metrics();                // GET /metrics (Prometheus format)
     
     // Lifecycle management routes
     void handle_configure_retention();    // PUT /v1/databases/{databaseId}/lifecycle
