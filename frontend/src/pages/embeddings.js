@@ -1,5 +1,5 @@
-import Head from 'next/head';
 import { useState } from 'react';
+import Layout from '../components/Layout';
 import { embeddingApi } from '../lib/api';
 
 export default function EmbeddingGeneration() {
@@ -272,7 +272,7 @@ export default function EmbeddingGeneration() {
             </div>
           )}
         </div>
-      </main>
-    </div>
+      </div>
+    </Layout>
   );
 }

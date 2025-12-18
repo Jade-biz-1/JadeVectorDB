@@ -1,5 +1,5 @@
-import Head from 'next/head';
 import { useState, useEffect } from 'react';
+import Layout from '../components/Layout';
 import { searchApi, databaseApi } from '../lib/api';
 
 export default function AdvancedSearch() {
@@ -414,7 +414,7 @@ export default function AdvancedSearch() {
             </div>
           )}
         </div>
-      </main>
-    </div>
+      </div>
+    </Layout>
   );
 }
