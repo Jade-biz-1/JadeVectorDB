@@ -1542,7 +1542,11 @@ crow::response RestApiImpl::handle_create_database_request(const crow::request& 
         // Validate database creation parameters
         auto validation_result = db_service_->validate_creation_params(db_config);
         if (!validation_result.has_value()) {
-            return crow::response(400, "{\"error\":\"Invalid database creation parameters\"}");
+            std::string error_msg = ErrorHandler::format_error(validation_result.error());
+            LOG_ERROR(logger_, "Database creation validation failed: " << error_msg);
+            crow::json::wvalue error_response;
+            error_response["error"] = error_msg;
+            return crow::response(400, error_response);
         }
 
         // Create the database using the service

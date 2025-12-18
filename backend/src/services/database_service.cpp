@@ -284,12 +284,17 @@ Result<void> DatabaseService::validate_creation_params(const DatabaseCreationPar
             RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Vector dimension is too large (max 10000)");
         }
         
-        // Validate index type
+        // Validate index type (case-insensitive)
         if (!params.indexType.empty()) {
+            std::string index_type_lower = params.indexType;
+            std::transform(index_type_lower.begin(), index_type_lower.end(), 
+                          index_type_lower.begin(), ::tolower);
+            
             std::vector<std::string> valid_index_types = {"hnsw", "ivf", "flat", "lsh"};
-            if (std::find(valid_index_types.begin(), valid_index_types.end(), params.indexType) == 
+            if (std::find(valid_index_types.begin(), valid_index_types.end(), index_type_lower) == 
                 valid_index_types.end()) {
-                RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid index type: " + params.indexType);
+                RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid index type: " + params.indexType + 
+                           " (valid types: HNSW, IVF, FLAT, LSH)");
             }
         }
         
