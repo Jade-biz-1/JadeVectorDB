@@ -223,9 +223,6 @@ public:
     // Embedding generation routes
     void handle_generate_embedding();     // POST /v1/embeddings/generate
     
-    // Metrics and monitoring routes
-    void handle_metrics();                // GET /metrics (Prometheus format)
-    
     // Lifecycle management routes
     void handle_configure_retention();    // PUT /v1/databases/{databaseId}/lifecycle
     void handle_lifecycle_status();       // GET /v1/databases/{databaseId}/lifecycle/status
