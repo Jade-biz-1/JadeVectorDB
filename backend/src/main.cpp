@@ -109,8 +109,23 @@ public:
         // Initialize metrics registry (singleton - not owned, don't delete)
         metrics_registry_ = MetricsManager::get_registry();
         
-        // Initialize database layer
-        db_layer_ = std::make_unique<DatabaseLayer>();
+        // Initialize database layer with persistent storage
+        // Use PersistentDatabasePersistence for Sprint 2.1 persistence features
+        std::string vector_storage_path = "./data/jadevectordb/databases";
+        auto persistent_storage = std::make_unique<PersistentDatabasePersistence>(
+            vector_storage_path,
+            nullptr,  // sharding_service - not used in standalone mode
+            nullptr,  // query_router - not used in standalone mode
+            nullptr   // replication_service - not used in standalone mode
+        );
+        
+        db_layer_ = std::make_unique<DatabaseLayer>(
+            std::move(persistent_storage),
+            nullptr,  // sharding_service
+            nullptr,  // query_router
+            nullptr   // replication_service
+        );
+        
         auto db_result = db_layer_->initialize();
         if (!db_result) {
             LOG_ERROR(logger_, "Failed to initialize database layer: " << 

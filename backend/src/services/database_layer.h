@@ -163,7 +163,7 @@ public:
         std::shared_ptr<QueryRouter> query_router = nullptr,
         std::shared_ptr<ReplicationService> replication_service = nullptr
     );
-    ~PersistentDatabasePersistence() = default;
+    ~PersistentDatabasePersistence();  // Defined in .cpp to handle unique_ptr<MemoryMappedVectorStore>
     
     // Database operations
     Result<std::string> create_database(const Database& db) override;

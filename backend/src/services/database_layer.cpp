@@ -709,6 +709,8 @@ PersistentDatabasePersistence::PersistentDatabasePersistence(
     LOG_INFO(logger_, "Initialized PersistentDatabasePersistence with vector storage at: " << vector_storage_path);
 }
 
+PersistentDatabasePersistence::~PersistentDatabasePersistence() = default;
+
 Result<std::string> PersistentDatabasePersistence::create_database(const Database& db) {
     std::unique_lock<std::shared_mutex> lock(databases_mutex_);
     
