@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import Head from 'next/head';
+import Layout from '../components/Layout';
 import { performanceApi } from '../lib/api';
 
 export default function PerformanceDashboard() {
@@ -36,18 +36,9 @@ export default function PerformanceDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Head>
-        <title>Performance Dashboard - JadeVectorDB</title>
-        <meta name="description" content="Monitor system performance" />
-      </Head>
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold text-gray-900">Performance Dashboard</h1>
-        </div>
-      </header>
-      <main>
-        <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <Layout title="Performance Dashboard - JadeVectorDB">
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold mb-8 text-gray-900">Performance Dashboard</h1>
           <div className="bg-white p-6 rounded-lg shadow">
             <div className="flex justify-between items-center mb-6">
               <div>
@@ -117,8 +108,7 @@ export default function PerformanceDashboard() {
               </div>
             </div>
           </div>
-        </div>
-      </main>
-    </div>
+      </div>
+    </Layout>
   );
 }
