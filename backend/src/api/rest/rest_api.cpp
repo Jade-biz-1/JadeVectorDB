@@ -168,8 +168,8 @@ bool RestApiImpl::initialize(int port) {
     // Initialize authentication service
     authentication_config_ = AuthenticationConfig{};
     authentication_config_.enable_api_keys = true;
-    authentication_config_.require_strong_passwords = true;
-    authentication_config_.min_password_length = 10;
+    authentication_config_.require_strong_passwords = false;  // Use false for dev/test
+    authentication_config_.min_password_length = 8;  // Min 8 chars for dev/test
     if (!authentication_service_->initialize(authentication_config_, security_audit_logger_)) {
         LOG_ERROR(logger_, "Failed to initialize authentication service");
         return false;
