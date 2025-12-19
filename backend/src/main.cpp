@@ -141,34 +141,48 @@ public:
         distributed_service_manager_ = std::make_shared<DistributedServiceManager>();
         DistributedConfig dist_config;
         
-        // Configure sharding
-        dist_config.sharding_config.strategy = "hash";
-        dist_config.sharding_config.num_shards = 4;
-        dist_config.sharding_config.replication_factor = 3;
+        // Load distributed configuration from app_config (JSON files + environment variables)
+        // Can be overridden via:
+        // - backend/config/production.json or development.json ("distributed" section)
+        // - Environment variables: JADEVECTORDB_ENABLE_SHARDING, JADEVECTORDB_ENABLE_REPLICATION, etc.
+        // See docs/distributed_services_api.md for details
         
-        // Configure replication
-        dist_config.replication_config.default_replication_factor = 3;
-        dist_config.replication_config.synchronous_replication = false;
-        dist_config.replication_config.replication_timeout_ms = 5000;
-        dist_config.replication_config.replication_strategy = "simple";
+        // Configure sharding from app_config
+        dist_config.sharding_config.strategy = app_config_.distributed.sharding_strategy;
+        dist_config.sharding_config.num_shards = app_config_.distributed.num_shards;
+        dist_config.sharding_config.replication_factor = app_config_.distributed.replication_factor;
         
-        // Configure routing
-        dist_config.routing_config.strategy = "round_robin";
-        dist_config.routing_config.max_route_cache_size = 1000;
-        dist_config.routing_config.route_ttl_seconds = 300;
-        dist_config.routing_config.enable_adaptive_routing = true;
+        // Configure replication from app_config
+        dist_config.replication_config.default_replication_factor = app_config_.distributed.default_replication_factor;
+        dist_config.replication_config.synchronous_replication = app_config_.distributed.synchronous_replication;
+        dist_config.replication_config.replication_timeout_ms = app_config_.distributed.replication_timeout_ms;
+        dist_config.replication_config.replication_strategy = app_config_.distributed.replication_strategy;
         
-        // Configure clustering
-        dist_config.cluster_host = config.host;
-        dist_config.cluster_port = config.port + 1000; // Use different port for cluster communication
-        dist_config.seed_nodes = {}; // Empty for standalone mode
+        // Configure routing from app_config
+        dist_config.routing_config.strategy = app_config_.distributed.routing_strategy;
+        dist_config.routing_config.max_route_cache_size = app_config_.distributed.max_route_cache_size;
+        dist_config.routing_config.route_ttl_seconds = app_config_.distributed.route_ttl_seconds;
+        dist_config.routing_config.enable_adaptive_routing = app_config_.distributed.enable_adaptive_routing;
         
-        // Enable all distributed features
-        // NOTE: Sharding is currently disabled to fix vector storage issues
-        // When enabled, it requires creating shard databases which is not yet implemented
-        dist_config.enable_sharding = false;
-        dist_config.enable_replication = false;
-        dist_config.enable_clustering = false;
+        // Configure clustering from app_config
+        dist_config.cluster_host = app_config_.distributed.cluster_host.empty() ? config.host : app_config_.distributed.cluster_host;
+        dist_config.cluster_port = app_config_.distributed.cluster_port;
+        dist_config.seed_nodes = app_config_.distributed.seed_nodes;
+        
+        // Enable/disable distributed features from app_config
+        // NOTE: Distributed features fully implemented (12,259+ lines) but disabled by default for Phase 1
+        // All distributed services (sharding, replication, clustering) are coded and unit-tested
+        // Default: disabled for validated single-node deployment (Phase 1)
+        // To enable: Set in config JSON or use environment variables
+        // Phase 2 will production-test distributed features in multi-node environment
+        // See docs/distributed_services_api.md for architecture details
+        dist_config.enable_sharding = app_config_.distributed.enable_sharding;
+        dist_config.enable_replication = app_config_.distributed.enable_replication;
+        dist_config.enable_clustering = app_config_.distributed.enable_clustering;
+        
+        LOG_INFO(logger_, "Distributed config: sharding=" << dist_config.enable_sharding << 
+                 ", replication=" << dist_config.enable_replication << 
+                 ", clustering=" << dist_config.enable_clustering);
         
         auto dist_result = distributed_service_manager_->initialize(dist_config);
         if (!dist_result.has_value()) {

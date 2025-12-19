@@ -15,6 +15,7 @@ namespace jadevectordb {
 struct VectorFileHeader;
 struct VectorIndexEntry;
 class FileHandle;
+class WriteAheadLog;
 
 /**
  * @brief Memory-mapped vector store for high-performance persistent storage
@@ -139,6 +140,33 @@ public:
      * @param sync If true, use synchronous flush
      */
     void flush_all(bool sync = false);
+    
+    /**
+     * @brief Enable write-ahead logging for a database
+     * @param database_id Database identifier
+     * @return true if WAL enabled successfully
+     */
+    bool enable_wal(const std::string& database_id);
+    
+    /**
+     * @brief Disable write-ahead logging for a database
+     * @param database_id Database identifier
+     */
+    void disable_wal(const std::string& database_id);
+    
+    /**
+     * @brief Recover from WAL after crash
+     * @param database_id Database identifier
+     * @return Number of operations replayed, or -1 on error
+     */
+    int recover_from_wal(const std::string& database_id);
+    
+    /**
+     * @brief Checkpoint WAL (truncate after successful flush)
+     * @param database_id Database identifier
+     * @return true if successful
+     */
+    bool checkpoint_wal(const std::string& database_id);
 
     /**
      * @brief Delete all vector data for a database
@@ -181,6 +209,12 @@ public:
      * @return Number of deleted vectors
      */
     size_t get_deleted_count(const std::string& database_id);
+    
+    /**
+     * @brief List all database IDs that have vector files
+     * @return Vector of database IDs
+     */
+    std::vector<std::string> list_databases() const;
 
     /**
      * @brief Get the file path for a database's vector file
@@ -205,6 +239,16 @@ private:
         
         // Vector ID index for tracking active/deleted vectors
         std::unordered_map<std::string, bool> vector_id_index_;  // true=active, false=deleted
+        
+        // Free list for reusing deleted vector space
+        struct FreeBlock {
+            uint64_t offset;  // Byte offset in data section
+            size_t size;      // Size in bytes
+        };
+        std::vector<FreeBlock> free_list_;  // Sorted by offset
+        
+        // Write-ahead log for crash recovery
+        std::unique_ptr<WriteAheadLog> wal;
     };
     
     std::unordered_map<std::string, std::unique_ptr<DatabaseFile>> open_files_;
@@ -226,11 +270,13 @@ private:
     VectorIndexEntry* find_index_entry(DatabaseFile* db_file, const std::string& vector_id);
     VectorIndexEntry* allocate_index_entry(DatabaseFile* db_file, const std::string& vector_id);
     void rebuild_vector_id_index(DatabaseFile* db_file);
+    bool resize_index(DatabaseFile* db_file);
     uint64_t hash_vector_id(const std::string& vector_id) const;
     
     // Memory operations
     void* get_vector_data_pointer(DatabaseFile* db_file, uint64_t offset);
     uint64_t allocate_vector_space(DatabaseFile* db_file, size_t size);
+    void merge_adjacent_free_blocks(DatabaseFile* db_file);
     
     // Platform-specific helpers
     void* map_file(FileHandle* handle, size_t size);

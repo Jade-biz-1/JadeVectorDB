@@ -36,5 +36,24 @@
   "server": {
     "port": 8080,
     "host": "0.0.0.0"
+  },
+  "distributed": {
+    "enable_sharding": false,
+    "enable_replication": false,
+    "enable_clustering": false,
+    "sharding_strategy": "hash",
+    "num_shards": 16,
+    "replication_factor": 3,
+    "default_replication_factor": 3,
+    "synchronous_replication": true,
+    "replication_timeout_ms": 3000,
+    "replication_strategy": "simple",
+    "routing_strategy": "least_loaded",
+    "max_route_cache_size": 10000,
+    "route_ttl_seconds": 300,
+    "enable_adaptive_routing": true,
+    "cluster_host": "0.0.0.0",
+    "cluster_port": 9080,
+    "seed_nodes": []
   }
 }

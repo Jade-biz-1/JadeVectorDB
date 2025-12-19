@@ -1,4 +1,5 @@
 #include "memory_mapped_vector_store.h"
+#include "write_ahead_log.h"
 #include <filesystem>
 #include <chrono>
 #include <cstring>
@@ -404,7 +405,9 @@ VectorIndexEntry* MemoryMappedVectorStore::allocate_index_entry(DatabaseFile* db
     // Check if we need to grow index
     if (header->vector_count >= header->index_capacity * 0.75) {
         // Index is 75% full, need to resize
-        return nullptr;  // TODO: Implement index resize
+        if (!resize_index(db_file)) {
+            return nullptr;  // Resize failed
+        }
     }
     
     uint64_t hash = hash_vector_id(vector_id);
@@ -432,8 +435,26 @@ uint64_t MemoryMappedVectorStore::allocate_vector_space(DatabaseFile* db_file, s
     
     auto* header = db_file->header;
     
-    // Simple allocation: append to end
-    // TODO: Implement free list for deleted vectors
+    // First, try to find a suitable block in the free list (first-fit strategy)
+    for (auto it = db_file->free_list_.begin(); it != db_file->free_list_.end(); ++it) {
+        if (it->size >= size) {
+            // Found a suitable block
+            uint64_t allocated_offset = it->offset;
+            
+            // If block is larger than needed, split it
+            if (it->size > size) {
+                it->offset += size;
+                it->size -= size;
+            } else {
+                // Exact fit, remove the block from free list
+                db_file->free_list_.erase(it);
+            }
+            
+            return allocated_offset;
+        }
+    }
+    
+    // No suitable free block found, allocate from end
     uint64_t current_used = header->vector_count * header->dimension * sizeof(float);
     
     if (current_used + size > header->data_capacity) {
@@ -442,6 +463,26 @@ uint64_t MemoryMappedVectorStore::allocate_vector_space(DatabaseFile* db_file, s
     }
     
     return header->data_offset + current_used;
+}
+
+void MemoryMappedVectorStore::merge_adjacent_free_blocks(DatabaseFile* db_file) {
+    if (!db_file || db_file->free_list_.size() < 2) return;
+    
+    // Free list is already sorted by offset
+    auto it = db_file->free_list_.begin();
+    while (it != db_file->free_list_.end() && (it + 1) != db_file->free_list_.end()) {
+        auto next_it = it + 1;
+        
+        // Check if current block and next block are adjacent
+        if (it->offset + it->size == next_it->offset) {
+            // Merge: extend current block and remove next block
+            it->size += next_it->size;
+            db_file->free_list_.erase(next_it);
+            // Don't increment iterator, check if we can merge with next block again
+        } else {
+            ++it;
+        }
+    }
 }
 
 void* MemoryMappedVectorStore::get_vector_data_pointer(DatabaseFile* db_file, uint64_t offset) {
@@ -464,12 +505,20 @@ bool MemoryMappedVectorStore::store_vector(const std::string& database_id,
     
     // Check if vector already exists
     auto* existing = find_index_entry(db_file, vector_id);
+    bool is_update = (existing != nullptr);
+    
     if (existing) {
         // Update existing vector
         auto* data = reinterpret_cast<float*>(
             get_vector_data_pointer(db_file, existing->data_offset));
         std::memcpy(data, values.data(), values.size() * sizeof(float));
         existing->timestamp = get_timestamp();
+        
+        // Log to WAL if enabled
+        if (db_file->wal) {
+            db_file->wal->log_vector_update(database_id, vector_id, values);
+        }
+        
         return true;
     }
     
@@ -513,6 +562,11 @@ bool MemoryMappedVectorStore::store_vector(const std::string& database_id,
     // Track vector ID in index (active)
     db_file->vector_id_index_[vector_id] = true;
     
+    // Log to WAL if enabled
+    if (db_file->wal) {
+        db_file->wal->log_vector_store(database_id, vector_id, values);
+    }
+    
     return true;
 }
 
@@ -553,6 +607,27 @@ bool MemoryMappedVectorStore::delete_vector(const std::string& database_id,
     auto* entry = find_index_entry(db_file, vector_id);
     if (!entry) return false;
     
+    // Add the vector's data space to free list
+    if (entry->size > 0 && entry->data_offset > 0) {
+        DatabaseFile::FreeBlock block;
+        block.offset = entry->data_offset;
+        block.size = entry->size;
+        
+        // Insert into free list, maintaining sorted order by offset
+        auto insert_pos = std::lower_bound(
+            db_file->free_list_.begin(),
+            db_file->free_list_.end(),
+            block,
+            [](const DatabaseFile::FreeBlock& a, const DatabaseFile::FreeBlock& b) {
+                return a.offset < b.offset;
+            }
+        );
+        db_file->free_list_.insert(insert_pos, block);
+        
+        // Try to merge adjacent free blocks
+        merge_adjacent_free_blocks(db_file);
+    }
+    
     // Soft delete: set flag
     entry->flags |= VectorIndexEntry::FLAG_DELETED;
     entry->flags &= ~VectorIndexEntry::FLAG_ACTIVE;
@@ -560,6 +635,11 @@ bool MemoryMappedVectorStore::delete_vector(const std::string& database_id,
     
     // Mark as deleted in index (false = deleted)
     db_file->vector_id_index_[vector_id] = false;
+    
+    // Log to WAL if enabled
+    if (db_file->wal) {
+        db_file->wal->log_vector_delete(database_id, vector_id);
+    }
     
     return true;
 }
@@ -684,6 +764,29 @@ std::string MemoryMappedVectorStore::get_database_vector_file_path(const std::st
     return get_vector_file_path(database_id);
 }
 
+std::vector<std::string> MemoryMappedVectorStore::list_databases() const {
+    std::vector<std::string> database_ids;
+    
+    // Scan storage directory for database directories
+    if (!std::filesystem::exists(storage_path_)) {
+        return database_ids;
+    }
+    
+    for (const auto& entry : std::filesystem::directory_iterator(storage_path_)) {
+        if (entry.is_directory()) {
+            std::string db_id = entry.path().filename().string();
+            
+            // Check if directory contains a vector file
+            std::string vector_file = entry.path().string() + "/vectors.jvdb";
+            if (std::filesystem::exists(vector_file)) {
+                database_ids.push_back(db_id);
+            }
+        }
+    }
+    
+    return database_ids;
+}
+
 void MemoryMappedVectorStore::rebuild_vector_id_index(DatabaseFile* db_file) {
     if (!db_file || !db_file->header) return;
     
@@ -719,6 +822,140 @@ void MemoryMappedVectorStore::rebuild_vector_id_index(DatabaseFile* db_file) {
             db_file->vector_id_index_[vector_id] = is_active;
         }
     }
+}
+
+bool MemoryMappedVectorStore::resize_index(DatabaseFile* db_file) {
+    if (!db_file || !db_file->header) return false;
+    
+    auto* old_header = db_file->header;
+    
+    // Save old values BEFORE unmapping (header will be invalid after unmap)
+    size_t old_capacity = old_header->index_capacity;
+    size_t old_index_size = old_capacity * INDEX_ENTRY_SIZE;
+    size_t data_section_size = old_header->data_capacity;
+    uint64_t old_data_offset = old_header->data_offset;
+    uint64_t old_vector_ids_offset = old_header->vector_ids_offset;
+    
+    // Calculate new capacity (double the current capacity)
+    size_t new_capacity = old_capacity * 2;
+    size_t new_index_size = new_capacity * INDEX_ENTRY_SIZE;
+    size_t string_size = new_capacity * 64;  // 64 bytes per vector ID string
+    
+    // Calculate new file size
+    size_t new_total_size = HEADER_SIZE + new_index_size + data_section_size + string_size;
+    
+    // Unmap old file
+    unmap_file(db_file->mapped_memory, db_file->mapped_size);
+    db_file->mapped_memory = nullptr;
+    db_file->header = nullptr;
+    
+    // Resize physical file
+    if (!db_file->handle->resize(new_total_size)) {
+        // Failed to resize, try to remap old file
+        void* mapped = map_file(db_file->handle.get(), db_file->file_size);
+        if (mapped) {
+            db_file->mapped_memory = mapped;
+            db_file->header = reinterpret_cast<VectorFileHeader*>(mapped);
+        }
+        return false;
+    }
+    
+    // Map new file
+    void* new_mapped = map_file(db_file->handle.get(), new_total_size);
+    if (!new_mapped) {
+        // Remap failed, critical error
+        return false;
+    }
+    
+    db_file->mapped_memory = new_mapped;
+    db_file->mapped_size = new_total_size;
+    db_file->file_size = new_total_size;
+    
+    // Get pointers to sections (note: this is the SAME header as before, just remapped)
+    auto* new_header = reinterpret_cast<VectorFileHeader*>(new_mapped);
+    auto* old_index = reinterpret_cast<VectorIndexEntry*>(
+        static_cast<char*>(new_mapped) + HEADER_SIZE);
+    
+    // Old data section is at the OLD offset we saved earlier
+    char* old_data_section = static_cast<char*>(new_mapped) + old_data_offset;
+    
+    // Save old index entries BEFORE zeroing index section
+    std::vector<VectorIndexEntry> active_entries;
+    active_entries.reserve(new_header->active_count);
+    
+    for (size_t i = 0; i < old_capacity; i++) {
+        auto* entry = &old_index[i];
+        if (entry->vector_id_hash != 0 && (entry->flags & VectorIndexEntry::FLAG_ACTIVE)) {
+            active_entries.push_back(*entry);
+        }
+    }
+    
+    // Calculate new data offset
+    uint64_t new_data_offset = HEADER_SIZE + new_index_size;
+    
+    // Move data section to new location if needed
+    // IMPORTANT: Do this BEFORE zeroing the index section to avoid corruption
+    if (new_data_offset != old_data_offset) {
+        std::memmove(static_cast<char*>(new_mapped) + new_data_offset,
+                     old_data_section,
+                     data_section_size);
+    }
+    
+    // Update header
+    new_header->index_offset = HEADER_SIZE;
+    new_header->data_offset = new_data_offset;
+    new_header->vector_ids_offset = new_data_offset + data_section_size;
+    new_header->index_capacity = new_capacity;
+    
+    // Zero out new index section (do this AFTER moving data)
+    std::memset(static_cast<char*>(new_mapped) + HEADER_SIZE, 0, new_index_size);
+    
+    // Rehash all active entries into new index
+    auto* new_index_base = reinterpret_cast<VectorIndexEntry*>(
+        static_cast<char*>(new_mapped) + HEADER_SIZE);
+    
+    for (const auto& old_entry : active_entries) {
+        // Find new slot using hash-based probing
+        size_t probe = (old_entry.vector_id_hash % new_capacity);
+        size_t attempts = 0;
+        
+        while (attempts < new_capacity) {
+            auto* new_entry = &new_index_base[probe];
+            if (new_entry->vector_id_hash == 0) {
+                // Found empty slot
+                *new_entry = old_entry;
+                
+                // Update data_offset if data section moved
+                if (new_data_offset != old_data_offset) {
+                    // Calculate relative position within data section
+                    uint64_t relative_data_offset = old_entry.data_offset - old_data_offset;
+                    // Update to new absolute position
+                    new_entry->data_offset = new_data_offset + relative_data_offset;
+                }
+                
+                // Update string offset for new layout
+                if (old_entry.string_offset > 0) {
+                    // Calculate relative position within old string section
+                    uint64_t string_index = (old_entry.string_offset - old_vector_ids_offset) / 64;
+                    
+                    // Calculate new absolute offset
+                    new_entry->string_offset = new_header->vector_ids_offset + (string_index * 64);
+                }
+                
+                break;
+            }
+            probe = (probe + 1) % new_capacity;
+            attempts++;
+        }
+    }
+    
+    // Update db_file pointer
+    db_file->header = new_header;
+    
+    // Flush changes to disk
+    sync_file(new_mapped, new_total_size, true);
+    
+    return true;
 }
 
 // Platform-specific mmap operations
@@ -785,5 +1022,142 @@ bool MemoryMappedVectorStore::sync_file(void* addr, size_t size, bool synchronou
 }
 
 #endif
+
+// WAL Management
+
+bool MemoryMappedVectorStore::enable_wal(const std::string& database_id) {
+    auto* db_file = get_or_open_file(database_id);
+    if (!db_file) return false;
+    
+    std::lock_guard<std::mutex> lock(db_file->mutex);
+    
+    if (db_file->wal) {
+        return true;  // Already enabled
+    }
+    
+    // Create WAL directory (same as storage path + "/wal")
+    std::string wal_dir = storage_path_ + "/wal";
+    
+    // Create WAL instance
+    db_file->wal = std::make_unique<WriteAheadLog>(database_id, wal_dir);
+    
+    // Initialize WAL
+    return db_file->wal->initialize();
+}
+
+void MemoryMappedVectorStore::disable_wal(const std::string& database_id) {
+    auto* db_file = get_or_open_file(database_id);
+    if (!db_file) return;
+    
+    std::lock_guard<std::mutex> lock(db_file->mutex);
+    
+    if (db_file->wal) {
+        db_file->wal->flush(true);  // Final flush
+        db_file->wal.reset();       // Destroy WAL
+    }
+}
+
+int MemoryMappedVectorStore::recover_from_wal(const std::string& database_id) {
+    auto* db_file = get_or_open_file(database_id);
+    if (!db_file) return -1;
+    
+    std::lock_guard<std::mutex> lock(db_file->mutex);
+    
+    if (!db_file->wal) {
+        // Try to enable WAL first
+        std::string wal_dir = storage_path_ + "/wal";
+        db_file->wal = std::make_unique<WriteAheadLog>(database_id, wal_dir);
+        
+        if (!db_file->wal->initialize()) {
+            db_file->wal.reset();
+            return -1;
+        }
+    }
+    
+    // Replay WAL entries
+    int replayed = db_file->wal->replay(
+        [this, db_file, &database_id](const WALEntryHeader& header, const std::vector<uint8_t>& data) -> bool {
+            
+            switch (header.entry_type) {
+                case WALEntryType::VECTOR_STORE:
+                case WALEntryType::VECTOR_UPDATE: {
+                    if (data.size() < sizeof(WALVectorEntry)) return false;
+                    
+                    const auto* entry = reinterpret_cast<const WALVectorEntry*>(data.data());
+                    std::string vec_db_id(entry->database_id);
+                    std::string vec_id(entry->vector_id);
+                    
+                    // Extract vector values
+                    size_t values_offset = sizeof(WALVectorEntry);
+                    size_t values_count = entry->dimension;
+                    
+                    if (data.size() < values_offset + values_count * sizeof(float)) {
+                        return false;
+                    }
+                    
+                    const float* values_ptr = reinterpret_cast<const float*>(data.data() + values_offset);
+                    std::vector<float> values(values_ptr, values_ptr + values_count);
+                    
+                    // Temporarily disable WAL logging during replay
+                    auto wal_backup = std::move(db_file->wal);
+                    bool success = store_vector(vec_db_id, vec_id, values);
+                    db_file->wal = std::move(wal_backup);
+                    
+                    return success;
+                }
+                
+                case WALEntryType::VECTOR_DELETE: {
+                    if (data.size() < sizeof(WALVectorEntry)) return false;
+                    
+                    const auto* entry = reinterpret_cast<const WALVectorEntry*>(data.data());
+                    std::string vec_db_id(entry->database_id);
+                    std::string vec_id(entry->vector_id);
+                    
+                    // Temporarily disable WAL logging during replay
+                    auto wal_backup = std::move(db_file->wal);
+                    bool success = delete_vector(vec_db_id, vec_id);
+                    db_file->wal = std::move(wal_backup);
+                    
+                    return success;
+                }
+                
+                case WALEntryType::INDEX_RESIZE: {
+                    // Index resize is idempotent, just note it happened
+                    return true;
+                }
+                
+                default:
+                    return true;  // Skip unknown entry types
+            }
+        }
+    );
+    
+    return replayed;
+}
+
+bool MemoryMappedVectorStore::checkpoint_wal(const std::string& database_id) {
+    auto* db_file = get_or_open_file(database_id);
+    if (!db_file || !db_file->wal) return false;
+    
+    std::lock_guard<std::mutex> lock(db_file->mutex);
+    
+    // Flush memory-mapped file to disk
+    if (!sync_file(db_file->mapped_memory, db_file->mapped_size, true)) {
+        return false;
+    }
+    
+    // Write checkpoint marker
+    if (!db_file->wal->write_checkpoint()) {
+        return false;
+    }
+    
+    // Flush WAL
+    if (!db_file->wal->flush(true)) {
+        return false;
+    }
+    
+    // Truncate WAL
+    return db_file->wal->truncate();
+}
 
 } // namespace jadevectordb
