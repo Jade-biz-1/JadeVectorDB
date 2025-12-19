@@ -128,6 +128,59 @@ Result<nlohmann::json> ConfigLoader::load_json_file(const std::string& file_path
 }
 
 void ConfigLoader::apply_env_overrides(AppConfig& config) {
+    // Distributed configuration overrides
+    const char* enable_sharding = std::getenv("JADEVECTORDB_ENABLE_SHARDING");
+    if (enable_sharding) {
+        config.distributed.enable_sharding = (std::string(enable_sharding) == "true" || std::string(enable_sharding) == "1");
+    }
+    
+    const char* enable_replication = std::getenv("JADEVECTORDB_ENABLE_REPLICATION");
+    if (enable_replication) {
+        config.distributed.enable_replication = (std::string(enable_replication) == "true" || std::string(enable_replication) == "1");
+    }
+    
+    const char* enable_clustering = std::getenv("JADEVECTORDB_ENABLE_CLUSTERING");
+    if (enable_clustering) {
+        config.distributed.enable_clustering = (std::string(enable_clustering) == "true" || std::string(enable_clustering) == "1");
+    }
+    
+    const char* num_shards = std::getenv("JADEVECTORDB_NUM_SHARDS");
+    if (num_shards) {
+        config.distributed.num_shards = std::stoi(num_shards);
+    }
+    
+    const char* replication_factor = std::getenv("JADEVECTORDB_REPLICATION_FACTOR");
+    if (replication_factor) {
+        config.distributed.replication_factor = std::stoi(replication_factor);
+    }
+    
+    const char* cluster_host = std::getenv("JADEVECTORDB_CLUSTER_HOST");
+    if (cluster_host) {
+        config.distributed.cluster_host = cluster_host;
+    }
+    
+    const char* cluster_port = std::getenv("JADEVECTORDB_CLUSTER_PORT");
+    if (cluster_port) {
+        config.distributed.cluster_port = std::stoi(cluster_port);
+    }
+    
+    const char* seed_nodes = std::getenv("JADEVECTORDB_SEED_NODES");
+    if (seed_nodes) {
+        // Parse comma-separated seed nodes
+        std::string nodes_str(seed_nodes);
+        config.distributed.seed_nodes.clear();
+        size_t start = 0;
+        size_t end = nodes_str.find(',');
+        while (end != std::string::npos) {
+            config.distributed.seed_nodes.push_back(nodes_str.substr(start, end - start));
+            start = end + 1;
+            end = nodes_str.find(',', start);
+        }
+        if (start < nodes_str.length()) {
+            config.distributed.seed_nodes.push_back(nodes_str.substr(start));
+        }
+    }
+    
     // Server configuration
     const char* port = std::getenv("JADEVECTORDB_PORT");
     if (port) {
@@ -403,6 +456,62 @@ void ConfigLoader::merge_json_into_config(AppConfig& config, const nlohmann::jso
             }
             if (server.contains("host")) {
                 config.server_host = server["host"].get<std::string>();
+            }
+        }
+        
+        // Distributed configuration
+        if (json.contains("distributed")) {
+            const auto& dist = json["distributed"];
+            if (dist.contains("enable_sharding")) {
+                config.distributed.enable_sharding = dist["enable_sharding"].get<bool>();
+            }
+            if (dist.contains("enable_replication")) {
+                config.distributed.enable_replication = dist["enable_replication"].get<bool>();
+            }
+            if (dist.contains("enable_clustering")) {
+                config.distributed.enable_clustering = dist["enable_clustering"].get<bool>();
+            }
+            if (dist.contains("sharding_strategy")) {
+                config.distributed.sharding_strategy = dist["sharding_strategy"].get<std::string>();
+            }
+            if (dist.contains("num_shards")) {
+                config.distributed.num_shards = dist["num_shards"].get<int>();
+            }
+            if (dist.contains("replication_factor")) {
+                config.distributed.replication_factor = dist["replication_factor"].get<int>();
+            }
+            if (dist.contains("default_replication_factor")) {
+                config.distributed.default_replication_factor = dist["default_replication_factor"].get<int>();
+            }
+            if (dist.contains("synchronous_replication")) {
+                config.distributed.synchronous_replication = dist["synchronous_replication"].get<bool>();
+            }
+            if (dist.contains("replication_timeout_ms")) {
+                config.distributed.replication_timeout_ms = dist["replication_timeout_ms"].get<int>();
+            }
+            if (dist.contains("replication_strategy")) {
+                config.distributed.replication_strategy = dist["replication_strategy"].get<std::string>();
+            }
+            if (dist.contains("routing_strategy")) {
+                config.distributed.routing_strategy = dist["routing_strategy"].get<std::string>();
+            }
+            if (dist.contains("max_route_cache_size")) {
+                config.distributed.max_route_cache_size = dist["max_route_cache_size"].get<int>();
+            }
+            if (dist.contains("route_ttl_seconds")) {
+                config.distributed.route_ttl_seconds = dist["route_ttl_seconds"].get<int>();
+            }
+            if (dist.contains("enable_adaptive_routing")) {
+                config.distributed.enable_adaptive_routing = dist["enable_adaptive_routing"].get<bool>();
+            }
+            if (dist.contains("cluster_host")) {
+                config.distributed.cluster_host = dist["cluster_host"].get<std::string>();
+            }
+            if (dist.contains("cluster_port")) {
+                config.distributed.cluster_port = dist["cluster_port"].get<int>();
+            }
+            if (dist.contains("seed_nodes")) {
+                config.distributed.seed_nodes = dist["seed_nodes"].get<std::vector<std::string>>();
             }
         }
         

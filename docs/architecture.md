@@ -98,6 +98,20 @@ The `MemoryMappedVectorStore` class provides the core persistence mechanism:
 **Architecture**:
 - Each database corresponds to one `.jvdb` binary file
 - Files are memory-mapped for zero-copy access
+
+**Index Resize Mechanism** (Sprint 2.3):
+- Automatic capacity growth when 75% full
+- Doubles index capacity (e.g., 1024 → 2048 entries)
+- Full rehashing of all active entries to new index
+- **Critical Design Decision**: Save old offset values before unmapping
+  - When file is resized, memory is unmapped and remapped
+  - After remap, header pointer refers to same location but values may be stale
+  - Solution: Save `old_data_offset` and `old_vector_ids_offset` before unmapping
+  - During rehash, update both `data_offset` and `string_offset` using saved values
+  - Formula: `new_offset = new_base + (old_offset - old_base)`
+  - This preserves relative positioning within relocated sections
+- **Data Integrity**: Bug fixed (December 19, 2025) - all data preserved during resize
+- **Thread Safety**: Protected by per-database mutexes
 - Automatic file growth with exponential allocation strategy
 - Cross-platform support (Unix mmap, Windows CreateFileMapping)
 
