@@ -72,6 +72,37 @@ struct LoggingConfig {
 };
 
 /**
+ * @brief Distributed system configuration
+ */
+struct DistributedConfigSettings {
+    bool enable_sharding = false;
+    bool enable_replication = false;
+    bool enable_clustering = false;
+    
+    // Sharding settings
+    std::string sharding_strategy = "hash";  // hash, range, vector, auto
+    int num_shards = 4;
+    int replication_factor = 3;
+    
+    // Replication settings
+    int default_replication_factor = 3;
+    bool synchronous_replication = false;
+    int replication_timeout_ms = 5000;
+    std::string replication_strategy = "simple";
+    
+    // Routing settings
+    std::string routing_strategy = "round_robin";
+    int max_route_cache_size = 1000;
+    int route_ttl_seconds = 300;
+    bool enable_adaptive_routing = true;
+    
+    // Cluster settings
+    std::string cluster_host = "0.0.0.0";
+    int cluster_port = 9080;  // Default: server_port + 1000
+    std::vector<std::string> seed_nodes;  // Empty for standalone
+};
+
+/**
  * @brief Complete application configuration
  */
 struct AppConfig {
@@ -81,6 +112,7 @@ struct AppConfig {
     DatabaseConfig database;
     CacheConfig cache;
     LoggingConfig logging;
+    DistributedConfigSettings distributed;
     
     // Runtime settings
     int server_port = 8080;

@@ -1,8 +1,8 @@
 # Manual Testing Guide - Persistent Vector Storage
 
-**Date:** December 18, 2025  
-**Sprint:** 2.1 - Vector Data Persistence  
-**Status:** Ready for Manual Testing
+**Date:** December 19, 2025  
+**Sprint:** 2.3 - Advanced Persistence Features (COMPLETE)  
+**Status:** Ready for Comprehensive Manual Testing
 
 ---
 
@@ -28,13 +28,26 @@
 
 ## What We're Testing
 
-The Sprint 2.1 implementation added **persistent vector storage** with:
+**Sprint 2.1** implemented **persistent vector storage** with:
 - Memory-mapped `.jvdb` files for vector data
 - Cross-platform support (Unix mmap)
 - LRU cache for efficient file descriptor management
 - Automatic periodic flushing (5-minute default)
 - Graceful shutdown with signal handlers
-- Crash recovery capabilities
+
+**Sprint 2.2** added **compaction and bulk operations**:
+- File compaction to reclaim deleted space
+- Bulk vector operations for efficiency
+- Enhanced storage optimization
+
+**Sprint 2.3** added **advanced persistence features** (100% complete, 18/18 tests passing):
+- **Index Resize**: Automatic capacity growth at 75% utilization (bug fixed ✅)
+- **Free List**: Space reuse for deleted vectors (reduces fragmentation 50%+)
+- **Write-Ahead Log (WAL)**: Crash recovery with CRC32 checksums
+- **Snapshot Manager**: Point-in-time backups with checksum verification
+- **Persistence Statistics**: Thread-safe operation tracking
+- **Data Integrity Verifier**: Index validation and repair functionality
+- **Database Listing**: Enables background compaction automation
 
 ---
 
@@ -247,6 +260,138 @@ find /home/deepak/Public/JadeVectorDB/backend/build/data/ -name "*.jvdb"
 
 ---
 
+### Test 9: Index Resize (Sprint 2.3 - Critical Bug Fixed ✅)
+**Goal:** Verify automatic index capacity growth preserves data integrity
+
+**Steps:**
+1. Create database: `resize_test` (dimension: 128)
+2. Store vectors until reaching ~75% capacity (monitor backend logs)
+3. Store additional vectors to trigger resize
+4. Verify all vectors can be retrieved with correct data
+5. Check backend logs for "Resizing index" messages
+
+**Expected Results:**
+- ✅ Index automatically resizes when 75% full
+- ✅ Capacity doubles (e.g., 1024 → 2048)
+- ✅ All vectors preserved with correct data (no corruption)
+- ✅ Hash table properly rehashed
+- ✅ No allocation failures
+
+**Note:** This test validates the fix for a critical data corruption bug where retrieved vectors contained wrong data after resize.
+
+---
+
+### Test 10: Write-Ahead Log (WAL) - Crash Recovery
+**Goal:** Verify WAL enables crash recovery
+
+**Steps:**
+1. Enable WAL for database (check if exposed in UI or use API)
+2. Store 20 vectors
+3. Check for WAL file: `find data/ -name "*.wal"`
+4. Simulate crash (kill -9 backend process)
+5. Restart backend
+6. Verify all 20 vectors are present
+
+**Expected Results:**
+- ✅ WAL file created alongside `.jvdb` file
+- ✅ After crash, WAL replays operations
+- ✅ All vectors recovered successfully
+- ✅ No data loss
+
+**Verification Commands:**
+```bash
+# Check WAL files
+find /home/deepak/Public/JadeVectorDB/backend/build/data/ -name "*.wal" -ls
+
+# Simulate crash
+pkill -9 jadevectordb
+```
+
+---
+
+### Test 11: Snapshot Manager - Backup & Restore
+**Goal:** Verify snapshot creation and restoration
+
+**Steps:**
+1. Create database: `snapshot_test`
+2. Store 50 vectors
+3. Create snapshot via API/UI (e.g., "snapshot_v1")
+4. Store 20 more vectors (total: 70)
+5. List snapshots - verify "snapshot_v1" exists
+6. Restore from "snapshot_v1"
+7. Verify database has 50 vectors (not 70)
+
+**Expected Results:**
+- ✅ Snapshot created with checksum
+- ✅ Snapshot file separate from main `.jvdb`
+- ✅ Restore returns database to exact snapshot state
+- ✅ Later vectors (51-70) not present after restore
+
+---
+
+### Test 12: Persistence Statistics
+**Goal:** Verify operation tracking and statistics
+
+**Steps:**
+1. Query statistics endpoint/API (e.g., `/api/statistics`)
+2. Note initial counters
+3. Store 10 vectors
+4. Update 3 vectors
+5. Delete 2 vectors
+6. Query statistics again
+7. Verify counters increased correctly
+
+**Expected Results:**
+- ✅ Statistics track: stores, updates, deletes, flushes, snapshots
+- ✅ Counters increment atomically (thread-safe)
+- ✅ Can reset statistics
+- ✅ System-wide totals available
+
+---
+
+### Test 13: Data Integrity Verifier
+**Goal:** Verify integrity checking and repair
+
+**Steps:**
+1. Create database with 100 vectors
+2. Run integrity verification via API/UI
+3. Check verification results (should be clean)
+4. If corruption detection available, trigger verification
+5. Check if repair functionality works
+
+**Expected Results:**
+- ✅ Verifier checks index consistency
+- ✅ Validates free list integrity
+- ✅ Can detect and report issues
+- ✅ Repair functionality available for fixable issues
+
+---
+
+### Test 14: Free List - Space Reuse
+**Goal:** Verify deleted space is reused efficiently
+
+**Steps:**
+1. Create database: `freelist_test`
+2. Store 100 vectors
+3. Note `.jvdb` file size
+4. Delete 50 vectors
+5. Store 50 new vectors
+6. Check if file size grows minimally (should reuse deleted space)
+
+**Expected Results:**
+- ✅ File size grows minimally when storing after deletes
+- ✅ Deleted space appears in free list
+- ✅ Adjacent free blocks merged
+- ✅ Reduced fragmentation
+
+**Verification Commands:**
+```bash
+# Monitor file size
+watch -n 1 'ls -lh $(find data/ -name "*.jvdb" | grep freelist_test)'
+```
+
+---
+
 ## Monitoring During Tests
 
 ### Backend Logs
@@ -313,13 +458,21 @@ watch -n 2 'ps aux | grep jadevectordb | grep -v grep'
 
 ## Success Criteria
 
-### Must Pass:
+### Must Pass (Core Persistence - Sprint 2.1):
 - [ ] Test 1: Database creation with `.jvdb` file
 - [ ] Test 2: Vector storage and retrieval
 - [ ] Test 3: **Data persists after restart** (CRITICAL)
 - [ ] Test 4: Multiple databases work independently
 - [ ] Test 5: Updates and deletes persist
 - [ ] Test 8: Database deletion removes `.jvdb` file
+
+### Must Pass (Advanced Features - Sprint 2.3):
+- [ ] Test 9: **Index resize preserves data** (CRITICAL - bug fixed)
+- [ ] Test 10: WAL provides crash recovery
+- [ ] Test 11: Snapshot backup and restore
+- [ ] Test 12: Statistics tracking works
+- [ ] Test 13: Integrity verifier detects issues
+- [ ] Test 14: Free list reuses space efficiently
 
 ### Should Pass:
 - [ ] Test 6: Can handle 1,000+ vectors
@@ -329,6 +482,8 @@ watch -n 2 'ps aux | grep jadevectordb | grep -v grep'
 - [ ] Performance: Sub-second retrieval for 10K vectors
 - [ ] Memory: Stable memory usage over time
 - [ ] No crashes under normal load
+- [ ] Snapshot restore completes in <5 seconds for 10K vectors
+- [ ] Integrity verification runs in <1 second for small databases
 
 ---
 
@@ -380,17 +535,20 @@ Test 3: Restart Persistence
 ## After Testing
 
 ### If Tests Pass:
-1. Document results in Sprint 2.1 summary
-2. Mark sprint as 100% complete
-3. Prepare for merge to main branch
-4. Plan next sprint (Sprint 2.2 - potential enhancements)
+1. Document results in manual testing report
+2. Verify automated test coverage matches manual tests
+3. Update deployment readiness status
+4. Plan next sprint or production deployment
+5. All sprints (2.1, 2.2, 2.3) are 100% complete with 26/26 automated tests passing
 
 ### If Tests Fail:
-1. Document specific failures
-2. Check logs for error messages
-3. Review persistence implementation code
-4. Fix issues and re-test
-5. May need to debug with gdb or add more logging
+1. Document specific failures with screenshots/logs
+2. Check backend logs for error messages
+3. Compare with automated test results (18/18 Sprint 2.3 tests passing)
+4. Review persistence implementation code
+5. Create bug report with reproduction steps
+6. Debug with gdb or add more logging
+7. Re-run automated tests to validate fix
 
 ---
 

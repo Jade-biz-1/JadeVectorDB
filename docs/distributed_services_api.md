@@ -1,5 +1,7 @@
 # Distributed Services API Documentation
 
+> ⚠️ **IMPORTANT NOTICE**: Distributed features are currently **DISABLED** in the codebase (see `backend/src/main.cpp` lines 167-171). All distributed services are fully implemented but intentionally disabled to resolve vector storage issues and complete shard database implementation. These features are planned for **Phase 2 (Post-Launch)**. For production use, deploy in **single-node mode** using `docker-compose.yml`.
+
 This document provides comprehensive documentation for JadeVectorDB's distributed services APIs, including clustering, sharding, replication, and distributed service management.
 
 ## Table of Contents
@@ -42,11 +44,14 @@ auto service_manager = std::make_unique<DistributedServiceManager>();
 DistributedConfig config;
 config.cluster_host = "node1.example.com";
 config.cluster_port = 8080;
-config.enable_sharding = true;
-config.enable_replication = true;
-config.enable_clustering = true;
 
-// Sharding configuration
+// NOTE: Distributed features currently disabled (Phase 2)
+// When enabled, requires shard database implementation
+config.enable_sharding = false;  // TODO: Enable in Phase 2
+config.enable_replication = false;  // TODO: Enable in Phase 2
+config.enable_clustering = false;  // TODO: Enable in Phase 2
+
+// Sharding configuration (for Phase 2)
 config.sharding_config.strategy = "hash";  // or "range", "vector", "auto"
 config.sharding_config.num_shards = 16;
 config.sharding_config.node_list = {"node1", "node2", "node3", "node4"};

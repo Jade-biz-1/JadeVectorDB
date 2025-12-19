@@ -285,6 +285,10 @@ set(CORE_SOURCES
     src/storage/memory_mapped_vector_store.cpp
     src/storage/vector_file_compactor.cpp
     src/storage/incremental_backup_manager.cpp
+    src/storage/write_ahead_log.cpp
+    src/storage/snapshot_manager.cpp
+    src/storage/persistence_statistics.cpp
+    src/storage/data_integrity_verifier.cpp
 )
 
 set(API_SOURCES
@@ -393,6 +397,21 @@ if(BUILD_TESTS)
     )
     
     add_test(NAME Sprint22Tests COMMAND sprint22_tests)
+    
+    # Sprint 2.3 Persistence Tests
+    add_executable(sprint23_tests
+        unittesting/test_sprint_2_3_persistence.cpp
+    )
+    
+    target_link_libraries(sprint23_tests PRIVATE
+        GTest::gtest
+        GTest::gtest_main
+        jadevectordb_core
+        OpenSSL::SSL
+        OpenSSL::Crypto
+    )
+    
+    add_test(NAME Sprint23Tests COMMAND sprint23_tests)
 endif()
 
 #############################################################################

@@ -182,8 +182,15 @@ void VectorFileCompactor::background_compaction_loop() {
 std::vector<std::string> VectorFileCompactor::get_databases_needing_compaction() const {
     std::vector<std::string> result;
     
-    // TODO: Implement method to list all databases in the store
-    // For now, return empty vector
+    // Get all databases from the store
+    auto all_databases = store_.list_databases();
+    
+    // Check each database to see if it needs compaction
+    for (const auto& database_id : all_databases) {
+        if (needs_compaction(database_id)) {
+            result.push_back(database_id);
+        }
+    }
     
     return result;
 }

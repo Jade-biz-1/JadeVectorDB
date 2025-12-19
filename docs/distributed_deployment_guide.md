@@ -626,9 +626,11 @@ int main() {
         "jadevectordb-cluster-2:8081"
     };
 
-    config.enable_sharding = true;
-    config.enable_replication = true;
-    config.enable_clustering = true;
+    // NOTE: Distributed features currently disabled (see main.cpp lines 167-171)
+    // All services implemented but disabled pending vector storage fixes
+    config.enable_sharding = false;  // TODO: Enable in Phase 2
+    config.enable_replication = false;  // TODO: Enable in Phase 2
+    config.enable_clustering = false;  // TODO: Enable in Phase 2
 
     config.sharding_config.num_shards = 16;
     config.replication_config.default_replication_factor = 3;
