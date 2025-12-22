@@ -284,6 +284,56 @@ export VERBOSE=false                # true or false
 cd backend && ./build.sh
 ```
 
+
+## CLI Testing System
+
+JadeVectorDB provides a comprehensive CLI testing suite for validating end-to-end functionality.
+
+### Quick Start
+
+1. **Start the server:**
+  ```bash
+  cd backend/build
+  ./jadevectordb
+  ```
+2. **In a new terminal, run all CLI tests:**
+  ```bash
+  python3 tests/run_cli_tests.py
+  # or use the shell wrapper
+  ./tests/run_tests.sh
+  ```
+
+### Test Data
+All test data is centralized in `tests/test_data.json`:
+- Authentication: test user credentials
+- Databases: test database configurations
+- Vectors: test vector specifications
+- Search: search query parameters
+
+### Output Format
+The test runner prints a summary table with pass/fail status for each test. Example:
+```
+================================================================================
+#     Tool            Test                           Result
+================================================================================
+1     Python CLI      Health Check                   ✓ PASS
+2     Python CLI      Status Check                   ✓ PASS
+3     Python CLI      Create Database                ✓ PASS
+...
+================================================================================
+
+Summary: 11/12 tests passed
+  Failed: 1
+```
+
+### Troubleshooting
+If a test fails, the runner provides hints. Common issues:
+- Server not running or listening on wrong port
+- Test data mismatch (see `tests/test_data.json`)
+- Authentication or password requirements not met
+
+See `tests/README.md` for full details and troubleshooting tips.
+
 ## Docker Build Options
 
 ### Development Image (with tests)
@@ -381,7 +431,5 @@ For build issues:
 
 ## Additional Documentation
 
-- **Quick Reference:** `backend/BUILD_QUICK_REFERENCE.md` - Common commands and examples
-- **Getting Started:** `backend/README_BUILD.md` - Simple introduction to the build system
-- **Detailed Backend Guide:** `backend/BUILD.md` - Backend-specific build documentation
+- **Backend Build Guide:** `backend/BUILD.md` - Detailed backend-specific build documentation
 - **Build System Overview:** `docs/COMPLETE_BUILD_SYSTEM_SETUP.md` - Complete build system setup and features
