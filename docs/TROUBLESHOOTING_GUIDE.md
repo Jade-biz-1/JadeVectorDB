@@ -195,10 +195,10 @@ curl http://localhost:8080/health
 
 **Check Environment**:
 ```bash
-echo $JADE_ENV  # Should be 'development', 'dev', 'test', or not set
+echo $JADEVECTORDB_ENV  # Should be 'development', 'dev', 'test', or not set
 
 # If set to production, change to development
-export JADE_ENV=development
+export JADEVECTORDB_ENV=development
 ./jadevectordb
 ```
 

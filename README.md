@@ -190,19 +190,19 @@ JadeVectorDB automatically creates three default users when deployed in local, d
 
 ### Environment Configuration
 
-Control default user creation using the `JADE_ENV` environment variable:
+Control default user creation using the `JADEVECTORDB_ENV` environment variable:
 
 ```bash
 # Development mode (creates default users) - DEFAULT
-export JADE_ENV=development
+export JADEVECTORDB_ENV=development
 ./jadevectordb
 
 # Test mode (creates default users)
-export JADE_ENV=test
+export JADEVECTORDB_ENV=test
 ./jadevectordb
 
 # Production mode (NO default users created)
-export JADE_ENV=production
+export JADEVECTORDB_ENV=production
 ./jadevectordb
 ```
 
@@ -210,7 +210,7 @@ export JADE_ENV=production
 - Creates users: `development`, `dev`, `test`, `testing`, `local`
 - Skips creation: `production`, `prod`, or any other value
 
-**Security Note:** Default users are **automatically removed** in production environments. If `JADE_ENV` is not set, it defaults to `development` mode and creates the default users.
+**Security Note:** Default users are **automatically removed** in production environments. If `JADEVECTORDB_ENV` is not set, it defaults to `development` mode and creates the default users.
 
 ### Using Default Credentials
 

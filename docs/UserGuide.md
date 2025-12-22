@@ -294,24 +294,24 @@ curl -X DELETE http://localhost:8080/v1/api-keys/key_123456 \
 
 ### Development Mode (Default)
 
-```bash
+export JADEVECTORDB_ENV=development
 export JADE_ENV=development
 ./jadevectordb
 ```
 
-**Features**:
+export JADEVECTORDB_ENV=test
 - ✅ Default users automatically created (admin, dev, test)
 - ✅ Verbose logging
 - ✅ Debug information included
 - ✅ Relaxed security for testing
-
+export JADEVECTORDB_ENV=production
 ### Test Mode
 
 ```bash
 export JADE_ENV=test
-./jadevectordb
+echo $JADEVECTORDB_ENV  # Should be 'development', 'dev', 'test', or not set
 ```
-
+export JADEVECTORDB_ENV=development
 **Features**:
 - ✅ Default users automatically created
 - ✅ Isolated test databases
