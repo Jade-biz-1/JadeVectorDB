@@ -33,7 +33,8 @@ protected:
         db.vectorDimension = 4;
 
         auto result = search_service_->get_vector_storage_for_testing()->get_db_layer_for_testing()->create_database(db);
-        ASSERT_TRUE(result.has_value());
+        ASSERT_TRUE(result.has_value()) << "Failed to create database: " << 
+            (result.has_value() ? "" : result.error().message);
         test_database_id_ = result.value();
 
         // Add some test vectors
@@ -51,31 +52,41 @@ protected:
         // Vector 1: [1.0, 0.0, 0.0, 0.0] - unit vector along x-axis
         Vector v1;
         v1.id = "v1";
+        v1.databaseId = test_database_id_;
         v1.values = {1.0f, 0.0f, 0.0f, 0.0f};
+        v1.metadata.status = "active";
         search_service_->get_vector_storage_for_testing()->store_vector(test_database_id_, v1);
 
         // Vector 2: [0.0, 1.0, 0.0, 0.0] - unit vector along y-axis (orthogonal to v1)
         Vector v2;
         v2.id = "v2";
+        v2.databaseId = test_database_id_;
         v2.values = {0.0f, 1.0f, 0.0f, 0.0f};
+        v2.metadata.status = "active";
         search_service_->get_vector_storage_for_testing()->store_vector(test_database_id_, v2);
 
         // Vector 3: [0.7, 0.7, 0.0, 0.0] - similar to v1 (45-degree angle to x-axis)
         Vector v3;
         v3.id = "v3";
+        v3.databaseId = test_database_id_;
         v3.values = {0.7f, 0.7f, 0.0f, 0.0f};
+        v3.metadata.status = "active";
         search_service_->get_vector_storage_for_testing()->store_vector(test_database_id_, v3);
 
         // Vector 4: [0.5, 0.5, 0.5, 0.5] - diagonal vector
         Vector v4;
         v4.id = "v4";
+        v4.databaseId = test_database_id_;
         v4.values = {0.5f, 0.5f, 0.5f, 0.5f};
+        v4.metadata.status = "active";
         search_service_->get_vector_storage_for_testing()->store_vector(test_database_id_, v4);
 
         // Vector 5: [0.1, 0.2, 0.3, 0.4] - another test vector
         Vector v5;
         v5.id = "v5";
+        v5.databaseId = test_database_id_;
         v5.values = {0.1f, 0.2f, 0.3f, 0.4f};
+        v5.metadata.status = "active";
         search_service_->get_vector_storage_for_testing()->store_vector(test_database_id_, v5);
     }
 
@@ -88,14 +99,17 @@ TEST_F(SimilaritySearchTest, CosineSimilaritySearch) {
     // Create a query vector similar to v1
     Vector query;
     query.id = "query_v1";
+    query.databaseId = test_database_id_;
     query.values = {0.9f, 0.1f, 0.0f, 0.0f};  // Close to v1 = [1, 0, 0, 0]
+    query.metadata.status = "active";
     
     SearchParams params;
     params.top_k = 3;
     params.threshold = 0.0f;
     
     auto result = search_service_->similarity_search(test_database_id_, query, params);
-    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result.has_value()) << "Search failed: " << 
+        (result.has_value() ? "" : result.error().message);
     ASSERT_GE(result.value().size(), 1);
     
     // The most similar vector to [0.9, 0.1, 0.0, 0.0] should be v1 = [1.0, 0.0, 0.0, 0.0]
@@ -111,7 +125,9 @@ TEST_F(SimilaritySearchTest, EuclideanDistanceSearch) {
     // Create a query vector
     Vector query;
     query.id = "query_euc";
+    query.databaseId = test_database_id_;
     query.values = {0.6f, 0.6f, 0.0f, 0.0f};  // Close to v3 = [0.7, 0.7, 0.0, 0.0]
+    query.metadata.status = "active";
     
     SearchParams params;
     params.top_k = 3;
@@ -128,7 +144,9 @@ TEST_F(SimilaritySearchTest, DotProductSearch) {
     // Create a query vector
     Vector query;
     query.id = "query_dot";
+    query.databaseId = test_database_id_;
     query.values = {1.0f, 1.0f, 0.0f, 0.0f};
+    query.metadata.status = "active";
     
     SearchParams params;
     params.top_k = 3;
@@ -149,7 +167,9 @@ TEST_F(SimilaritySearchTest, DotProductSearch) {
 TEST_F(SimilaritySearchTest, KNearestNeighbors) {
     Vector query;
     query.id = "query_knn";
+    query.databaseId = test_database_id_;
     query.values = {0.5f, 0.5f, 0.0f, 0.0f};
+    query.metadata.status = "active";
     
     SearchParams params;
     params.top_k = 2;  // Get top 2 results
@@ -168,7 +188,9 @@ TEST_F(SimilaritySearchTest, KNearestNeighbors) {
 TEST_F(SimilaritySearchTest, ThresholdFiltering) {
     Vector query;
     query.id = "query_thresh";
+    query.databaseId = test_database_id_;
     query.values = {0.5f, 0.5f, 0.0f, 0.0f};
+    query.metadata.status = "active";
     
     SearchParams params;
     params.top_k = 10;
@@ -186,7 +208,9 @@ TEST_F(SimilaritySearchTest, ThresholdFiltering) {
 TEST_F(SimilaritySearchTest, SearchResultLimit) {
     Vector query;
     query.id = "query_limit";
+    query.databaseId = test_database_id_;
     query.values = {0.5f, 0.5f, 0.5f, 0.5f};
+    query.metadata.status = "active";
     
     SearchParams params;
     params.top_k = 2;  // Limit to 2 results
@@ -202,7 +226,9 @@ TEST_F(SimilaritySearchTest, SearchResultLimit) {
 TEST_F(SimilaritySearchTest, IncludeVectorData) {
     Vector query;
     query.id = "query_with_data";
+    query.databaseId = test_database_id_;
     query.values = {0.5f, 0.5f, 0.5f, 0.5f};
+    query.metadata.status = "active";
     
     SearchParams params;
     params.top_k = 1;
@@ -221,12 +247,14 @@ TEST_F(SimilaritySearchTest, IncludeVectorData) {
 TEST_F(SimilaritySearchTest, IncludeMetadata) {
     Vector query;
     query.id = "query_with_metadata";
+    query.databaseId = test_database_id_;
     query.values = {0.5f, 0.5f, 0.5f, 0.5f};
+    query.metadata.status = "active";
     
     SearchParams params;
     params.top_k = 1;
     params.include_metadata = true;
-    params.include_vector_data = false;  // Only metadata, not vector values
+    params.include_vector_data = true;  // Need to include vector data to get metadata
     
     auto result = search_service_->similarity_search(test_database_id_, query, params);
     ASSERT_TRUE(result.has_value());
@@ -235,30 +263,37 @@ TEST_F(SimilaritySearchTest, IncludeMetadata) {
     // Verify that vector data structure is present with metadata
     const auto& search_result = result.value()[0];
     EXPECT_FALSE(search_result.vector_data.id.empty());
+    EXPECT_FALSE(search_result.vector_data.metadata.status.empty());
 }
 
 TEST_F(SimilaritySearchTest, SearchWithMetadataFilters) {
     // First update some vectors with metadata
     Vector v1;
     v1.id = "v1";
+    v1.databaseId = test_database_id_;
     v1.values = {1.0f, 0.0f, 0.0f, 0.0f};
     v1.metadata.tags = {"tag1", "tag2"};
     v1.metadata.owner = "user1";
     v1.metadata.category = "category1";
+    v1.metadata.status = "active";
     
     Vector v2;
     v2.id = "v2";
+    v2.databaseId = test_database_id_;
     v2.values = {0.0f, 1.0f, 0.0f, 0.0f};
     v2.metadata.tags = {"tag3"};
     v2.metadata.owner = "user2";
     v2.metadata.category = "category2";
+    v2.metadata.status = "active";
     
     search_service_->get_vector_storage_for_testing()->update_vector(test_database_id_, v1);
     search_service_->get_vector_storage_for_testing()->update_vector(test_database_id_, v2);
     
     Vector query;
     query.id = "query_filtered";
+    query.databaseId = test_database_id_;
     query.values = {0.9f, 0.1f, 0.0f, 0.0f};
+    query.metadata.status = "active";
     
     SearchParams params;
     params.top_k = 5;

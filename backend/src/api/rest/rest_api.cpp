@@ -1569,7 +1569,15 @@ crow::response RestApiImpl::handle_create_database_request(const crow::request& 
             LOG_INFO(logger_, "Created database: " << database_id << " (Name: " << db_config.name << ")");
             return resp;
         } else {
-            return crow::response(400, "{\"error\":\"Failed to create database\"}");
+            // Log detailed service error for debugging
+            std::string svc_err = ErrorHandler::format_error(result.error());
+            LOG_ERROR(logger_, "Failed to create database (service layer): " << svc_err);
+
+            // Return a concise error to the client (avoid leaking internal source info)
+            std::string client_msg = ErrorHandler::get_error_message(result.error().code) + ": " + result.error().message;
+            crow::json::wvalue error_response;
+            error_response["error"] = client_msg;
+            return crow::response(400, error_response);
         }
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in create database: " << e.what());

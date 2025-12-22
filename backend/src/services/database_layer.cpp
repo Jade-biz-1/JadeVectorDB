@@ -27,7 +27,8 @@ InMemoryDatabasePersistence::InMemoryDatabasePersistence(
 Result<std::string> InMemoryDatabasePersistence::create_database(const Database& db) {
     std::unique_lock<std::shared_mutex> lock(databases_mutex_);
     
-    if (!db.validate()) {
+    // Validate only name and vectorDimension for creation (databaseId can be empty and will be generated)
+    if (db.name.empty() || db.vectorDimension <= 0) {
         RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid database configuration");
     }
     
@@ -489,7 +490,8 @@ Result<void> DatabaseLayer::initialize() {
 }
 
 Result<std::string> DatabaseLayer::create_database(const Database& db_config) {
-    if (!db_config.validate()) {
+    // Validate only name and vectorDimension for creation (databaseId can be empty)
+    if (db_config.name.empty() || db_config.vectorDimension <= 0) {
         RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid database configuration");
     }
     
@@ -866,7 +868,8 @@ Result<void> PersistentDatabasePersistence::load_databases_from_disk() {
 Result<std::string> PersistentDatabasePersistence::create_database(const Database& db) {
     std::unique_lock<std::shared_mutex> lock(databases_mutex_);
     
-    if (!db.validate()) {
+    // Validate only name and vectorDimension for creation (databaseId can be empty)
+    if (db.name.empty() || db.vectorDimension <= 0) {
         RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid database configuration");
     }
     

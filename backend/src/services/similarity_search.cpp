@@ -317,8 +317,8 @@ Result<std::vector<SearchResult>> SimilaritySearchService::euclidean_search(
             }
         }
         
-        // Sort and limit results (for Euclidean, we want ascending order - closest first)
-        auto final_results = sort_and_limit_results(std::move(results), params, true);
+        // Sort and limit results (after converting distance to similarity, higher is better)
+        auto final_results = sort_and_limit_results(std::move(results), params);
         
         if (search_results_counter_) {
             search_results_counter_->add(static_cast<double>(final_results.size()));

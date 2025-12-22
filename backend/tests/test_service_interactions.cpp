@@ -375,8 +375,3 @@ TEST_F(ServiceInteractionIntegrationTest, ServiceConfigurationTest) {
     
     LOG_INFO(logger_, "Service configuration test completed successfully");
 }
-
-int main(int argc, char** argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}

@@ -189,8 +189,3 @@ TEST_F(AdvancedEmbeddingIntegrationTest, TrainAndUseModel) {
     EXPECT_EQ(versions.size(), 1);
     EXPECT_EQ(versions[0].version_number, "1.0.0");
 }
-
-int main(int argc, char **argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}

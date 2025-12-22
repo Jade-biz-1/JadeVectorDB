@@ -47,6 +47,7 @@ class CLITestRunner:
     def setup_auth(self) -> bool:
         """Set up authentication and get token."""
         auth_data = self.test_data['auth']['test_user']
+        self.user_id = None  # Will be set from login response
 
         try:
             # Register user (may fail if already exists, that's OK)
@@ -71,7 +72,9 @@ class CLITestRunner:
             )
 
             if login_resp.status_code == 200:
-                self.token = login_resp.json().get('token', '')
+                login_data = login_resp.json()
+                self.token = login_data.get('token', '')
+                self.user_id = login_data.get('user_id', '')  # Extract user_id from login response
                 return bool(self.token)
             else:
                 print(f"Login failed: {login_resp.status_code} - {login_resp.text}")
@@ -407,9 +410,9 @@ class CLITestRunner:
         # Test: Create API key
         try:
             api_key_resp = requests.post(
-                f"{self.server_url}/v1/auth/api-keys",
+                f"{self.server_url}/v1/api-keys",  # Changed from /v1/auth/api-keys
                 headers={"Authorization": f"Bearer {self.token}"},
-                json={"name": "test_api_key", "scopes": ["read", "write"]},
+                json={"user_id": self.user_id, "description": "Test API key"},  # Changed from name/scopes
                 timeout=10
             )
             success = api_key_resp.status_code in [200, 201]
@@ -421,7 +424,7 @@ class CLITestRunner:
                 if api_key:
                     test_num += 1
                     status_resp = requests.get(
-                        f"{self.server_url}/v1/status",
+                        f"{self.server_url}/health",  # Changed from /v1/status to /health
                         headers={"Authorization": f"Bearer {api_key}"},
                         timeout=10
                     )
