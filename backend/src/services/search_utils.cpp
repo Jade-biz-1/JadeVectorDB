@@ -180,8 +180,10 @@ std::vector<KnnSearch::SearchResult> KnnSearch::knn_search(
         }
         
         // Create a min-heap to keep track of the k best results
+        // Note: priority_queue with comp(a,b) puts elements at top where comp returns false
+        // So comp(a,b) = a > b creates a min-heap (smaller elements have comp(smaller, larger)=false, go to top)
         auto comp = [](const SearchResult& a, const SearchResult& b) {
-            return a.similarity_score < b.similarity_score;  // Min-heap based on similarity
+            return a.similarity_score > b.similarity_score;  // Inverted for min-heap behavior
         };
         
         std::priority_queue<SearchResult, std::vector<SearchResult>, decltype(comp)> min_heap(comp);

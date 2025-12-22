@@ -1,3 +1,4 @@
+
 #include "authentication_service.h"
 #include "lib/logging.h"
 #include "lib/error_handling.h"
@@ -10,6 +11,29 @@
 #include <openssl/sha.h>
 
 namespace jadevectordb {
+
+// TODO: Implement password update logic. This is a stub implementation to unblock builds and tests.
+// The implementation should verify the old password, check password strength, update the hash and salt, and log the event.
+Result<bool> AuthenticationService::update_password(const std::string& user_id,
+                                                   const std::string& old_password,
+                                                   const std::string& new_password) {
+    // STUB IMPLEMENTATION
+    // TODO: Implement full password update logic.
+    // Steps should include:
+    // 1. Validate input arguments.
+    // 2. Lock users_mutex_.
+    // 3. Find user by user_id.
+    // 4. Verify old_password matches current password.
+    // 5. Check new_password strength if required.
+    // 6. Generate new salt and hash for new_password.
+    // 7. Update user credentials and reset failed attempts.
+    // 8. Log the password update event.
+    // 9. Return appropriate Result<bool>.
+    (void)user_id;
+    (void)old_password;
+    (void)new_password;
+    RETURN_ERROR(ErrorCode::NOT_IMPLEMENTED, "update_password is not yet implemented");
+}
 
 AuthenticationService::AuthenticationService() {
     logger_ = logging::LoggerManager::get_logger("AuthenticationService");
@@ -243,14 +267,14 @@ Result<std::string> AuthenticationService::authenticate_with_api_key(const std::
 
         std::lock_guard<std::mutex> lock(api_keys_mutex_);
 
-        // Find user by API key
-        for (const auto& [user_id, key] : api_keys_) {
-            if (key == api_key) {
-                LOG_INFO(logger_, "API key authentication successful for user: " + user_id);
-                log_auth_event(SecurityEventType::AUTHENTICATION_SUCCESS, user_id, ip_address, true,
-                              "API key authentication");
-                return user_id;
-            }
+        // Map is api_key -> user_id, so direct lookup
+        auto it = api_keys_.find(api_key);
+        if (it != api_keys_.end()) {
+            std::string user_id = it->second;
+            LOG_INFO(logger_, "API key authentication successful for user: " + user_id);
+            log_auth_event(SecurityEventType::AUTHENTICATION_SUCCESS, user_id, ip_address, true,
+                          "API key authentication");
+            return user_id;
         }
 
         LOG_WARN(logger_, "Invalid API key used from IP: " + ip_address);
@@ -461,11 +485,21 @@ Result<std::string> AuthenticationService::generate_api_key(const std::string& u
             RETURN_ERROR(ErrorCode::PERMISSION_DENIED, "API keys are disabled");
         }
 
+        // Validate that user exists
+        {
+            std::lock_guard<std::mutex> lock(users_mutex_);
+            auto it = users_.find(user_id);
+            if (it == users_.end()) {
+                LOG_WARN(logger_, "Attempt to generate API key for non-existent user: " + user_id);
+                RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
+            }
+        }
+
         std::string api_key = generate_api_key_value();
 
         {
             std::lock_guard<std::mutex> lock(api_keys_mutex_);
-            api_keys_[user_id] = api_key;
+            api_keys_[api_key] = user_id;  // Map is api_key -> user_id
         }
 
         LOG_INFO(logger_, "API key generated for user: " + user_id);
@@ -883,6 +917,7 @@ Result<bool> AuthenticationService::set_user_active_status(const std::string& us
 Result<bool> AuthenticationService::revoke_api_key(const std::string& api_key) {
     std::lock_guard<std::mutex> lock(api_keys_mutex_);
 
+    // Map is api_key -> user_id, so direct lookup
     auto it = api_keys_.find(api_key);
     if (it == api_keys_.end()) {
         RETURN_ERROR(ErrorCode::NOT_FOUND, "API key not found");
@@ -920,6 +955,7 @@ Result<std::vector<std::pair<std::string, std::string>>> AuthenticationService::
     std::vector<std::pair<std::string, std::string>> api_keys;
     api_keys.reserve(api_keys_.size());
 
+    // Map is api_key -> user_id
     for (const auto& [api_key, user_id] : api_keys_) {
         api_keys.push_back({user_id, api_key});
     }
@@ -933,6 +969,7 @@ Result<std::vector<std::pair<std::string, std::string>>> AuthenticationService::
 
     std::vector<std::pair<std::string, std::string>> user_api_keys;
 
+    // Map is api_key -> user_id, so iterate and filter by user_id
     for (const auto& [api_key, uid] : api_keys_) {
         if (uid == user_id) {
             user_api_keys.push_back({uid, api_key});

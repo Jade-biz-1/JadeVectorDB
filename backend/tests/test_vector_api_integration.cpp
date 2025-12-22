@@ -7,6 +7,7 @@
 #include "api/rest/rest_api.h"
 #include "services/vector_storage.h"
 #include "services/database_service.h"
+#include "services/database_layer.h"
 #include "models/vector.h"
 #include "models/database.h"
 #include "lib/error_handling.h"
@@ -66,9 +67,12 @@ using ::testing::_;
 class VectorApiIntegrationTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Create services for integration testing
-        db_service_ = std::make_unique<DatabaseService>();
-        vector_service_ = std::make_unique<VectorStorageService>();
+        // Create shared database layer
+        db_layer_ = std::make_shared<DatabaseLayer>();
+        
+        // Create services for integration testing with shared layer
+        db_service_ = std::make_unique<DatabaseService>(db_layer_);
+        vector_service_ = std::make_unique<VectorStorageService>(db_layer_);
         
         // Initialize services
         db_service_->initialize();
@@ -79,6 +83,7 @@ protected:
         test_db.name = "integration_test_db";
         test_db.vectorDimension = 4;
         test_db.description = "Test database for integration testing";
+        test_db.indexType = "flat";
         
         auto create_result = db_service_->create_database(to_creation_params(test_db));
         ASSERT_TRUE(create_result.has_value());
@@ -91,6 +96,7 @@ protected:
         }
     }
     
+    std::shared_ptr<DatabaseLayer> db_layer_;
     std::unique_ptr<DatabaseService> db_service_;
     std::unique_ptr<VectorStorageService> vector_service_;
     std::unique_ptr<RestApiService> rest_api_service_;
@@ -102,6 +108,8 @@ TEST_F(VectorApiIntegrationTest, StoreAndRetrieveVector) {
     // Store test vectors in the database
     Vector v1;
     v1.id = "vector_1";
+    v1.databaseId = db_id_;
+    v1.metadata.status = "active";
     v1.values = {1.0f, 0.1f, 0.2f, 0.3f};
     v1.metadata.custom["category"] = "finance";
     v1.metadata.custom["score"] = 0.95f;
@@ -112,6 +120,8 @@ TEST_F(VectorApiIntegrationTest, StoreAndRetrieveVector) {
     
     Vector v2;
     v2.id = "vector_2";
+    v2.databaseId = db_id_;
+    v2.metadata.status = "active";
     v2.values = {0.1f, 1.0f, 0.2f, 0.8f};
     v2.metadata.custom["category"] = "technology";
     v2.metadata.custom["score"] = 0.75f;
@@ -154,6 +164,8 @@ TEST_F(VectorApiIntegrationTest, BatchVectorOperations) {
     for (int i = 0; i < 5; ++i) {
         Vector v;
         v.id = "batch_vector_" + std::to_string(i);
+        v.databaseId = db_id_;
+        v.metadata.status = "active";
         v.values = {static_cast<float>(i), static_cast<float>(i+1), static_cast<float>(i+2), static_cast<float>(i+3)};
         v.metadata.custom["category"] = (i % 2 == 0) ? "finance" : "technology";
         v.metadata.custom["score"] = 0.5f + (static_cast<float>(i) * 0.1f);
@@ -199,6 +211,8 @@ TEST_F(VectorApiIntegrationTest, UpdateVector) {
     // Create and store a test vector
     Vector initial_vector;
     initial_vector.id = "update_test_vector";
+    initial_vector.databaseId = db_id_;
+    initial_vector.metadata.status = "active";
     initial_vector.values = {1.0f, 0.1f, 0.2f, 0.3f};
     initial_vector.metadata.custom["category"] = "finance";
     initial_vector.metadata.custom["score"] = 0.95f;
@@ -241,6 +255,8 @@ TEST_F(VectorApiIntegrationTest, DeleteVector) {
     // Create and store a test vector
     Vector test_vector;
     test_vector.id = "delete_test_vector";
+    test_vector.databaseId = db_id_;
+    test_vector.metadata.status = "active";
     test_vector.values = {1.0f, 0.1f, 0.2f, 0.3f};
     test_vector.metadata.custom["category"] = "finance";
     test_vector.metadata.custom["score"] = 0.95f;
@@ -286,6 +302,8 @@ TEST_F(VectorApiIntegrationTest, VectorCountAndIdListing) {
     for (int i = 0; i < 3; ++i) {
         Vector v;
         v.id = "count_test_vector_" + std::to_string(i);
+        v.databaseId = db_id_;
+        v.metadata.status = "active";
         v.values = {static_cast<float>(i), static_cast<float>(i+1), static_cast<float>(i+2), static_cast<float>(i+3)};
         v.metadata.custom["category"] = "test";
         v.metadata.custom["score"] = 0.5f + (static_cast<float>(i) * 0.1f);
@@ -326,6 +344,8 @@ TEST_F(VectorApiIntegrationTest, VectorValidation) {
     // Create a valid vector
     Vector valid_vector;
     valid_vector.id = "valid_vector";
+    valid_vector.databaseId = db_id_;
+    valid_vector.metadata.status = "active";
     valid_vector.values = {1.0f, 0.1f, 0.2f, 0.3f};
     valid_vector.metadata.custom["category"] = "finance";
     valid_vector.metadata.custom["score"] = 0.95f;
@@ -338,6 +358,8 @@ TEST_F(VectorApiIntegrationTest, VectorValidation) {
     // Create an invalid vector (wrong dimension)
     Vector invalid_vector;
     invalid_vector.id = "invalid_vector";
+    invalid_vector.databaseId = db_id_;
+    invalid_vector.metadata.status = "active";
     invalid_vector.values = {1.0f, 0.1f, 0.2f}; // Only 3 dimensions, but database expects 4
     invalid_vector.metadata.custom["category"] = "finance";
     invalid_vector.metadata.custom["score"] = 0.95f;
@@ -350,6 +372,8 @@ TEST_F(VectorApiIntegrationTest, VectorValidation) {
     // Create an invalid vector (empty ID)
     Vector invalid_vector2;
     invalid_vector2.id = ""; // Empty ID
+    invalid_vector2.databaseId = db_id_;
+    invalid_vector2.metadata.status = "active";
     invalid_vector2.values = {1.0f, 0.1f, 0.2f, 0.3f};
     invalid_vector2.metadata.custom["category"] = "finance";
     invalid_vector2.metadata.custom["score"] = 0.95f;
@@ -358,9 +382,4 @@ TEST_F(VectorApiIntegrationTest, VectorValidation) {
     // Validation should fail for an invalid vector
     result = vector_service_->validate_vector(db_id_, invalid_vector2);
     EXPECT_FALSE(result.has_value());
-}
-
-int main(int argc, char **argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
 }

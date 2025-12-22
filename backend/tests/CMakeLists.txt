@@ -1,3 +1,20 @@
+# Create test executable for authentication flows
+add_executable(test_authentication_flows
+    unit/test_authentication_flows.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/authentication_service.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/security_audit_logger.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/error_handling.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/logging.cpp
+)
+
+target_link_libraries(test_authentication_flows
+    GTest::gtest
+    GTest::gtest_main
+    Threads::Threads
+    ${CMAKE_DL_LIBS}
+)
+
+add_test(NAME AuthenticationFlowsTest COMMAND test_authentication_flows)
 # CMakeLists.txt for unit tests
 cmake_minimum_required(VERSION 3.20)
 
