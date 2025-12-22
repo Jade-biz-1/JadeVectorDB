@@ -165,9 +165,9 @@ curl -X POST http://localhost:8080/v1/databases/product_embeddings/search \
 
 ## User Management (Admin Only)
 
-### 🚧 Enhanced Access Control (Coming Soon)
+### ✅ Enhanced Access Control (Implemented)
 
-JadeVectorDB is implementing comprehensive **Role-Based Access Control (RBAC)** with:
+JadeVectorDB includes a comprehensive **Role-Based Access Control (RBAC)** system:
 
 - **Groups**: Organize users into teams/departments
 - **Roles**: Predefined roles (Admin, User, ReadOnly, DataScientist)
@@ -176,7 +176,7 @@ JadeVectorDB is implementing comprehensive **Role-Based Access Control (RBAC)** 
 - **API Keys**: Long-lived tokens for service authentication
 - **Audit logging**: Track all security events
 
-See `TasksTracking/11-persistent-storage-implementation.md` for implementation timeline.
+See `docs/FRONTEND_RBAC_IMPLEMENTATION.md` and `TasksTracking/11-documentation-updates-summary.md` for implementation details and examples.
 
 ### Current User Management
 

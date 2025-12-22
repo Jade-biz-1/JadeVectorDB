@@ -192,9 +192,9 @@ Comprehensive automated test suite created for all Sprint 2.3 persistence featur
 - **Grand total**: 12,471+ lines of new code
 
 ### Known Issues:
-- ⚠️ Test compilation has errors (not blocking)
+- ✅ Test compilation issues largely resolved; current automated suite reports 26/26 passing
 - Main library builds and runs successfully
-- Tests need fixing but don't block deployment
+- Tests and integration scripts updated; see `TasksTracking/SPRINT_2_3_TEST_RESULTS.md`
 
 **Full Report**: See `docs/archive/AUTOMATED_TEST_REPORT_2025-12-13.md`
 
@@ -244,8 +244,8 @@ Comprehensive automated test suite created for all Sprint 2.3 persistence featur
 *None at this time*
 
 ### Known Issues:
-1. **Test Compilation Errors**: Tests have compilation errors - using `--no-tests --no-benchmarks` flag
-2. **Runtime Crash**: Duplicate route handlers cause startup crash (being fixed)
+1. **Testing**: Test suite stable (26/26) — monitor for regressions
+2. **Runtime Crash**: Duplicate route handler issue resolved (fixed 2025-12-12) — ensure latest branch
 3. **Database ID Mismatch**: Database IDs in list response don't match individual get endpoint
 
 ### Technical Debt:
