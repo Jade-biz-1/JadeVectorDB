@@ -672,7 +672,7 @@ The project uses **AuthenticationService** (located in `backend/src/services/aut
 2. ❌ **DON'T** use simple passwords like "admin123" (too short!)
 3. ❌ **DON'T** expect default users in production mode
 4. ✅ **DO** use strong passwords that meet minimum requirements (10+ chars)
-5. ✅ **DO** set `JADE_ENV=development` for local testing to enable default users
+5. ✅ **DO** set `JADEVECTORDB_ENV=development` for local testing to enable default users
 6. ✅ **DO** use AuthenticationService (NOT AuthManager) for all auth operations
 
 ---
