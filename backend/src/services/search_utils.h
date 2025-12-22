@@ -50,11 +50,16 @@ public:
         if (k >= data.size()) {
             std::vector<T> result = data;
             std::sort(result.begin(), result.end(), comp);
+            std::reverse(result.begin(), result.end());  // Sort descending for top-k
             return result;
         }
         
         // Use a min-heap to keep track of top K elements
-        std::priority_queue<T, std::vector<T>, std::function<bool(const T&, const T&)>> min_heap(comp);
+        // priority_queue with comp will put elements where comp returns true at LOWER priority
+        // So comp(a,b) = a<b creates a MAX heap (larger elements have lower priority value)
+        // We want a MIN heap, so we need to invert: use std::greater or invert comp
+        auto inverted_comp = [comp](const T& a, const T& b) { return comp(b, a); };
+        std::priority_queue<T, std::vector<T>, decltype(inverted_comp)> min_heap(inverted_comp);
         
         for (const auto& item : data) {
             if (min_heap.size() < k) {

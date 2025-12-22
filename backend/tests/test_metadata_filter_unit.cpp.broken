@@ -47,41 +47,49 @@ TEST_F(MetadataFilterTest, ApplySimpleMetadataFilters) {
     // Vector 1: Finance category, high score, banking tag
     Vector v1;
     v1.id = "vector_1";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v1.values = {1.0f, 0.1f, 0.2f, 0.3f};
-    v1.metadata["category"] = "finance";
-    v1.metadata["score"] = 0.95f;
-    v1.metadata["tags"] = nlohmann::json::array({"banking", "investment"});
-    v1.metadata["region"] = "north_america";
+    v1.metadata.category = "finance";
+    v1.metadata.score = 0.95f;
+    v1.metadata.tags = {"banking", "investment"};
+    v1.metadata.custom["region"] = "north_america";
     test_vectors.push_back(v1);
     
     // Vector 2: Technology category, medium score, ai tag
     Vector v2;
     v2.id = "vector_2";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v2.values = {0.1f, 1.0f, 0.2f, 0.8f};
-    v2.metadata["category"] = "technology";
-    v2.metadata["score"] = 0.75f;
-    v2.metadata["tags"] = nlohmann::json::array({"ai", "ml"});
-    v2.metadata["region"] = "europe";
+    v2.metadata.category = "technology";
+    v2.metadata.score = 0.75f;
+    v2.metadata.tags = {"ai", "ml"};
+    v2.metadata.custom["region"] = "europe";
     test_vectors.push_back(v2);
     
     // Vector 3: Finance category, medium score, trading tag
     Vector v3;
     v3.id = "vector_3";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v3.values = {0.9f, 0.2f, 0.1f, 0.4f};
-    v3.metadata["category"] = "finance";
-    v3.metadata["score"] = 0.82f;
-    v3.metadata["tags"] = nlohmann::json::array({"trading", "cryptocurrency"});
-    v3.metadata["region"] = "north_america";
+    v3.metadata.category = "finance";
+    v3.metadata.score = 0.82f;
+    v3.metadata.tags = {"trading", "cryptocurrency"};
+    v3.metadata.custom["region"] = "north_america";
     test_vectors.push_back(v3);
     
     // Vector 4: Healthcare category, low score, research tag
     Vector v4;
     v4.id = "vector_4";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v4.values = {0.2f, 0.1f, 1.0f, 0.3f};
-    v4.metadata["category"] = "healthcare";
-    v4.metadata["score"] = 0.65f;
-    v4.metadata["tags"] = nlohmann::json::array({"research", "clinical"});
-    v4.metadata["region"] = "asia";
+    v4.metadata.category = "healthcare";
+    v4.metadata.score = 0.65f;
+    v4.metadata.tags = {"research", "clinical"};
+    v4.metadata.custom["region"] = "asia";
     test_vectors.push_back(v4);
     
     // Test filter for finance category
@@ -100,7 +108,7 @@ TEST_F(MetadataFilterTest, ApplySimpleMetadataFilters) {
     
     // Check that all filtered vectors have category "finance"
     for (const auto& v : filtered_vectors) {
-        EXPECT_EQ(v.metadata["category"].get<std::string>(), "finance");
+        EXPECT_EQ(v.metadata.category, "finance");
     }
     
     // Test filter for technology category with score >= 0.7
@@ -124,8 +132,8 @@ TEST_F(MetadataFilterTest, ApplySimpleMetadataFilters) {
     
     // Check that the filtered vector is v2
     EXPECT_EQ(filtered_vectors[0].id, "vector_2");
-    EXPECT_EQ(filtered_vectors[0].metadata["category"].get<std::string>(), "technology");
-    EXPECT_GE(filtered_vectors[0].metadata["score"].get<float>(), 0.7f);
+    EXPECT_EQ(filtered_vectors[0].metadata.category, "technology");
+    EXPECT_GE(filtered_vectors[0].metadata.score, 0.7f);
 }
 
 // Test applying complex metadata filters with OR combination
@@ -136,28 +144,34 @@ TEST_F(MetadataFilterTest, ApplyComplexMetadataFiltersOR) {
     // Vector 1: Finance category, high score, banking tag
     Vector v1;
     v1.id = "vector_1";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v1.values = {1.0f, 0.1f, 0.2f, 0.3f};
-    v1.metadata["category"] = "finance";
-    v1.metadata["score"] = 0.95f;
-    v1.metadata["tags"] = nlohmann::json::array({"banking", "investment"});
+    v1.metadata.category = "finance";
+    v1.metadata.score = 0.95f;
+    v1.metadata.tags = {"banking", "investment"};
     test_vectors.push_back(v1);
     
     // Vector 2: Technology category, medium score, ai tag
     Vector v2;
     v2.id = "vector_2";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v2.values = {0.1f, 1.0f, 0.2f, 0.8f};
-    v2.metadata["category"] = "technology";
-    v2.metadata["score"] = 0.75f;
-    v2.metadata["tags"] = nlohmann::json::array({"ai", "ml"});
+    v2.metadata.category = "technology";
+    v2.metadata.score = 0.75f;
+    v2.metadata.tags = {"ai", "ml"};
     test_vectors.push_back(v2);
     
     // Vector 3: Finance category, medium score, trading tag
     Vector v3;
     v3.id = "vector_3";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v3.values = {0.9f, 0.2f, 0.1f, 0.4f};
-    v3.metadata["category"] = "finance";
-    v3.metadata["score"] = 0.82f;
-    v3.metadata["tags"] = nlohmann::json::array({"trading", "cryptocurrency"});
+    v3.metadata.category = "finance";
+    v3.metadata.score = 0.82f;
+    v3.metadata.tags = {"trading", "cryptocurrency"};
     test_vectors.push_back(v3);
     
     // Test filter for finance OR technology category
@@ -181,7 +195,7 @@ TEST_F(MetadataFilterTest, ApplyComplexMetadataFiltersOR) {
     
     // Check that all filtered vectors have category "finance" or "technology"
     for (const auto& v : filtered_vectors) {
-        std::string category = v.metadata["category"].get<std::string>();
+        std::string category = v.metadata.category;
         EXPECT_TRUE(category == "finance" || category == "technology");
     }
 }
@@ -194,22 +208,28 @@ TEST_F(MetadataFilterTest, ApplyArrayFilters) {
     // Vector 1: Has investment and trading tags
     Vector v1;
     v1.id = "vector_1";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v1.values = {1.0f, 0.1f, 0.2f, 0.3f};
-    v1.metadata["tags"] = nlohmann::json::array({"investment", "trading", "finance"});
+    v1.metadata.tags = {"investment", "trading", "finance"};
     test_vectors.push_back(v1);
     
     // Vector 2: Has ai and ml tags
     Vector v2;
     v2.id = "vector_2";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v2.values = {0.1f, 1.0f, 0.2f, 0.8f};
-    v2.metadata["tags"] = nlohmann::json::array({"ai", "ml", "technology"});
+    v2.metadata.tags = {"ai", "ml", "technology"};
     test_vectors.push_back(v2);
     
     // Vector 3: Has research and clinical tags
     Vector v3;
     v3.id = "vector_3";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v3.values = {0.9f, 0.2f, 0.1f, 0.4f};
-    v3.metadata["tags"] = nlohmann::json::array({"research", "clinical", "healthcare"});
+    v3.metadata.tags = {"research", "clinical", "healthcare"};
     test_vectors.push_back(v3);
     
     // Test filter for vectors with "investment" tag (using CONTAINS)
@@ -228,7 +248,7 @@ TEST_F(MetadataFilterTest, ApplyArrayFilters) {
     
     // Check that the filtered vector has the investment tag
     EXPECT_EQ(filtered_vectors[0].id, "vector_1");
-    auto tags = filtered_vectors[0].metadata["tags"].get<std::vector<std::string>>();
+    auto tags = filtered_vectors[0].metadata.tags;
     bool has_investment = false;
     for (const auto& tag : tags) {
         if (tag == "investment") {
@@ -254,7 +274,7 @@ TEST_F(MetadataFilterTest, ApplyArrayFilters) {
     
     // Check that the filtered vector has ai or ml tag
     EXPECT_EQ(filtered_vectors[0].id, "vector_2");
-    tags = filtered_vectors[0].metadata["tags"].get<std::vector<std::string>>();
+    tags = filtered_vectors[0].metadata.tags;
     bool has_ai_or_ml = false;
     for (const auto& tag : tags) {
         if (tag == "ai" || tag == "ml") {
@@ -273,33 +293,41 @@ TEST_F(MetadataFilterTest, ApplyRangeFilters) {
     // Vector 1: High score
     Vector v1;
     v1.id = "vector_1";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v1.values = {1.0f, 0.1f, 0.2f, 0.3f};
-    v1.metadata["score"] = 0.95f;
-    v1.metadata["age"] = 25;
+    v1.metadata.score = 0.95f;
+    v1.metadata.custom["age"] = 25;
     test_vectors.push_back(v1);
     
     // Vector 2: Medium-high score
     Vector v2;
     v2.id = "vector_2";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v2.values = {0.1f, 1.0f, 0.2f, 0.8f};
-    v2.metadata["score"] = 0.75f;
-    v2.metadata["age"] = 30;
+    v2.metadata.score = 0.75f;
+    v2.metadata.custom["age"] = 30;
     test_vectors.push_back(v2);
     
     // Vector 3: Medium score
     Vector v3;
     v3.id = "vector_3";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v3.values = {0.9f, 0.2f, 0.1f, 0.4f};
-    v3.metadata["score"] = 0.50f;
-    v3.metadata["age"] = 35;
+    v3.metadata.score = 0.50f;
+    v3.metadata.custom["age"] = 35;
     test_vectors.push_back(v3);
     
     // Vector 4: Low score
     Vector v4;
     v4.id = "vector_4";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v4.values = {0.2f, 0.1f, 1.0f, 0.3f};
-    v4.metadata["score"] = 0.25f;
-    v4.metadata["age"] = 40;
+    v4.metadata.score = 0.25f;
+    v4.metadata.custom["age"] = 40;
     test_vectors.push_back(v4);
     
     // Test filter for vectors with score >= 0.5
@@ -318,7 +346,7 @@ TEST_F(MetadataFilterTest, ApplyRangeFilters) {
     
     // Check that all filtered vectors have score >= 0.5
     for (const auto& v : filtered_vectors) {
-        float score = v.metadata["score"].get<float>();
+        float score = v.metadata.score;
         EXPECT_GE(score, 0.5f);
     }
     
@@ -343,7 +371,7 @@ TEST_F(MetadataFilterTest, ApplyRangeFilters) {
     
     // Check that all filtered vectors have age between 25 and 35
     for (const auto& v : filtered_vectors) {
-        int age = v.metadata["age"].get<int>();
+        int age = v.metadata.custom["age"].get<int>();
         EXPECT_GE(age, 25);
         EXPECT_LE(age, 35);
     }
@@ -357,41 +385,49 @@ TEST_F(MetadataFilterTest, ApplyComplexNestedFilters) {
     // Vector 1: Finance category, high score, investment tag
     Vector v1;
     v1.id = "vector_1";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v1.values = {1.0f, 0.1f, 0.2f, 0.3f};
-    v1.metadata["category"] = "finance";
-    v1.metadata["score"] = 0.95f;
-    v1.metadata["tags"] = nlohmann::json::array({"investment", "trading"});
-    v1.metadata["region"] = "north_america";
+    v1.metadata.category = "finance";
+    v1.metadata.score = 0.95f;
+    v1.metadata.tags = {"investment", "trading"};
+    v1.metadata.custom["region"] = "north_america";
     test_vectors.push_back(v1);
     
     // Vector 2: Technology category, medium score, ai tag
     Vector v2;
     v2.id = "vector_2";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v2.values = {0.1f, 1.0f, 0.2f, 0.8f};
-    v2.metadata["category"] = "technology";
-    v2.metadata["score"] = 0.75f;
-    v2.metadata["tags"] = nlohmann::json::array({"ai", "ml"});
-    v2.metadata["region"] = "europe";
+    v2.metadata.category = "technology";
+    v2.metadata.score = 0.75f;
+    v2.metadata.tags = {"ai", "ml"};
+    v2.metadata.custom["region"] = "europe";
     test_vectors.push_back(v2);
     
     // Vector 3: Finance category, low score, trading tag
     Vector v3;
     v3.id = "vector_3";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v3.values = {0.9f, 0.2f, 0.1f, 0.4f};
-    v3.metadata["category"] = "finance";
-    v3.metadata["score"] = 0.30f;
-    v3.metadata["tags"] = nlohmann::json::array({"trading", "cryptocurrency"});
-    v3.metadata["region"] = "north_america";
+    v3.metadata.category = "finance";
+    v3.metadata.score = 0.30f;
+    v3.metadata.tags = {"trading", "cryptocurrency"};
+    v3.metadata.custom["region"] = "north_america";
     test_vectors.push_back(v3);
     
     // Vector 4: Healthcare category, medium-high score, research tag
     Vector v4;
     v4.id = "vector_4";
+    v1.databaseId = "test_db";
+    v1.metadata.status = "active";
     v4.values = {0.2f, 0.1f, 1.0f, 0.3f};
-    v4.metadata["category"] = "healthcare";
-    v4.metadata["score"] = 0.80f;
-    v4.metadata["tags"] = nlohmann::json::array({"research", "clinical"});
-    v4.metadata["region"] = "asia";
+    v4.metadata.category = "healthcare";
+    v4.metadata.score = 0.80f;
+    v4.metadata.tags = {"research", "clinical"};
+    v4.metadata.custom["region"] = "asia";
     test_vectors.push_back(v4);
     
     // Create a complex filter:
@@ -443,9 +479,9 @@ TEST_F(MetadataFilterTest, ApplyComplexNestedFilters) {
     
     // Check that filtered vectors match the criteria
     for (const auto& v : filtered_vectors) {
-        std::string category = v.metadata["category"].get<std::string>();
-        float score = v.metadata["score"].get<float>();
-        auto tags = v.metadata["tags"].get<std::vector<std::string>>();
+        std::string category = v.metadata.category;
+        float score = v.metadata.score;
+        auto tags = v.metadata.tags;
         
         bool is_high_finance = (category == "finance" && score >= 0.8f);
         bool is_ai_tech = (category == "technology");
@@ -513,9 +549,9 @@ TEST_F(MetadataFilterTest, GetFieldValue) {
     Vector test_vector;
     test_vector.id = "test_vector";
     test_vector.values = {1.0f, 0.1f, 0.2f, 0.3f};
-    test_vector.metadata["category"] = "finance";
-    test_vector.metadata["score"] = 0.95f;
-    test_vector.metadata["tags"] = nlohmann::json::array({"investment", "trading"});
+    test_vector.metadata.category = "finance";
+    test_vector.metadata.score = 0.95f;
+    test_vector.metadata.tags = {"investment", "trading"};
     
     // Test extracting simple field values
     auto result = metadata_filter_->get_field_value("metadata.category", test_vector);
@@ -568,9 +604,4 @@ TEST_F(MetadataFilterTest, EvaluateFilters) {
     
     std::vector<std::string> all_values = {"investment", "trading"};
     EXPECT_TRUE(metadata_filter_->array_contains_all(test_array, all_values));
-}
-
-int main(int argc, char **argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
 }

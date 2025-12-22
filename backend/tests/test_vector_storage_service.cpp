@@ -81,23 +81,25 @@ TEST_F(VectorStorageServiceTest, StoreVectorSuccess) {
     std::string db_id = "test_db";
     Vector test_vector;
     test_vector.id = "test_vector_1";
+    test_vector.databaseId = db_id;  // Required for validation
+    test_vector.metadata.status = "active";  // Required for validation
     test_vector.values = {1.0f, 2.0f, 3.0f};
-    
+
     // Mock database existence check
     EXPECT_CALL(*mock_db_persistence_, database_exists(db_id))
         .WillOnce(Return(Result<bool>{true}));
-    
+
     // Mock database retrieval to validate vector dimensions
     Database test_db;
     test_db.databaseId = db_id;
     test_db.vectorDimension = 3; // Should match vector size
     EXPECT_CALL(*mock_db_persistence_, get_database(db_id))
         .WillOnce(Return(Result<Database>{test_db}));
-    
+
     // Mock the actual storage operation
     EXPECT_CALL(*mock_db_persistence_, store_vector(db_id, test_vector))
         .WillOnce(Return(Result<void>{}));
-    
+
     auto result = vector_storage_service_->store_vector(db_id, test_vector);
     EXPECT_TRUE(result.has_value());
 }
@@ -106,19 +108,21 @@ TEST_F(VectorStorageServiceTest, StoreVectorFailureOnValidation) {
     std::string db_id = "test_db";
     Vector test_vector;
     test_vector.id = "test_vector_1";
+    test_vector.databaseId = db_id;  // Required for validation
+    test_vector.metadata.status = "active";  // Required for validation
     test_vector.values = {1.0f, 2.0f, 3.0f, 4.0f}; // 4 dimensions
-    
+
     // Mock database existence check
     EXPECT_CALL(*mock_db_persistence_, database_exists(db_id))
         .WillOnce(Return(Result<bool>{true}));
-    
+
     // Mock database retrieval with different dimensions (validation should fail)
     Database test_db;
     test_db.databaseId = db_id;
     test_db.vectorDimension = 3; // Only 3 dimensions expected
     EXPECT_CALL(*mock_db_persistence_, get_database(db_id))
         .WillOnce(Return(Result<Database>{test_db}));
-    
+
     auto result = vector_storage_service_->store_vector(db_id, test_vector);
     EXPECT_FALSE(result.has_value());
 }
@@ -143,46 +147,52 @@ TEST_F(VectorStorageServiceTest, RetrieveVectorSuccess) {
 TEST_F(VectorStorageServiceTest, RetrieveVectorFailure) {
     std::string db_id = "test_db";
     std::string vector_id = "nonexistent_vector";
-    
+
+    // Mock retrieve_vector to return an error for non-existent vector
     EXPECT_CALL(*mock_db_persistence_, retrieve_vector(db_id, vector_id))
-        .WillOnce(Return(Result<Vector>{})); // This will return an error
-    
+        .WillOnce(Return(tl::unexpected(ErrorInfo{ErrorCode::NOT_FOUND, "Vector not found"})));
+
     auto result = vector_storage_service_->retrieve_vector(db_id, vector_id);
     EXPECT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().code, ErrorCode::NOT_FOUND);
 }
 
 // Test batch vector storage functionality
 TEST_F(VectorStorageServiceTest, BatchStoreVectorsSuccess) {
     std::string db_id = "test_db";
     std::vector<Vector> test_vectors;
-    
+
     Vector v1;
     v1.id = "vector_1";
+    v1.databaseId = db_id;  // Required for validation
+    v1.metadata.status = "active";  // Required for validation
     v1.values = {1.0f, 2.0f, 3.0f};
     test_vectors.push_back(v1);
-    
+
     Vector v2;
     v2.id = "vector_2";
+    v2.databaseId = db_id;  // Required for validation
+    v2.metadata.status = "active";  // Required for validation
     v2.values = {4.0f, 5.0f, 6.0f};
     test_vectors.push_back(v2);
-    
-    // Mock database existence check
+
+    // Mock database existence check (called twice, once per vector during validation)
     EXPECT_CALL(*mock_db_persistence_, database_exists(db_id))
-        .WillOnce(Return(Result<bool>{true}));
-    
-    // Mock database retrieval for validation
+        .Times(2)
+        .WillRepeatedly(Return(Result<bool>{true}));
+
+    // Mock database retrieval for validation (called twice, once per vector)
     Database test_db;
     test_db.databaseId = db_id;
     test_db.vectorDimension = 3;
     EXPECT_CALL(*mock_db_persistence_, get_database(db_id))
-        .WillOnce(Return(Result<Database>{test_db}));
-    EXPECT_CALL(*mock_db_persistence_, get_database(db_id))
-        .WillOnce(Return(Result<Database>{test_db}));
-    
+        .Times(2)
+        .WillRepeatedly(Return(Result<Database>{test_db}));
+
     // Mock the batch storage operation
     EXPECT_CALL(*mock_db_persistence_, batch_store_vectors(db_id, test_vectors))
         .WillOnce(Return(Result<void>{}));
-    
+
     auto result = vector_storage_service_->batch_store_vectors(db_id, test_vectors);
     EXPECT_TRUE(result.has_value());
 }
@@ -192,19 +202,21 @@ TEST_F(VectorStorageServiceTest, UpdateVectorSuccess) {
     std::string db_id = "test_db";
     Vector test_vector;
     test_vector.id = "test_vector_1";
+    test_vector.databaseId = db_id;  // Required for validation
+    test_vector.metadata.status = "active";  // Required for validation
     test_vector.values = {1.0f, 2.0f, 3.0f};
-    
+
     // Mock database existence check
     EXPECT_CALL(*mock_db_persistence_, database_exists(db_id))
         .WillOnce(Return(Result<bool>{true}));
-    
+
     // Mock database retrieval for validation
     Database test_db;
     test_db.databaseId = db_id;
     test_db.vectorDimension = 3;
     EXPECT_CALL(*mock_db_persistence_, get_database(db_id))
         .WillOnce(Return(Result<Database>{test_db}));
-    
+
     // Mock the update operation
     EXPECT_CALL(*mock_db_persistence_, update_vector(db_id, test_vector))
         .WillOnce(Return(Result<void>{}));
@@ -262,9 +274,4 @@ TEST_F(VectorStorageServiceTest, GetAllVectorIds) {
     auto result = vector_storage_service_->get_all_vector_ids(db_id);
     EXPECT_TRUE(result.has_value());
     EXPECT_EQ(result.value(), expected_ids);
-}
-
-int main(int argc, char** argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
 }

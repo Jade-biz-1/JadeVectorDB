@@ -94,7 +94,7 @@ private:
     // Active sessions
     std::unordered_map<std::string, AuthSession> sessions_;
 
-    // API keys (user_id -> api_key)
+    // API keys (api_key -> user_id) - allows multiple keys per user
     std::unordered_map<std::string, std::string> api_keys_;
 
     mutable std::mutex users_mutex_;

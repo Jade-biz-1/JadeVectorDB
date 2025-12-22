@@ -474,8 +474,3 @@ TEST_F(SimilaritySearchServiceTest, EdgeCasesInSimilarityCalculations) {
     dot_prod = similarity_search_service_->dot_product(v1, v2);
     EXPECT_GT(dot_prod, 0.0f); // Should be positive
 }
-
-int main(int argc, char **argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
