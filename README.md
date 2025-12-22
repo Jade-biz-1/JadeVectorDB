@@ -29,10 +29,12 @@ A high-performance distributed vector database designed for storing, retrieving,
 - ✅ Secure password hashing and validation
 
 **Testing Status**:
+**Testing Status**:
 - ✅ 26/26 automated tests passing (100%)
 - ✅ Sprint 2.2: 8/8 tests passing (RBAC, Authentication)
 - ✅ Sprint 2.3: 18/18 tests passing (Persistence, WAL, Snapshots)
 - ✅ Index resize bug fixed (December 19, 2025)
+- ✅ Duplicate route handler crash fixed (Dec 12, 2025)
 - ⏳ Manual testing: Starting December 20, 2025
 
 **Distributed Features**:

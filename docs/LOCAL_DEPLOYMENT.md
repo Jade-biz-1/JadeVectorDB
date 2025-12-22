@@ -8,7 +8,7 @@ JadeVectorDB can be deployed locally using either Docker Compose or direct insta
 
 ## Current Status
 
-**⚠️ CRITICAL WARNING**: Due to a known issue with duplicate API route handlers, the JadeVectorDB application currently **crashes on startup**. This prevents any local deployment from functioning properly.
+**NOTE**: The startup crash caused by duplicate API route handlers was **fixed on 2025-12-12**. Local deployment should now work when using the latest code from `run-and-fix` or newer branches. If you see the `handler already exists for /v1/databases` error, pull the latest changes and rebuild.
 
 ## Deployment Options
 
@@ -31,8 +31,8 @@ JadeVectorDB can be deployed locally using either Docker Compose or direct insta
    ```
 
 #### Expected Behavior
-- **Backend service will fail to start** due to the duplicate route handler issue
-- Frontend service may start but cannot connect to the backend
+- **Backend service should start normally** when using the latest code (pull `run-and-fix` or newer and rebuild)
+- Frontend service should be able to connect to the backend once started
 - Monitoring services (Prometheus, Grafana) should work independently
 
 #### Workaround for Testing
@@ -41,7 +41,7 @@ You can still run the services separately to test individual components:
 # Start only monitoring services
 docker-compose up prometheus grafana
 
-# Or start backend and frontend separately to see the crash
+# Or start backend and frontend separately to test their connectivity
 docker-compose up jadevectordb
 ```
 
@@ -77,17 +77,14 @@ docker-compose up jadevectordb
 
 ## Known Issues and Limitations
 
-### 1. Duplicate Route Handler Issue (Critical)
+### 1. Duplicate Route Handler Issue (Resolved)
 
-**Problem**: The REST API has a critical bug where routes are registered twice, causing application crash on startup.
+**Problem (historical)**: The REST API previously had duplicate route registrations that caused a startup crash.
 
 **Impact**: 
-- Backend service cannot start properly
-- No API endpoints are accessible
-- Frontend cannot connect to backend services
-- Local deployment is non-functional
+- Backend would not start and frontend could not connect
 
-**Status**: Unresolved - requires code changes in `rest_api.cpp`
+**Status**: **Resolved (2025-12-12)** — ensure you are on the latest branch and rebuild if you encounter similar behavior.
 
 ### 2. Frontend Connection Issues
 
