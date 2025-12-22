@@ -236,16 +236,13 @@ cd backend && cmake -B build -DBUILD_WITH_GRPC=OFF
 
 ### Known Build Issues
 
-#### Test Compilation Failures
-When building with tests enabled (default behavior), multiple compilation errors may occur in test files:
-- Test files try to access private members that they shouldn't
-- Incorrect API usage in test files (e.g., `metadata["key"]` syntax doesn't match the expected API)
-- Type mismatches in test expectations (using `Database` instead of `DatabaseCreationParams`)
+#### Test Compilation Notes
+Most test files now compile and the current automated test suite reports **26/26 passing**. If you run into test compilation issues in specific test files (rare), you can skip tests for a fast build:
 
-**Solution**: Use `--no-tests --no-benchmarks` to build successfully:
 ```bash
 ./build.sh --no-tests --no-benchmarks
 ```
+See `TasksTracking/SPRINT_2_3_TEST_RESULTS.md` and `CleanupReport.md` for details on test coverage and results.
 
 #### Runtime Startup Issues (Address Already in Use)
 If the server fails to start due to port conflicts:
@@ -258,22 +255,14 @@ export JDB_PORT=8081
 ./jadevectordb
 ```
 
-#### Runtime Crash: Duplicate Route Handlers
-There is a known issue where the application crashes on startup with the error:
-```
-terminate called after throwing an instance of 'std::runtime_error'
-  what():  handler already exists for /v1/databases
-```
+#### Runtime Crash: Duplicate Route Handlers (Resolved)
+An earlier issue caused the application to crash on startup with the message `handler already exists for /v1/databases` due to duplicate route registrations in `rest_api.cpp`.
 
-**Cause**: API routes are being registered twice in `rest_api.cpp` - both via `app_->route_dynamic()` and `CROW_ROUTE()` methods.
+**Cause**: Routes were registered both via `app_->route_dynamic()` and `CROW_ROUTE()` for the same endpoints, introduced during integration.
 
-**Status**: This issue requires code fixes in the backend REST API implementation and is related to distributed system integration work.
+**Status**: **Resolved (fixed 2025-12-12)** — the duplicate registration was removed and the startup crash has been addressed. If you still encounter this error, ensure you are on the latest `run-and-fix` branch and rebuild the project.
 
-**Workaround**: The executable builds successfully but will crash on startup. The binary can be built with:
-```bash
-./build.sh --no-tests --no-benchmarks
-```
-But it will not run properly until the duplicate route handler issue is fixed in the code.
+**Note**: The application should start normally after building; if problems persist, consult `docs/LOCAL_DEPLOYMENT.md` and `docs/TROUBLESHOOTING_GUIDE.md` for troubleshooting steps.
 
 ## Environment Variables
 
@@ -294,6 +283,56 @@ export VERBOSE=false                # true or false
 # Run build
 cd backend && ./build.sh
 ```
+
+
+## CLI Testing System
+
+JadeVectorDB provides a comprehensive CLI testing suite for validating end-to-end functionality.
+
+### Quick Start
+
+1. **Start the server:**
+  ```bash
+  cd backend/build
+  ./jadevectordb
+  ```
+2. **In a new terminal, run all CLI tests:**
+  ```bash
+  python3 tests/run_cli_tests.py
+  # or use the shell wrapper
+  ./tests/run_tests.sh
+  ```
+
+### Test Data
+All test data is centralized in `tests/test_data.json`:
+- Authentication: test user credentials
+- Databases: test database configurations
+- Vectors: test vector specifications
+- Search: search query parameters
+
+### Output Format
+The test runner prints a summary table with pass/fail status for each test. Example:
+```
+================================================================================
+#     Tool            Test                           Result
+================================================================================
+1     Python CLI      Health Check                   ✓ PASS
+2     Python CLI      Status Check                   ✓ PASS
+3     Python CLI      Create Database                ✓ PASS
+...
+================================================================================
+
+Summary: 11/12 tests passed
+  Failed: 1
+```
+
+### Troubleshooting
+If a test fails, the runner provides hints. Common issues:
+- Server not running or listening on wrong port
+- Test data mismatch (see `tests/test_data.json`)
+- Authentication or password requirements not met
+
+See `tests/README.md` for full details and troubleshooting tips.
 
 ## Docker Build Options
 
@@ -392,7 +431,5 @@ For build issues:
 
 ## Additional Documentation
 
-- **Quick Reference:** `backend/BUILD_QUICK_REFERENCE.md` - Common commands and examples
-- **Getting Started:** `backend/README_BUILD.md` - Simple introduction to the build system
-- **Detailed Backend Guide:** `backend/BUILD.md` - Backend-specific build documentation
+- **Backend Build Guide:** `backend/BUILD.md` - Detailed backend-specific build documentation
 - **Build System Overview:** `docs/COMPLETE_BUILD_SYSTEM_SETUP.md` - Complete build system setup and features

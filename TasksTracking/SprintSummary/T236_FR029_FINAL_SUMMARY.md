@@ -199,7 +199,7 @@ make jadevectordb_core
 
 ```bash
 cd /home/deepak/Public/JadeVectorDB/backend/build
-export JADE_ENV=development  # or leave unset (defaults to development)
+export JADEVECTORDB_ENV=development  # or leave unset (defaults to development)
 ./jadevectordb
 ```
 

@@ -381,7 +381,7 @@ Uses JADE_ENV environment variable for detection. Idempotent operation. Removed 
 **Priority**: CRITICAL
 **Description**: Verify authentication system works after all cleanup
 **Actions Required**:
-1. Start server: `JADE_ENV=development ./jadevectordb`
+1. Start server: `JADEVECTORDB_ENV=development ./jadevectordb`
 2. Test login with default user:
    ```bash
    curl -X POST http://localhost:8080/v1/auth/login \
