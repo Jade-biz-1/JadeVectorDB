@@ -63,7 +63,7 @@
 
 #### DatabaseLayer (database_layer.cpp - 690 lines)
 ```cpp
-✅ In-memory storage with thread-safe operations
+✅ Persistent storage (SQLite for metadata + memory-mapped vector files) with thread-safe operations
 ✅ Database CRUD operations
 ✅ Vector CRUD operations
 ✅ Metadata indexing and filtering
@@ -164,7 +164,7 @@ Every CLI command has a complete implementation chain:
           ┌──────────────▼──────────────┐
           │   Storage Layer             │
           │ DatabaseLayer (690 L)       │
-          │ • In-memory storage         │
+          │ • Persistent storage (SQLite + memory-mapped vector files) │
           │ • Thread-safe operations    │
           │ • Metadata indexing         │
           └──────────────┬──────────────┘

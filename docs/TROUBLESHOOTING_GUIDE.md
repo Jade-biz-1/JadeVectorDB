@@ -86,19 +86,17 @@ g++ --version    # Should be >= GCC 11.0 or Clang 14.0
 
 ## Runtime Issues
 
-### 1. Duplicate Route Handler Crash (Critical)
+### 1. Duplicate Route Handler Crash (Resolved)
 
-**Problem**: Application crashes on startup with error:
+**Problem (historical)**: Application crashed on startup with:
 ```
 terminate called after throwing an instance of 'std::runtime_error'
   what():  handler already exists for /v1/databases
 ```
 
-**Root Cause**: API routes are being registered twice in `rest_api.cpp` - both via `app_->route_dynamic()` and `CROW_ROUTE()` methods.
+**Root Cause**: Duplicate route registration in `rest_api.cpp` (both `app_->route_dynamic()` and `CROW_ROUTE()` used for same endpoints).
 
-**Status**: This is a known issue related to distributed system integration work.
-
-**Workaround**: The application will not run until this issue is fixed in the code by removing duplicate route registration.
+**Status**: **Resolved (2025-12-12)**. If you still see this error, update to the latest `run-and-fix` branch and rebuild the backend. See `docs/LOCAL_DEPLOYMENT.md` for troubleshooting steps.
 
 ### 2. Port Already in Use
 
@@ -197,10 +195,10 @@ curl http://localhost:8080/health
 
 **Check Environment**:
 ```bash
-echo $JADE_ENV  # Should be 'development', 'dev', 'test', or not set
+echo $JADEVECTORDB_ENV  # Should be 'development', 'dev', 'test', or not set
 
 # If set to production, change to development
-export JADE_ENV=development
+export JADEVECTORDB_ENV=development
 ./jadevectordb
 ```
 

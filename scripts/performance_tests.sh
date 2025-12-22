@@ -49,7 +49,7 @@ LOGIN_RESPONSE=$(curl -s -X POST "$BASE_URL/v1/auth/login" \
 TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 
 if [ -z "$TOKEN" ]; then
-    echo "Failed to get authentication token. Ensure server is running with JADE_ENV=development"
+    echo "Failed to get authentication token. Ensure server is running with JADEVECTORDB_ENV=development"
     exit 1
 fi
 

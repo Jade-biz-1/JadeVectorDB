@@ -76,7 +76,7 @@ ls -lh jadevectordb
 ./jadevectordb
 
 # Or explicitly set environment
-export JADE_ENV=development
+export JADEVECTORDB_ENV=development
 ./jadevectordb
 ```
 

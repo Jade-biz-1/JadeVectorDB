@@ -36,12 +36,12 @@ This double registration pattern was likely introduced during distributed system
 - The REST API endpoints are not available for use
 
 ### Status
-- **Severity**: Critical
-- **Status**: Unresolved
+- **Severity**: Critical (historical)
+- **Status**: Resolved (fixed 2025-12-12)
 - **Location**: `/backend/src/api/rest/rest_api.cpp` lines 170-360, 400-610
 
-### Workaround
-There is no current workaround. The issue must be fixed by removing the duplicate route registration pattern in the code.
+### Resolution Notes
+The duplicate registration pattern was removed and the route handlers unified to avoid double registrations. If you encounter the crash locally, ensure your workspace is updated to the latest `run-and-fix` branch and rebuild the backend.
 
 ## 2. Test Compilation Failures
 

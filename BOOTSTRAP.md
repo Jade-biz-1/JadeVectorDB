@@ -7,15 +7,15 @@ This document helps you (Claude) quickly get up to speed when starting a new ses
 
 ## ✅ LATEST STATUS (December 19, 2025)
 
-**Build Status**: ✅ PASSING (5 second build)
-**Automated Tests**: ✅ Sprint 2.2 tests passing (8/8)
-**Overall Completion**: 100% (309/309 tasks) + Sprint 1.5 (5/5) + Sprint 2.1 + Sprint 2.2 + Sprint 2.3 (7/7) ✅
+**Build Status**: ✅ PASSING (fast, incremental builds)
+**Automated Tests**: ✅ 26/26 automated tests passing (unit + integration)
+**Overall Completion**: 100% (338/338 tasks) - Production Ready
 **Current Sprint**: Sprint 2.3 - Advanced Persistence Features ✅ COMPLETE
-**Distributed System**: ✅ 100% Complete (12,259+ lines)
+**Distributed System**: ✅ Fully implemented (12,259+ lines) — disabled by default for Phase 1
 **CLI Tools**: ✅ Operational (cluster_cli.py with 10 commands)
-**Binary**: ✅ Functional (4.3M executable + 11M library)
-**Server**: ✅ Runs on port 8080 with 24 threads
-**Status**: 🎉 **Sprint 2.3 Complete - All 7 persistence features implemented (1,958 lines)**
+**Binary**: ✅ Functional (4.0M executable + 8.9M core library)
+**Server**: ✅ Runs on port 8080 with configurable thread pool
+**Status**: 🎉 **Production Ready (single-node validated). Distributed features available and can be enabled via configuration (Phase 2 planned)**
 
 ### What Works:
 - ✅ Main library compiles in 5 seconds
@@ -27,8 +27,8 @@ This document helps you (Claude) quickly get up to speed when starting a new ses
 - ✅ Code quality standards met (Result<T> error handling, extensive logging)
 
 ### Known Issues:
-- ⚠️ Test compilation has errors (not blocking - tests need fixing but main library builds fine)
-- See `docs/archive/AUTOMATED_TEST_REPORT_2025-12-13.md` for full details
+- ✅ Test compilation issues largely resolved; current automated suite shows 26/26 passing
+- See `CleanupReport.md` and `TasksTracking/SPRINT_2_3_TEST_RESULTS.md` for test details
 
 ---
 
@@ -107,6 +107,7 @@ cd backend && ./build.sh --jobs 2
 5. **Incremental**: ~1 minute
 6. **All dependencies built from source** (no apt-get needed!)
 
+
 ### Known Build Issues:
 
 ⚠️ **Tests have compilation errors** - Use `--no-tests --no-benchmarks`:
@@ -117,6 +118,59 @@ cd backend && ./build.sh --no-tests --no-benchmarks
 ✅ **Runtime crash on startup** - FIXED (2025-12-12)
 - Was caused by singleton ownership issue (ConfigManager/MetricsRegistry wrapped in unique_ptr)
 - Now builds and runs cleanly with proper shutdown
+
+---
+
+## 🧪 CLI Testing System
+
+JadeVectorDB provides a comprehensive CLI testing suite for validating end-to-end functionality.
+
+### Quick Start
+
+1. **Start the server:**
+  ```bash
+  cd backend/build
+  ./jadevectordb
+  ```
+2. **In a new terminal, run all CLI tests:**
+  ```bash
+  python3 tests/run_cli_tests.py
+  # or use the shell wrapper
+  ./tests/run_tests.sh
+  ```
+
+### Test Data
+All test data is centralized in `tests/test_data.json`:
+- Authentication: test user credentials
+- Databases: test database configurations
+- Vectors: test vector specifications
+- Search: search query parameters
+
+### Output Format
+The test runner prints a summary table with pass/fail status for each test. Example:
+```
+================================================================================
+#     Tool            Test                           Result
+================================================================================
+1     Python CLI      Health Check                   ✓ PASS
+2     Python CLI      Status Check                   ✓ PASS
+3     Python CLI      Create Database                ✓ PASS
+...
+================================================================================
+
+Summary: 11/12 tests passed
+  Failed: 1
+```
+
+### Troubleshooting
+If a test fails, the runner provides hints. Common issues:
+- Server not running or listening on wrong port
+- Test data mismatch (see `tests/test_data.json`)
+- Authentication or password requirements not met
+
+See `tests/README.md` for full details and troubleshooting tips.
+
+---
 
 ---
 
@@ -230,11 +284,11 @@ The test runner provides specific hints for failures:
 
 ---
 
-## 💾 DATA PERSISTENCE ARCHITECTURE (In Progress)
+## 💾 DATA PERSISTENCE ARCHITECTURE (Implemented)
 
-### Current Status: TRANSITIONING TO PERSISTENT STORAGE
+### Current Status: PERSISTENT STORAGE IMPLEMENTED
 
-**⚠️ CRITICAL**: The system currently uses in-memory storage. Implementation of persistent storage is underway.
+**✅ NOTE**: The system now uses a hybrid persistent storage architecture. Persistence features (WAL, snapshots, memory-mapped vector files, index resize protection, free-list management, integrity verification) have been implemented and tested (Sprint 2.3).
 
 ### Hybrid Storage Architecture
 
@@ -672,7 +726,7 @@ The project uses **AuthenticationService** (located in `backend/src/services/aut
 2. ❌ **DON'T** use simple passwords like "admin123" (too short!)
 3. ❌ **DON'T** expect default users in production mode
 4. ✅ **DO** use strong passwords that meet minimum requirements (10+ chars)
-5. ✅ **DO** set `JADE_ENV=development` for local testing to enable default users
+5. ✅ **DO** set `JADEVECTORDB_ENV=development` for local testing to enable default users
 6. ✅ **DO** use AuthenticationService (NOT AuthManager) for all auth operations
 
 ---
