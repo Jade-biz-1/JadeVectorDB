@@ -107,6 +107,7 @@ cd backend && ./build.sh --jobs 2
 5. **Incremental**: ~1 minute
 6. **All dependencies built from source** (no apt-get needed!)
 
+
 ### Known Build Issues:
 
 ⚠️ **Tests have compilation errors** - Use `--no-tests --no-benchmarks`:
@@ -117,6 +118,59 @@ cd backend && ./build.sh --no-tests --no-benchmarks
 ✅ **Runtime crash on startup** - FIXED (2025-12-12)
 - Was caused by singleton ownership issue (ConfigManager/MetricsRegistry wrapped in unique_ptr)
 - Now builds and runs cleanly with proper shutdown
+
+---
+
+## 🧪 CLI Testing System
+
+JadeVectorDB provides a comprehensive CLI testing suite for validating end-to-end functionality.
+
+### Quick Start
+
+1. **Start the server:**
+  ```bash
+  cd backend/build
+  ./jadevectordb
+  ```
+2. **In a new terminal, run all CLI tests:**
+  ```bash
+  python3 tests/run_cli_tests.py
+  # or use the shell wrapper
+  ./tests/run_tests.sh
+  ```
+
+### Test Data
+All test data is centralized in `tests/test_data.json`:
+- Authentication: test user credentials
+- Databases: test database configurations
+- Vectors: test vector specifications
+- Search: search query parameters
+
+### Output Format
+The test runner prints a summary table with pass/fail status for each test. Example:
+```
+================================================================================
+#     Tool            Test                           Result
+================================================================================
+1     Python CLI      Health Check                   ✓ PASS
+2     Python CLI      Status Check                   ✓ PASS
+3     Python CLI      Create Database                ✓ PASS
+...
+================================================================================
+
+Summary: 11/12 tests passed
+  Failed: 1
+```
+
+### Troubleshooting
+If a test fails, the runner provides hints. Common issues:
+- Server not running or listening on wrong port
+- Test data mismatch (see `tests/test_data.json`)
+- Authentication or password requirements not met
+
+See `tests/README.md` for full details and troubleshooting tips.
+
+---
 
 ---
 

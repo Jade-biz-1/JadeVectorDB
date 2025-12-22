@@ -1,3 +1,16 @@
+### T274: Merge CLI Test Suites and Clean CLI Folder
+**Status**: [ ] PENDING
+**Priority**: HIGH
+**Estimated Effort**: 1 day
+**Due Date**: 2025-12-23
+**Description**: Merge the CLI test suite in the project root (`tests/`) with the CLI-specific tests in `cli/tests/` to eliminate duplication and ensure all CLI tests are unified. Clean up the `cli/` folder by removing redundant, unwanted, or duplicate documents and scripts, and ensure only necessary, well-documented files remain.
+**Subtasks**:
+- [ ] Audit all CLI-related test scripts and documentation in both `tests/` and `cli/tests/`
+- [ ] Merge test logic and data where possible, ensuring no loss of coverage
+- [ ] Remove or consolidate duplicate or obsolete test scripts
+- [ ] Clean up the `cli/` folder: remove redundant or outdated documents/scripts, and document what remains
+- [ ] Update documentation to reflect the new unified CLI test structure
+**Notes**: This will improve maintainability and reduce confusion for future contributors.
 # Phase 16: CLI Enhancements - Specification Compliance
 
 **Status**: ✅ **100% COMPLETE**
