@@ -425,8 +425,3 @@ TEST_F(FullSystemIntegrationTest, PerformanceTest) {
     
     LOG_INFO(logger_, "Performance test completed successfully");
 }
-
-int main(int argc, char** argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}

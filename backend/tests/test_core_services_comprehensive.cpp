@@ -350,8 +350,3 @@ TEST_F(CoreServicesComprehensiveTest, BatchOperationsPerformanceTest) {
     auto result = vector_storage_service_->batch_store_vectors(db_id, batch_vectors);
     EXPECT_TRUE(result.has_value());
 }
-
-int main(int argc, char** argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}

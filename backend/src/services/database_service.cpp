@@ -315,8 +315,12 @@ Result<void> DatabaseService::validate_update_params(const DatabaseUpdateParams&
         
         // Validate index type if provided
         if (params.indexType.has_value() && !params.indexType.value().empty()) {
+            std::string index_type_lower = params.indexType.value();
+            std::transform(index_type_lower.begin(), index_type_lower.end(), 
+                          index_type_lower.begin(), ::tolower);
+            
             std::vector<std::string> valid_index_types = {"hnsw", "ivf", "flat", "lsh"};
-            if (std::find(valid_index_types.begin(), valid_index_types.end(), params.indexType.value()) == 
+            if (std::find(valid_index_types.begin(), valid_index_types.end(), index_type_lower) == 
                 valid_index_types.end()) {
                 RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Invalid index type: " + params.indexType.value());
             }

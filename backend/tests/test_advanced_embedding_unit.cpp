@@ -209,8 +209,3 @@ TEST_F(ModelVersioningServiceTest, ABTestingWithDifferentSplits) {
     EXPECT_LT(model_z_count, 150);  // Less than 15%
     EXPECT_EQ(model_x_count + model_y_count + model_z_count, 1000);
 }
-
-int main(int argc, char **argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}

@@ -1,46 +1,42 @@
-# JadeVectorDB Build System
+# JadeVectorDB Backend - Build System
 
-## Overview
-
-JadeVectorDB uses a unified, self-contained build system that works consistently across all environments:
-- Local development
-- Docker containers
-- CI/CD pipelines
-- Production deployments
-
-**Key Feature:** All dependencies are fetched from source via CMake FetchContent. No external package installation required!
-
-## Quick Start
-
-### Local Build
+## 🎯 Quick Start
 
 ```bash
+# One command to build everything
 ./build.sh
 ```
 
-The executable will be in `build/jadevectordb`.
+That's it! All dependencies are automatically fetched from source.
 
-### Docker Build
-
+**Run the server:**
 ```bash
-# From project root
-docker build -t jadevectordb:latest .
-```
-
-### Run
-
-```bash
-# Local
 cd build
 ./jadevectordb
-
-# Docker
-docker run -p 8080:8080 jadevectordb:latest
 ```
 
-## Build Options
+## 📋 Common Commands
 
-### Using the Build Script
+### Local Builds
+
+| Task | Command |
+|------|---------|
+| **Standard build** | `./build.sh` |
+| **Clean build** | `./build.sh --clean` |
+| **Debug build** | `./build.sh --type Debug --clean` |
+| **Production** | `./build.sh --no-tests --no-benchmarks` |
+| **Fast build** | `./build.sh --jobs 8` |
+| **Coverage** | `./build.sh --type Debug --coverage --clean` |
+
+### Docker Builds
+
+| Task | Command |
+|------|---------|
+| **Standard** | `docker build -f Dockerfile -t jadevectordb .` |
+| **Production** | `docker build -f Dockerfile --build-arg BUILD_TESTS=OFF -t jadevectordb:prod .` |
+| **Development** | `docker build -f Dockerfile --build-arg BUILD_TYPE=Debug -t jadevectordb:dev .` |
+
+## ⚙️ Build Options
 
 ```bash
 ./build.sh [OPTIONS]
@@ -58,29 +54,113 @@ Options:
   --verbose               Enable verbose build output
 ```
 
-### Examples
+### Configuration Options
 
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--type TYPE` | Debug, Release, RelWithDebInfo | Release |
+| `--clean` | Remove build directory first | false |
+| `--no-tests` | Skip building tests | tests enabled |
+| `--no-benchmarks` | Skip building benchmarks | benchmarks enabled |
+| `--with-grpc` | Enable full gRPC (adds 30min!) | OFF (uses stubs) |
+| `--coverage` | Code coverage instrumentation | OFF |
+| `--jobs N` | Parallel build jobs | all CPUs |
+| `--verbose` | Verbose output | quiet |
+
+## 🎯 Use Cases
+
+### For Development
 ```bash
-# Standard release build
-./build.sh
-
-# Debug build with clean
 ./build.sh --type Debug --clean
-
-# Production build (no tests/benchmarks, optimized)
-./build.sh --no-tests --no-benchmarks
-
-# Development build with full features
-./build.sh --type Debug --with-grpc --clean
-
-# Coverage build for testing
-./build.sh --type Debug --coverage --clean
-
-# Fast build with limited parallelism (for CI)
-./build.sh --jobs 2
 ```
 
-### Using CMake Directly
+### For Production Deployment
+```bash
+./build.sh --no-tests --no-benchmarks
+```
+
+### For CI/CD
+```bash
+./build.sh --type Release --jobs 2
+```
+
+### For Testing Coverage
+```bash
+./build.sh --type Debug --coverage --clean
+cd build && cmake --build . --target coverage
+```
+
+### For Performance Testing
+```bash
+./build.sh --type Release
+cd build && ./search_benchmarks
+```
+
+## ✨ Key Features
+
+- ✅ **Self-Contained** - All dependencies built from source via CMake FetchContent
+- ✅ **No Installation** - No apt-get, yum, or brew needed
+- ✅ **Consistent** - Same build everywhere (local, Docker, CI/CD)
+- ✅ **Fast** - Incremental builds in ~1 minute
+- ✅ **Flexible** - Many configuration options
+
+## 📦 What Gets Built
+
+After successful build, find in `build/`:
+- `jadevectordb` - Main executable (server)
+- `libjadevectordb_core.a` - Core library
+- `jadevectordb_tests` - Test suite (if enabled)
+- `search_benchmarks` - Performance tests (if enabled)
+
+## ⚡ Performance
+
+| Build Type | First Build | Incremental |
+|-----------|-------------|-------------|
+| Standard | ~12 minutes | ~1 minute |
+| Minimal (no tests) | ~8 minutes | ~30 seconds |
+| With gRPC | ~40 minutes | ~1 minute |
+
+## 🛠️ Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| Build fails | Try `./build.sh --clean` |
+| Out of memory | Limit jobs: `./build.sh --jobs 2` |
+| Slow build | Skip extras: `./build.sh --no-tests --no-benchmarks` |
+| Missing dependencies | None needed! Build fetches everything from source |
+
+## 🐳 Docker Commands
+
+### Build
+```bash
+# Production image (recommended)
+docker build -f Dockerfile -t jadevectordb:latest .
+
+# Development image
+docker build -f Dockerfile \
+  --build-arg BUILD_TYPE=Debug \
+  --build-arg BUILD_TESTS=ON \
+  -t jadevectordb:dev .
+```
+
+### Run
+```bash
+# Simple run
+docker run -p 8080:8080 jadevectordb:latest
+
+# With persistent data
+docker run -p 8080:8080 -v $(pwd)/data:/app/data jadevectordb:latest
+
+# With environment variables
+docker run -p 8080:8080 \
+  -e SERVER_PORT=8080 \
+  -e LOG_LEVEL=INFO \
+  jadevectordb:latest
+```
+
+## 🔧 Using CMake Directly
+
+If you prefer to use CMake directly instead of the build script:
 
 ```bash
 # Configure
@@ -98,253 +178,86 @@ cmake --build . -j$(nproc)
 ctest --output-on-failure
 ```
 
-## Dependencies
+## 📝 Environment Variables
 
-All dependencies are automatically fetched from source during the CMake configure step:
+The build script respects these environment variables:
 
-### Core Dependencies (Always Built)
-- **Eigen 3.4.0** - Linear algebra library
-- **FlatBuffers v23.5.26** - Serialization
-- **Crow v1.0+5** - Web framework for REST API
-- **Google Test v1.14.0** - Testing framework (if BUILD_TESTS=ON)
-- **Google Benchmark v1.8.3** - Performance testing (if BUILD_BENCHMARKS=ON)
-- **Apache Arrow 14.0.0** - In-memory columnar format
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `BUILD_TYPE` | Build type | Release |
+| `BUILD_DIR` | Build directory | build |
+| `BUILD_TESTS` | Enable tests | ON |
+| `BUILD_BENCHMARKS` | Enable benchmarks | ON |
+| `BUILD_WITH_GRPC` | Enable gRPC | OFF |
+| `PARALLEL_JOBS` | Build jobs | nproc |
+| `CLEAN_BUILD` | Clean first | false |
 
-### Optional Dependencies
-- **gRPC v1.60.0** - RPC framework (only if BUILD_WITH_GRPC=ON)
-  - Note: This is VERY large and significantly increases build time
-  - Default: OFF (uses stub implementation)
-
-## Build System Features
-
-### Self-Contained
-- No external package manager required (apt, yum, brew, etc.)
-- All dependencies fetched from source
-- Reproducible builds across all platforms
-
-### Flexible Configuration
-- CMake options for all features
-- Environment variable support
-- Command-line argument support
-
-### Optimized Builds
-- Minimal Arrow build (only required components)
-- Optional gRPC (uses stubs by default)
-- Parallel compilation support
-- Incremental builds supported
-
-### Docker Integration
-- Multi-stage builds for small images
-- Uses same build system as local
-- No dependency installation in container
-- Optimized for CI/CD
-
-## Build Configurations
-
-### Development Build
-Best for local development and debugging:
+Example:
 ```bash
-./build.sh --type Debug --clean
+BUILD_TYPE=Debug CLEAN_BUILD=true ./build.sh
 ```
-- Debug symbols enabled
-- Optimizations disabled
-- Tests and benchmarks included
 
-### Release Build (Default)
-Optimized for production:
-```bash
-./build.sh --type Release
-```
-- Full optimizations (-O3)
-- Debug symbols stripped
-- Tests and benchmarks included
+## 🧪 Testing
 
-### Production Build
-Minimal size, maximum performance:
-```bash
-./build.sh --type Release --no-tests --no-benchmarks
-```
-- Full optimizations
-- No tests or benchmarks
-- Smallest binary size
+After building with tests enabled:
 
-### Coverage Build
-For test coverage analysis:
 ```bash
-./build.sh --type Debug --coverage --clean
 cd build
-cmake --build . --target coverage
-```
-- Coverage instrumentation
-- Generates HTML coverage report
 
-## Troubleshooting
+# Run all tests
+ctest --output-on-failure
 
-### Build Fails with "Out of Memory"
+# Run specific test
+./jadevectordb_tests --gtest_filter=DatabaseTest.*
 
-Arrow build can be memory-intensive. Solutions:
-```bash
-# Reduce parallel jobs
-./build.sh --jobs 2
-
-# Or build incrementally
-cmake --build build -j1
+# Run with verbose output
+ctest -V
 ```
 
-### Git Fetch Fails
+## 📖 Additional Documentation
 
-Ensure you have internet access and Git is installed:
+- **Project README**: [../README.md](../README.md) - Project overview
+- **Complete Setup Guide**: [../docs/COMPLETE_BUILD_SYSTEM_SETUP.md](../docs/COMPLETE_BUILD_SYSTEM_SETUP.md) - Full build system details
+- **Installation Guide**: [../docs/INSTALLATION_GUIDE.md](../docs/INSTALLATION_GUIDE.md) - Installation instructions
+
+## 💡 Tips
+
+1. **First Build**: Be patient, first build takes ~12 minutes as it fetches and compiles all dependencies
+2. **Incremental Builds**: After first build, rebuilds are typically ~1 minute
+3. **Clean Builds**: Use `--clean` only when needed (dependency changes, build issues)
+4. **CI/CD**: Limit jobs with `--jobs 2` to avoid memory issues
+5. **Development**: Use Debug builds for better error messages and debugging
+
+## 🚀 Quick Examples
+
 ```bash
-git --version
-# Should output: git version 2.x.x
-```
+# Standard development workflow
+./build.sh --type Debug --clean
+cd build && ./jadevectordb
 
-### Missing Compiler
-
-Install GCC 11+ or Clang 14+:
-```bash
-# Ubuntu/Debian
-sudo apt-get update && sudo apt-get install -y build-essential cmake git
-
-# macOS
-brew install cmake git
-```
-
-### Slow Build
-
-First build fetches and compiles all dependencies (can take 10-30 minutes).
-Subsequent builds are much faster (incremental compilation).
-
-To speed up:
-```bash
-# Skip tests and benchmarks
+# Production deployment
 ./build.sh --no-tests --no-benchmarks
+cd build && ./jadevectordb
 
-# Use more CPU cores
-./build.sh --jobs 8
+# Test coverage report
+./build.sh --type Debug --coverage --clean
+cd build && cmake --build . --target coverage
 
-# Don't build gRPC (uses stubs instead)
-# This is the default, but explicitly:
-cmake -B build -DBUILD_WITH_GRPC=OFF
+# Fast iteration (no tests/benchmarks)
+./build.sh --no-tests --no-benchmarks --jobs 4
 ```
 
-## Environment Variables
-
-You can control the build using environment variables:
+## ❓ Getting Help
 
 ```bash
-# Build configuration
-export BUILD_TYPE=Release           # Debug, Release, RelWithDebInfo
-export BUILD_DIR=build              # Build directory name
-export BUILD_TESTS=ON               # ON or OFF
-export BUILD_BENCHMARKS=ON          # ON or OFF
-export BUILD_COVERAGE=OFF           # ON or OFF
-export BUILD_WITH_GRPC=OFF          # ON or OFF
-export CLEAN_BUILD=false            # true or false
-export PARALLEL_JOBS=4              # Number of parallel jobs
-export VERBOSE=false                # true or false
+# Show all build script options
+./build.sh --help
 
-# Run build
-./build.sh
+# Check CMake configuration
+cd build && cmake -L ..
+
+# View build variables
+cd build && cmake -LAH ..
 ```
 
-## Docker Build Options
-
-### Development Image (with tests)
-```bash
-docker build \
-  --build-arg BUILD_TESTS=ON \
-  --build-arg BUILD_BENCHMARKS=ON \
-  -t jadevectordb:dev .
-```
-
-### Production Image (minimal)
-```bash
-docker build \
-  --build-arg BUILD_TESTS=OFF \
-  --build-arg BUILD_BENCHMARKS=OFF \
-  -t jadevectordb:prod .
-```
-
-### With gRPC Support
-```bash
-docker build \
-  --build-arg BUILD_WITH_GRPC=ON \
-  -t jadevectordb:grpc .
-```
-
-## Build Artifacts
-
-After a successful build, you'll find:
-
-```
-build/
-├── jadevectordb              # Main executable
-├── libjadevectordb_core.a    # Core static library
-├── jadevectordb_tests        # Test suite (if BUILD_TESTS=ON)
-├── search_benchmarks         # Benchmarks (if BUILD_BENCHMARKS=ON)
-└── filtered_search_benchmarks
-```
-
-## CI/CD Integration
-
-### GitHub Actions
-```yaml
-- name: Build JadeVectorDB
-  run: |
-    cd backend
-    ./build.sh --type Release --no-benchmarks --jobs 2
-```
-
-### GitLab CI
-```yaml
-build:
-  script:
-    - cd backend
-    - ./build.sh --type Release --no-benchmarks
-```
-
-### Jenkins
-```groovy
-sh 'cd backend && ./build.sh --type Release'
-```
-
-## Performance
-
-### Build Times (approximate)
-
-| Configuration | First Build | Incremental |
-|--------------|-------------|-------------|
-| Release (no gRPC) | 10-15 min | 1-2 min |
-| Debug (no gRPC) | 8-12 min | 1-2 min |
-| With gRPC | 30-45 min | 1-2 min |
-| Production (minimal) | 8-10 min | 30 sec |
-
-*Times vary based on CPU cores and internet speed*
-
-### Optimizations
-
-The build system includes several optimizations:
-- **GIT_SHALLOW TRUE** - Fetches only latest commits
-- **Minimal Arrow** - Builds only required Arrow components
-- **Static linking** - Reduces runtime dependencies
-- **Parallel compilation** - Uses all available CPU cores
-- **Incremental builds** - Only recompiles changed files
-
-## Support
-
-For build issues:
-1. Check this documentation and the quick reference guide in `BUILD_QUICK_REFERENCE.md`
-2. Review build logs
-3. Try a clean build: `./build.sh --clean`
-4. Open an issue on GitHub with:
-   - CMake version
-   - Compiler version
-   - Build command used
-   - Complete error output
-
-## Additional Documentation
-
-- **Quick Reference:** `BUILD_QUICK_REFERENCE.md` - Common commands and examples
-- **Getting Started:** `README_BUILD.md` - Simple introduction to the build system
-- **Enhancement Summary:** `../docs/COMPLETE_BUILD_SYSTEM_SETUP.md` - Technical details about the build system improvements
+For more help, see the main project [README.md](../README.md) or open an issue on GitHub.

@@ -16,9 +16,13 @@ using namespace jadevectordb;
 class DatabaseApiIntegrationTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Create services for integration testing
-        db_service_ = std::make_unique<DatabaseService>();
-        vector_service_ = std::make_unique<VectorStorageService>();
+        // Create shared database layer
+        auto db_layer = std::make_shared<DatabaseLayer>();
+        db_layer->initialize();
+        
+        // Create services that share the same database layer
+        db_service_ = std::make_unique<DatabaseService>(db_layer);
+        vector_service_ = std::make_unique<VectorStorageService>(db_layer);
         
         // Initialize services
         db_service_->initialize();
@@ -158,6 +162,7 @@ TEST_F(DatabaseApiIntegrationTest, UpdateDatabase) {
     initial_db.name = "initial_db_name";
     initial_db.description = "Initial description";
     initial_db.vectorDimension = 128;
+    initial_db.indexType = "flat";  // Use lowercase index type
     
     auto create_result = db_service_->create_database(to_creation_params(initial_db));
     ASSERT_TRUE(create_result.has_value());
@@ -170,12 +175,13 @@ TEST_F(DatabaseApiIntegrationTest, UpdateDatabase) {
     
     // Update the database
     Database updated_db = initial_db;
+    updated_db.databaseId = db_id;  // Set the database ID
     updated_db.name = "updated_db_name";
     updated_db.description = "Updated description";
     updated_db.vectorDimension = 256;
     
     auto update_result = db_service_->update_database(db_id, to_update_params(updated_db));
-    ASSERT_TRUE(update_result.has_value());
+    ASSERT_TRUE(update_result.has_value()) << "Update failed: " << update_result.error().message;
     
     // Retrieve the database again to verify the update
     get_result = db_service_->get_database(db_id);
@@ -240,7 +246,9 @@ TEST_F(DatabaseApiIntegrationTest, DatabaseWithVectors) {
     for (int i = 0; i < 3; ++i) {
         Vector v;
         v.id = "vector_" + std::to_string(i);
+        v.databaseId = db_id;
         v.values = {static_cast<float>(i), static_cast<float>(i+1), static_cast<float>(i+2)};
+        v.metadata.status = "active";
         v.metadata.custom["test_id"] = i;
         v.metadata.custom["category"] = "test_vector";
         
@@ -250,7 +258,8 @@ TEST_F(DatabaseApiIntegrationTest, DatabaseWithVectors) {
     // Store the vectors
     for (const auto& v : test_vectors) {
         auto store_result = vector_service_->store_vector(db_id, v);
-        ASSERT_TRUE(store_result.has_value()) << "Failed to store vector: " << v.id;
+        ASSERT_TRUE(store_result.has_value()) << "Failed to store vector: " << v.id 
+            << " Error: " << (store_result.has_value() ? "" : store_result.error().message);
     }
     
     // Verify vectors were stored by retrieving them
@@ -301,13 +310,20 @@ TEST_F(DatabaseApiIntegrationTest, MultipleDatabasesWithDifferentConfigs) {
     std::vector<std::pair<std::string, Database>> created_dbs;
     
     // Create databases with different configurations
-    std::vector<Database> configs = {
-        {"db_config_1", "Config 1 DB", 64, "FLAT"},
-        {"db_config_2", "Config 2 DB", 128, "HNSW"},
-        {"db_config_3", "Config 3 DB", 256, "IVF"}
+    struct DbConfig {
+        std::string name;
+        std::string description;
+        int vectorDimension;
+        std::string indexType;
     };
     
-    for (auto& config : configs) {
+    std::vector<DbConfig> configs = {
+        {"db_config_1", "Config 1 DB", 64, "flat"},
+        {"db_config_2", "Config 2 DB", 128, "hnsw"},
+        {"db_config_3", "Config 3 DB", 256, "ivf"}
+    };
+    
+    for (const auto& config : configs) {
         Database db;
         db.name = config.name;
         db.description = config.description;

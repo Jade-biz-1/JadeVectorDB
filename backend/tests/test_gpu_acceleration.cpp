@@ -170,8 +170,3 @@ TEST_F(GPUAccelerationTest, PerformanceBasedStrategy) {
     EXPECT_GE(gpu_percentage, 0);
     EXPECT_LE(gpu_percentage, 100);
 }
-
-int main(int argc, char **argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
