@@ -50,5 +50,27 @@
       "values": "auto_generate"
     },
     "top_k": 5
+  },
+  "phase16": {
+    "user_management": {
+      "python_test_user": {
+        "username": "python_cli_testuser",
+        "password": "PythonTest123@",
+        "email": "python_test@jadevectordb.com",
+        "roles": ["user"]
+      },
+      "shell_test_user": {
+        "username": "shell_cli_testuser",
+        "password": "ShellTest123@",
+        "email": "shell_test@jadevectordb.com",
+        "roles": ["user"]
+      }
+    },
+    "import_export": {
+      "python_export_file": "/tmp/jadevectordb_python_export_test.json",
+      "python_import_file": "/tmp/jadevectordb_python_import_test.json",
+      "shell_export_file": "/tmp/jadevectordb_shell_export_test.json",
+      "shell_import_file": "/tmp/jadevectordb_shell_import_test.json"
+    }
   }
 }

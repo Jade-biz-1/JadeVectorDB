@@ -1,16 +1,34 @@
 ### T274: Merge CLI Test Suites and Clean CLI Folder
-**Status**: [ ] PENDING
+**Status**: [X] COMPLETE
 **Priority**: HIGH
 **Estimated Effort**: 1 day
 **Due Date**: 2025-12-23
+**Completion Date**: 2025-12-23
 **Description**: Merge the CLI test suite in the project root (`tests/`) with the CLI-specific tests in `cli/tests/` to eliminate duplication and ensure all CLI tests are unified. Clean up the `cli/` folder by removing redundant, unwanted, or duplicate documents and scripts, and ensure only necessary, well-documented files remain.
 **Subtasks**:
-- [ ] Audit all CLI-related test scripts and documentation in both `tests/` and `cli/tests/`
-- [ ] Merge test logic and data where possible, ensuring no loss of coverage
-- [ ] Remove or consolidate duplicate or obsolete test scripts
-- [ ] Clean up the `cli/` folder: remove redundant or outdated documents/scripts, and document what remains
-- [ ] Update documentation to reflect the new unified CLI test structure
-**Notes**: This will improve maintainability and reduce confusion for future contributors.
+- [X] Audit all CLI-related test scripts and documentation in both `tests/` and `cli/tests/`
+- [X] Merge test logic and data where possible, ensuring no loss of coverage
+- [X] Remove or consolidate duplicate or obsolete test scripts
+- [X] Clean up the `cli/` folder: remove redundant or outdated documents/scripts, and document what remains
+- [X] Update documentation to reflect the new unified CLI test structure
+**Implementation Summary**:
+- Consolidated all CLI tests into `tests/run_cli_tests.py` (extended with Phase 16 tests)
+- Removed pytest dependency - all tests now use plain Python (matching existing pattern)
+- Added 16 new Phase 16 tests (Python + Shell for user management + import/export)
+- Deleted `cli/tests/` directory entirely
+- Deleted JavaScript test files from `cli/js/src/` (Jest tests run separately)
+- Removed redundant test file `cli/test_curl.py`
+- Created master test runner `tests/run_all_tests.sh`
+- Updated documentation (BOOTSTRAP.md, BUILD.md, tests/README.md)
+- **Final test count: 36 comprehensive tests** covering:
+  - 12 basic CLI tests (Python + Shell)
+  - 3 persistence tests
+  - 5 RBAC tests
+  - 6 Python user management tests
+  - 2 Python import/export tests
+  - 6 Shell user management tests
+  - 2 Shell import/export tests
+**Notes**: Tests are now unified, maintainable, and follow consistent patterns. No pytest dependency required. JavaScript tests use Jest and run separately: `cd cli/js && npm test`
 # Phase 16: CLI Enhancements - Specification Compliance
 
 **Status**: ✅ **100% COMPLETE**

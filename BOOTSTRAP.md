@@ -176,7 +176,7 @@ See `tests/README.md` for full details and troubleshooting tips.
 
 ## 🧪 CLI Testing System
 
-**IMPORTANT**: JadeVectorDB has a comprehensive CLI testing suite with centralized test data.
+**IMPORTANT**: JadeVectorDB has a unified, comprehensive CLI testing suite covering all CLI functionality including Phase 16 features (user management and bulk import/export).
 
 ### Quick Start
 
@@ -187,10 +187,12 @@ cd backend/build
 
 # 2. In a new terminal, run all CLI tests
 cd /path/to/JadeVectorDB
-python3 tests/run_cli_tests.py
 
-# Or use the shell wrapper
-./tests/run_tests.sh
+# Recommended: Use the master test runner
+./tests/run_all_tests.sh
+
+# Or run the test suite directly
+python3 tests/run_cli_tests.py
 ```
 
 ### Test Data Configuration
@@ -203,7 +205,7 @@ All test data is centralized in `tests/test_data.json`:
 - **Search**: Search query parameters
 
 **Password Requirements**: Test passwords must meet security standards:
-- At least 8 characters
+- At least 10 characters (updated from 8)
 - Contains uppercase, lowercase, digit, and special character
 - Example: `CliTest123@`
 
@@ -215,13 +217,14 @@ All test data is centralized in `tests/test_data.json`:
 ================================================================================
 1     Python CLI      Health Check                   ✓ PASS
 2     Python CLI      Status Check                   ✓ PASS
-3     Python CLI      Create Database                ✓ PASS
-4     Python CLI      Store Vector                   ✓ PASS
 ...
+21    User Mgmt       Add User                       ✓ PASS
+22    User Mgmt       List Users                     ✓ PASS
+27    Import/Export   Export Vectors                 ✓ PASS
+28    Import/Export   Import Vectors                 ✓ PASS
 ================================================================================
 
-Summary: 11/12 tests passed
-  Failed: 1
+Summary: 36/36 tests passed
 ```
 
 ### Troubleshooting Failed Tests
@@ -229,22 +232,31 @@ Summary: 11/12 tests passed
 The test runner provides specific hints for failures:
 
 ```
-[Test #6] Python CLI - Store Vector:
-  • Ensure database was created successfully
-  • Verify vector dimensions match database configuration
-  • Check that vector ID is unique
+[Test #21] User Mgmt - Add User:
+  • Verify user management API endpoints are accessible
+  • Check if admin privileges are required
+  • Review authentication service logs
 ```
 
-### Test Coverage
+### Test Coverage (36 Tests)
 
 - **Python CLI Tests** (Tests 1-7): Health, Status, List DBs, Create DB, Get DB, Store Vector, Search
 - **Shell CLI Tests** (Tests 8-12): Health, Status, List DBs, Create DB, Get DB
+- **Persistence Tests** (Tests 13-15): User persistence, database persistence
+- **RBAC Tests** (Tests 16-20): Role-based access control
+- **Phase 16 - Python User Management** (Tests 21-26): Add, list, show, activate, deactivate, delete users
+- **Phase 16 - Python Import/Export** (Tests 27-28): Export and import vectors in bulk
+- **Phase 16 - Shell User Management** (Tests 29-34): Add, list, show, activate, deactivate, delete users
+- **Phase 16 - Shell Import/Export** (Tests 35-36): Export and import vectors in bulk
 
-### Documentation
+**Note**: JavaScript CLI tests use Jest and are run separately: `cd cli/js && npm test`
 
-- **Full Testing Guide**: `tests/README.md`
-- **Test Data File**: `tests/test_data.json`
-- **Test Runner**: `tests/run_cli_tests.py`
+### Test Files
+
+- **Master Test Runner**: `tests/run_all_tests.sh` - Runs all tests
+- **Test Suite**: `tests/run_cli_tests.py` - Comprehensive test implementation
+- **Test Data**: `tests/test_data.json` - Centralized test configuration
+- **Documentation**: `tests/README.md` - Full testing guide
 
 ---
 
