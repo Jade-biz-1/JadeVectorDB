@@ -318,27 +318,32 @@ class JadeVectorDB:
 
     def create_user(
         self,
-        email: str,
-        role: str,
-        password: Optional[str] = None
+        username: str,
+        password: str,
+        roles: Optional[List[str]] = None,
+        email: Optional[str] = None
     ) -> Dict:
         """
         Create a new user
 
-        :param email: User email address
-        :param role: User role (admin, developer, viewer, etc.)
-        :param password: Optional password (if not provided, user must set on first login)
+        :param username: Username for the new user
+        :param password: Password for the new user
+        :param roles: Optional list of roles (defaults to ["user"])
+        :param email: Optional email address
         :return: Created user information
         """
-        url = f"{self.base_url}/api/v1/users"
+        url = f"{self.base_url}/v1/users"
 
         payload = {
-            "email": email,
-            "role": role
+            "username": username,
+            "password": password
         }
 
-        if password:
-            payload["password"] = password
+        if roles:
+            payload["roles"] = roles
+
+        if email:
+            payload["email"] = email
 
         response = self.session.post(url, json=payload)
 
@@ -359,7 +364,7 @@ class JadeVectorDB:
         :param status: Optional filter by status (active, inactive)
         :return: List of users
         """
-        url = f"{self.base_url}/api/v1/users"
+        url = f"{self.base_url}/v1/users"
 
         params = {}
         if role:
@@ -374,48 +379,48 @@ class JadeVectorDB:
         else:
             raise JadeVectorDBError(f"Failed to list users: {response.text}")
 
-    def get_user(self, email: str) -> Dict:
+    def get_user(self, user_id: str) -> Dict:
         """
         Get information about a specific user
 
-        :param email: User email address
+        :param user_id: User ID
         :return: User information
         """
-        url = f"{self.base_url}/api/v1/users/{email}"
+        url = f"{self.base_url}/v1/users/{user_id}"
 
         response = self.session.get(url)
 
         if response.status_code == 200:
             return response.json()
         elif response.status_code == 404:
-            raise JadeVectorDBError(f"User not found: {email}")
+            raise JadeVectorDBError(f"User not found: {user_id}")
         else:
             raise JadeVectorDBError(f"Failed to get user: {response.text}")
 
     def update_user(
         self,
-        email: str,
-        role: Optional[str] = None,
-        status: Optional[str] = None
+        user_id: str,
+        is_active: Optional[bool] = None,
+        roles: Optional[List[str]] = None
     ) -> Dict:
         """
         Update user information
 
-        :param email: User email address
-        :param role: New role (optional)
-        :param status: New status (active/inactive) (optional)
+        :param user_id: User ID
+        :param is_active: New active status (optional)
+        :param roles: New roles list (optional)
         :return: Updated user information
         """
-        url = f"{self.base_url}/api/v1/users/{email}"
+        url = f"{self.base_url}/v1/users/{user_id}"
 
         payload = {}
-        if role:
-            payload["role"] = role
-        if status:
-            payload["status"] = status
+        if is_active is not None:
+            payload["is_active"] = is_active
+        if roles:
+            payload["roles"] = roles
 
         if not payload:
-            raise JadeVectorDBError("At least one of role or status must be provided")
+            raise JadeVectorDBError("At least one of is_active or roles must be provided")
 
         response = self.session.put(url, json=payload)
 
@@ -424,14 +429,14 @@ class JadeVectorDB:
         else:
             raise JadeVectorDBError(f"Failed to update user: {response.text}")
 
-    def delete_user(self, email: str) -> bool:
+    def delete_user(self, user_id: str) -> bool:
         """
         Delete a user
 
-        :param email: User email address
+        :param user_id: User ID
         :return: True if successful
         """
-        url = f"{self.base_url}/api/v1/users/{email}"
+        url = f"{self.base_url}/v1/users/{user_id}"
 
         response = self.session.delete(url)
 
@@ -440,20 +445,20 @@ class JadeVectorDB:
         else:
             raise JadeVectorDBError(f"Failed to delete user: {response.text}")
 
-    def activate_user(self, email: str) -> Dict:
+    def activate_user(self, user_id: str) -> Dict:
         """
         Activate a user
 
-        :param email: User email address
+        :param user_id: User ID
         :return: Updated user information
         """
-        return self.update_user(email, status="active")
+        return self.update_user(user_id, is_active=True)
 
-    def deactivate_user(self, email: str) -> Dict:
+    def deactivate_user(self, user_id: str) -> Dict:
         """
         Deactivate a user
 
-        :param email: User email address
+        :param user_id: User ID
         :return: Updated user information
         """
-        return self.update_user(email, status="inactive")
+        return self.update_user(user_id, is_active=False)
