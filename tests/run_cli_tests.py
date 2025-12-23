@@ -161,7 +161,7 @@ class CLITestRunner:
         print("="*80)
 
         # Check server
-        print("\n[1/5] Checking server connectivity...")
+        print("\n[1/7] Checking server connectivity...")
         if not self.check_server():
             print("❌ Server is not running at", self.server_url)
             print("\nPlease start the server first:")
@@ -170,27 +170,43 @@ class CLITestRunner:
         print("✓ Server is running")
 
         # Setup authentication
-        print("\n[2/5] Setting up authentication...")
+        print("\n[2/7] Setting up authentication...")
         if not self.setup_auth():
             print("❌ Authentication setup failed")
             return False
         print("✓ Authentication successful")
 
         # Run tests
-        print("\n[3/5] Running CLI tests...")
+        print("\n[3/7] Running basic CLI tests...")
         self.run_python_cli_tests()
         self.run_shell_cli_tests()
 
         # Run persistence tests
-        print("\n[4/5] Running persistence tests...")
+        print("\n[4/7] Running persistence tests...")
         self.run_persistence_tests()
 
         # Run RBAC tests
-        print("\n[5/5] Running RBAC tests...")
+        print("\n[5/7] Running RBAC tests...")
         self.run_rbac_tests()
 
+        # Run Phase 16 tests - Python User Management
+        print("\n[6/9] Running Python user management tests (Phase 16)...")
+        self.run_user_management_tests()
+
+        # Run Phase 16 tests - Python Import/Export
+        print("\n[7/9] Running Python import/export tests (Phase 16)...")
+        self.run_import_export_tests()
+
+        # Run Phase 16 tests - Shell User Management
+        print("\n[8/9] Running Shell user management tests (Phase 16)...")
+        self.run_shell_user_management_tests()
+
+        # Run Phase 16 tests - Shell Import/Export
+        print("\n[9/9] Running Shell import/export tests (Phase 16)...")
+        self.run_shell_import_export_tests()
+
         # Print results
-        print("\n[6/6] Test Results:")
+        print("\n[10/10] Test Results:")
         self.print_results()
 
         return True
@@ -509,6 +525,185 @@ class CLITestRunner:
 
         return passed == total
 
+    def run_user_management_tests(self):
+        """Run user management CLI tests (Phase 16)."""
+        test_num = len(self.results) + 1
+
+        # Get fixed test data
+        user_data = self.test_data['phase16']['user_management']['python_test_user']
+        test_username = user_data['username']
+        test_password = user_data['password']
+        test_email = user_data.get('email', '')
+        test_role = user_data['roles'][0] if user_data.get('roles') else 'user'
+
+        # Test: Add a new user
+        success, output = self.run_python_cli_test('User Add', [
+            '--api-key', self.token, 'user-add',
+            test_username,
+            '--role', test_role,
+            '--password', test_password
+        ])
+        self.results.append([test_num, "User Mgmt", "Add User", "PASS" if success else "FAIL"])
+        test_num += 1
+
+        # Test: List users
+        success, output = self.run_python_cli_test('User List', [
+            '--api-key', self.token, 'user-list'
+        ])
+        self.results.append([test_num, "User Mgmt", "List Users", "PASS" if success and test_username in output else "FAIL"])
+        test_num += 1
+
+        # Test: Show user details
+        success, output = self.run_python_cli_test('User Show', [
+            '--api-key', self.token, 'user-show',
+            test_username
+        ])
+        self.results.append([test_num, "User Mgmt", "Show User", "PASS" if success else "FAIL"])
+        test_num += 1
+
+        # Test: Deactivate user
+        success, output = self.run_python_cli_test('User Deactivate', [
+            '--api-key', self.token, 'user-deactivate',
+            test_username
+        ])
+        self.results.append([test_num, "User Mgmt", "Deactivate User", "PASS" if success else "FAIL"])
+        test_num += 1
+
+        # Test: Activate user
+        success, output = self.run_python_cli_test('User Activate', [
+            '--api-key', self.token, 'user-activate',
+            test_username
+        ])
+        self.results.append([test_num, "User Mgmt", "Activate User", "PASS" if success else "FAIL"])
+        test_num += 1
+
+        # Test: Delete user
+        success, output = self.run_python_cli_test('User Delete', [
+            '--api-key', self.token, 'user-delete',
+            test_username
+        ])
+        self.results.append([test_num, "User Mgmt", "Delete User", "PASS" if success else "FAIL"])
+
+    def run_import_export_tests(self):
+        """Run import/export CLI tests (Phase 16)."""
+        test_num = len(self.results) + 1
+
+        # Only run if we have a database
+        if not self.db_ids.get('python'):
+            self.results.append([test_num, "Import/Export", "Export Vectors", "SKIP"])
+            test_num += 1
+            self.results.append([test_num, "Import/Export", "Import Vectors", "SKIP"])
+            return
+
+        db_id = self.db_ids['python']
+        # Use fixed test data file paths
+        export_file = self.test_data['phase16']['import_export']['python_export_file']
+
+        # Test: Export vectors
+        success, output = self.run_python_cli_test('Export Vectors', [
+            '--api-key', self.token, 'export',
+            '--database-id', db_id,
+            '--file', export_file
+        ])
+        self.results.append([test_num, "Import/Export", "Export Vectors", "PASS" if success else "FAIL"])
+        test_num += 1
+
+        # Test: Import vectors (re-import the exported file)
+        if success and os.path.exists(export_file):
+            success, output = self.run_python_cli_test('Import Vectors', [
+                '--api-key', self.token, 'import',
+                '--database-id', db_id,
+                '--file', export_file
+            ])
+            self.results.append([test_num, "Import/Export", "Import Vectors", "PASS" if success else "FAIL"])
+
+            # Cleanup
+            try:
+                os.remove(export_file)
+            except:
+                pass
+        else:
+            self.results.append([test_num, "Import/Export", "Import Vectors", "SKIP"])
+
+    def run_shell_user_management_tests(self):
+        """Run Shell CLI user management tests (Phase 16)."""
+        test_num = len(self.results) + 1
+
+        # Get fixed test data
+        user_data = self.test_data['phase16']['user_management']['shell_test_user']
+        test_username = user_data['username']
+        test_password = user_data['password']
+        test_email = user_data.get('email', '')
+        test_role = user_data['roles'][0] if user_data.get('roles') else 'user'
+
+        # Test: Add a new user (Shell CLI uses: user-add EMAIL ROLE PASSWORD)
+        success, output = self.run_shell_cli_test('Shell User Add', [
+            'user-add', test_email, test_role, test_password
+        ])
+        self.results.append([test_num, "Shell User Mgmt", "Add User", "PASS" if success else "FAIL"])
+        test_num += 1
+
+        # Test: List users
+        success, output = self.run_shell_cli_test('Shell User List', ['user-list'])
+        self.results.append([test_num, "Shell User Mgmt", "List Users", "PASS" if success and test_email in output else "FAIL"])
+        test_num += 1
+
+        # Test: Show user details
+        success, output = self.run_shell_cli_test('Shell User Show', ['user-show', test_email])
+        self.results.append([test_num, "Shell User Mgmt", "Show User", "PASS" if success else "FAIL"])
+        test_num += 1
+
+        # Test: Deactivate user
+        success, output = self.run_shell_cli_test('Shell User Deactivate', ['user-deactivate', test_email])
+        self.results.append([test_num, "Shell User Mgmt", "Deactivate User", "PASS" if success else "FAIL"])
+        test_num += 1
+
+        # Test: Activate user
+        success, output = self.run_shell_cli_test('Shell User Activate', ['user-activate', test_email])
+        self.results.append([test_num, "Shell User Mgmt", "Activate User", "PASS" if success else "FAIL"])
+        test_num += 1
+
+        # Test: Delete user
+        success, output = self.run_shell_cli_test('Shell User Delete', ['user-delete', test_email])
+        self.results.append([test_num, "Shell User Mgmt", "Delete User", "PASS" if success else "FAIL"])
+
+    def run_shell_import_export_tests(self):
+        """Run Shell CLI import/export tests (Phase 16)."""
+        test_num = len(self.results) + 1
+
+        # Only run if we have a database
+        if not self.db_ids.get('shell'):
+            self.results.append([test_num, "Shell Import/Export", "Export Vectors", "SKIP"])
+            test_num += 1
+            self.results.append([test_num, "Shell Import/Export", "Import Vectors", "SKIP"])
+            return
+
+        db_id = self.db_ids['shell']
+        # Use fixed test data file path
+        export_file = self.test_data['phase16']['import_export']['shell_export_file']
+
+        # Test: Export vectors
+        success, output = self.run_shell_cli_test('Shell Export Vectors', [
+            'export', export_file, db_id
+        ])
+        self.results.append([test_num, "Shell Import/Export", "Export Vectors", "PASS" if success else "FAIL"])
+        test_num += 1
+
+        # Test: Import vectors (re-import the exported file)
+        if success and os.path.exists(export_file):
+            success, output = self.run_shell_cli_test('Shell Import Vectors', [
+                'import', export_file, db_id
+            ])
+            self.results.append([test_num, "Shell Import/Export", "Import Vectors", "PASS" if success else "FAIL"])
+
+            # Cleanup
+            try:
+                os.remove(export_file)
+            except:
+                pass
+        else:
+            self.results.append([test_num, "Shell Import/Export", "Import Vectors", "SKIP"])
+
     def get_failure_hints(self, tool: str, test: str) -> List[str]:
         """Get troubleshooting hints for failed tests."""
         hints = []
@@ -548,6 +743,20 @@ class CLITestRunner:
                 "Check if user has correct roles assigned",
                 "Review authentication service configuration",
                 "Check API endpoint exists and is accessible"
+            ])
+
+        if "User Mgmt" in tool:
+            hints.extend([
+                "Verify user management API endpoints are accessible",
+                "Check if admin privileges are required",
+                "Review authentication service logs"
+            ])
+
+        if "Import/Export" in tool:
+            hints.extend([
+                "Check file permissions and path",
+                "Verify database exists and has vectors",
+                "Ensure file format is correct (JSON/CSV)"
             ])
 
         if tool == "Shell CLI":

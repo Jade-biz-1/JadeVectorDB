@@ -287,7 +287,7 @@ cd backend && ./build.sh
 
 ## CLI Testing System
 
-JadeVectorDB provides a comprehensive CLI testing suite for validating end-to-end functionality.
+JadeVectorDB provides a unified, comprehensive CLI testing suite for validating all functionality including Phase 16 features.
 
 ### Quick Start
 
@@ -298,39 +298,52 @@ JadeVectorDB provides a comprehensive CLI testing suite for validating end-to-en
   ```
 2. **In a new terminal, run all CLI tests:**
   ```bash
+  # Recommended: Use the master test runner
+  ./tests/run_all_tests.sh
+
+  # Or run directly
   python3 tests/run_cli_tests.py
-  # or use the shell wrapper
-  ./tests/run_tests.sh
   ```
+
+### Test Coverage (36 Tests)
+
+The unified test suite covers:
+- **Basic CLI operations** (Python & Shell): Health, status, database CRUD, vector operations (12 tests)
+- **Persistence testing**: User and database persistence verification (3 tests)
+- **RBAC testing**: Role-based access control (5 tests)
+- **Phase 16 - Python User Management**: Add, list, show, activate, deactivate, delete users (6 tests)
+- **Phase 16 - Python Import/Export**: Bulk vector import and export (2 tests)
+- **Phase 16 - Shell User Management**: Add, list, show, activate, deactivate, delete users (6 tests)
+- **Phase 16 - Shell Import/Export**: Bulk vector import and export (2 tests)
+
+**Note**: JavaScript CLI tests use Jest and are run separately: `cd cli/js && npm test`
 
 ### Test Data
 All test data is centralized in `tests/test_data.json`:
-- Authentication: test user credentials
+- Authentication: test user credentials (10+ character passwords required)
 - Databases: test database configurations
 - Vectors: test vector specifications
 - Search: search query parameters
 
 ### Output Format
-The test runner prints a summary table with pass/fail status for each test. Example:
 ```
 ================================================================================
 #     Tool            Test                           Result
 ================================================================================
 1     Python CLI      Health Check                   ✓ PASS
-2     Python CLI      Status Check                   ✓ PASS
-3     Python CLI      Create Database                ✓ PASS
 ...
+21    User Mgmt       Add User                       ✓ PASS
+27    Import/Export   Export Vectors                 ✓ PASS
 ================================================================================
 
-Summary: 11/12 tests passed
-  Failed: 1
+Summary: 28/28 tests passed
 ```
 
 ### Troubleshooting
-If a test fails, the runner provides hints. Common issues:
+If a test fails, the runner provides specific hints. Common issues:
 - Server not running or listening on wrong port
 - Test data mismatch (see `tests/test_data.json`)
-- Authentication or password requirements not met
+- Authentication or password requirements not met (minimum 10 characters)
 
 See `tests/README.md` for full details and troubleshooting tips.
 
