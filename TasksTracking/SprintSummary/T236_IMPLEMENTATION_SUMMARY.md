@@ -29,10 +29,10 @@ Result<bool> seed_default_users();
 
 ### 2. Environment Detection Logic
 
-The implementation reads the `JADE_ENV` environment variable to determine the runtime environment:
+The implementation reads the `JADEVECTORDB_ENV` environment variable to determine the runtime environment:
 
 ```cpp
-const char* env = std::getenv("JADE_ENV");
+const char* env = std::getenv("JADEVECTORDB_ENV");
 std::string environment = env ? env : "development";
 ```
 
@@ -42,7 +42,7 @@ std::string environment = env ? env : "development";
 - `local` → Users are seeded
 - Any other value (including `production`, `prod`) → Seeding is skipped
 
-**Default**: If `JADE_ENV` is not set, defaults to `development` and seeds users.
+**Default**: If `JADEVECTORDB_ENV` is not set, defaults to `development` and seeds users.
 
 ### 3. Integration with REST API
 
@@ -92,7 +92,7 @@ cd /home/deepak/Public/JadeVectorDB/backend/build
 ./jadevectordb
 
 # Or explicitly set environment
-export JADE_ENV=development
+export JADEVECTORDB_ENV=development
 ./jadevectordb
 ```
 
@@ -100,18 +100,18 @@ export JADE_ENV=development
 
 ```bash
 # Set production environment - will NOT seed users
-export JADE_ENV=production
+export JADEVECTORDB_ENV=production
 ./jadevectordb
 
 # Or
-export JADE_ENV=prod
+export JADEVECTORDB_ENV=prod
 ./jadevectordb
 ```
 
 ### Running in Test Mode
 
 ```bash
-export JADE_ENV=test
+export JADEVECTORDB_ENV=test
 ./jadevectordb
 ```
 
@@ -122,7 +122,7 @@ export JADE_ENV=test
 1. **Start the server in development mode**:
    ```bash
    cd /home/deepak/Public/JadeVectorDB/backend/build
-   export JADE_ENV=development
+   export JADEVECTORDB_ENV=development
    ./jadevectordb
    ```
 
@@ -161,7 +161,7 @@ export JADE_ENV=test
 
 5. **Test production mode**:
    ```bash
-   export JADE_ENV=production
+   export JADEVECTORDB_ENV=production
    ./jadevectordb
    ```
 
@@ -197,7 +197,7 @@ Users can now log in to the frontend (T227) using these credentials:
 RestApiService::initialize()
     └─> AuthenticationService::initialize(config, audit_logger)
         └─> AuthenticationService::seed_default_users()
-            ├─> Check JADE_ENV environment variable
+            ├─> Check JADEVECTORDB_ENV environment variable
             ├─> Skip if production
             ├─> For each default user:
             │   ├─> Check if user exists (thread-safe)
@@ -268,11 +268,11 @@ RestApiService::initialize()
 
 ### Production Environments
 ✅ **Automatic skip** - no default users created in production
-✅ **Environment detection** - uses JADE_ENV variable
-✅ **Safe default** - if JADE_ENV not set, assumes development (safer for testing)
+✅ **Environment detection** - uses JADEVECTORDB_ENV variable
+✅ **Safe default** - if JADEVECTORDB_ENV not set, assumes development (safer for testing)
 
 **Production Deployment Checklist**:
-- [ ] Set `JADE_ENV=production` or `JADE_ENV=prod`
+- [ ] Set `JADEVECTORDB_ENV=production` or `JADEVECTORDB_ENV=prod`
 - [ ] Verify logs show "Skipping default user seeding"
 - [ ] Create production admin users manually with strong passwords
 - [ ] Consider removing default user code entirely for production builds
@@ -304,7 +304,7 @@ RestApiService::initialize()
 
 T236 is **COMPLETE**. The implementation provides:
 - ✅ Automatic default user seeding for dev/test environments
-- ✅ Environment-aware operation (JADE_ENV)
+- ✅ Environment-aware operation (JADEVECTORDB_ENV)
 - ✅ Idempotent, thread-safe execution
 - ✅ Three default users (admin, developer, tester) with appropriate roles
 - ✅ Production-safe (skips seeding in prod)

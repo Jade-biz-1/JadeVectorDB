@@ -52,6 +52,12 @@ X-API-Key: YOUR_API_KEY
 - `GET /health` - System health check
 - `GET /status` - Detailed system status
 
+### Admin Operations
+
+**Authentication**: All admin endpoints require JWT authentication with admin role
+
+- `POST /admin/shutdown` - Gracefully shutdown the server (requires admin role)
+
 ## Data Models
 
 ### Vector
@@ -115,7 +121,64 @@ The API implements rate limiting to prevent abuse. Exceeding rate limits will re
 - `401` - Unauthorized
 - `403` - Forbidden
 - `404` - Not Found
+- `405` - Method Not Allowed
 - `409` - Conflict
 - `429` - Too Many Requests
 - `500` - Internal Server Error
+
+## Admin Endpoint Details
+
+### POST /admin/shutdown
+
+Initiates a graceful shutdown of the JadeVectorDB server.
+
+**Authentication**: JWT Bearer token required
+**Authorization**: User must have `admin` role
+
+**Request Headers**:
+```
+Authorization: Bearer <jwt-token>
+Content-Type: application/json
+```
+
+**Request Body**: None
+
+**Response (200 OK)**:
+```json
+{
+  "status": "shutting_down",
+  "message": "Server shutdown initiated"
+}
+```
+
+**Response (401 Unauthorized)**:
+```json
+{
+  "error": "Unauthorized: admin privileges required"
+}
+```
+
+**Response (405 Method Not Allowed)**:
+Only POST method is allowed. Returns error if GET or other methods are used.
+
+**Example**:
+```bash
+# Login to get JWT token
+TOKEN=$(curl -s -X POST http://localhost:8080/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' | \
+  jq -r '.token')
+
+# Call shutdown endpoint
+curl -X POST http://localhost:8080/admin/shutdown \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Behavior**:
+- Server completes current in-flight requests
+- Stops accepting new connections
+- Closes database connections gracefully
+- Exits process cleanly after ~500ms
+
+For more details, see the [Admin Endpoints Reference](../admin_endpoints.md).
 

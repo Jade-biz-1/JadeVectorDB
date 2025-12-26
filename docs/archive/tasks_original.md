@@ -2119,7 +2119,7 @@ Added to CMakeLists.txt. See backend/tests/T230_TEST_IMPLEMENTATION_SUMMARY.md f
 - **dev/dev123** - Development permissions (roles: developer, user)
 - **test/test123** - Limited/test permissions (roles: tester, user)
 
-Uses JADE_ENV environment variable for detection. Idempotent operation. Removed legacy seeding code to prevent conflicts. Updated README.md, created INSTALLATION_GUIDE.md and UserGuide.md with complete default user documentation. See backend/T236_IMPLEMENTATION_SUMMARY.md and backend/FR029_COMPLIANCE_ANALYSIS.md for details.
+Uses JADEVECTORDB_ENV environment variable for detection. Idempotent operation. Removed legacy seeding code to prevent conflicts. Updated README.md, created INSTALLATION_GUIDE.md and UserGuide.md with complete default user documentation. See backend/T236_IMPLEMENTATION_SUMMARY.md and backend/FR029_COMPLIANCE_ANALYSIS.md for details.
 **Priority**: HIGH
 **Estimated Effort**: 1-2 days
 

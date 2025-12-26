@@ -44,13 +44,13 @@ usage() {
     echo "    search QUERY_VECTOR [TOP_K] [THRESHOLD]                  Search for similar vectors (requires --database-id)"
     echo ""
     echo "  User Management:"
-    echo "    user-add EMAIL ROLE [PASSWORD]                           Add a new user"
+    echo "    user-add USERNAME ROLE [PASSWORD] [EMAIL]               Add a new user"
     echo "    user-list [ROLE] [STATUS]                                List all users"
-    echo "    user-show EMAIL                                          Show user details"
-    echo "    user-update EMAIL [ROLE] [STATUS]                        Update user info"
-    echo "    user-delete EMAIL                                        Delete a user"
-    echo "    user-activate EMAIL                                      Activate a user"
-    echo "    user-deactivate EMAIL                                    Deactivate a user"
+    echo "    user-show USER_ID                                        Show user details"
+    echo "    user-update USER_ID [ROLE] [STATUS]                      Update user info"
+    echo "    user-delete USER_ID                                      Delete a user"
+    echo "    user-activate USER_ID                                    Activate a user"
+    echo "    user-deactivate USER_ID                                  Deactivate a user"
     echo ""
     echo "  Import/Export:"
     echo "    import FILE DATABASE_ID                                  Import vectors from JSON file"
@@ -469,21 +469,24 @@ EOF
         ;;
     user-add)
         if [ -z "$1" ] || [ -z "$2" ]; then
-            echo "Error: Email and role are required"
+            echo "Error: Username and role are required"
             usage
         fi
 
-        EMAIL="$1"
+        USERNAME="$1"
         ROLE="$2"
         PASSWORD="${3:-""}"
+        EMAIL="${4:-""}"
 
-        if [ -n "$PASSWORD" ]; then
-            DATA="{\"email\":\"$EMAIL\",\"role\":\"$ROLE\",\"password\":\"$PASSWORD\"}"
+        if [ -n "$EMAIL" ]; then
+            DATA="{\"username\":\"$USERNAME\",\"roles\":[\"$ROLE\"],\"password\":\"$PASSWORD\",\"email\":\"$EMAIL\"}"
+        elif [ -n "$PASSWORD" ]; then
+            DATA="{\"username\":\"$USERNAME\",\"roles\":[\"$ROLE\"],\"password\":\"$PASSWORD\"}"
         else
-            DATA="{\"email\":\"$EMAIL\",\"role\":\"$ROLE\"}"
+            DATA="{\"username\":\"$USERNAME\",\"roles\":[\"$ROLE\"]}"
         fi
 
-        result=$(api_call "POST" "/api/v1/users" "$DATA")
+        result=$(api_call "POST" "/v1/users" "$DATA")
         echo "$result"
         ;;
     user-list)
@@ -502,26 +505,26 @@ EOF
             fi
         fi
 
-        result=$(api_call "GET" "/api/v1/users${QUERY_PARAMS}" "")
+        result=$(api_call "GET" "/v1/users${QUERY_PARAMS}" "")
         echo "$result"
         ;;
     user-show)
         if [ -z "$1" ]; then
-            echo "Error: Email is required"
+            echo "Error: User ID is required"
             usage
         fi
 
-        EMAIL="$1"
-        result=$(api_call "GET" "/api/v1/users/$EMAIL" "")
+        USER_ID="$1"
+        result=$(api_call "GET" "/v1/users/$USER_ID" "")
         echo "$result"
         ;;
     user-update)
         if [ -z "$1" ]; then
-            echo "Error: Email is required"
+            echo "Error: User ID is required"
             usage
         fi
 
-        EMAIL="$1"
+        USER_ID="$1"
         NEW_ROLE="${2:-}"
         NEW_STATUS="${3:-}"
 
@@ -533,50 +536,55 @@ EOF
         DATA="{"
         FIRST=true
         if [ -n "$NEW_ROLE" ]; then
-            DATA="${DATA}\"role\":\"$NEW_ROLE\""
+            DATA="${DATA}\"roles\":[\"$NEW_ROLE\"]"
             FIRST=false
         fi
         if [ -n "$NEW_STATUS" ]; then
             if [ "$FIRST" = false ]; then
                 DATA="${DATA},"
             fi
-            DATA="${DATA}\"status\":\"$NEW_STATUS\""
+            # Convert status string to boolean is_active
+            if [ "$NEW_STATUS" = "active" ]; then
+                DATA="${DATA}\"is_active\":true"
+            else
+                DATA="${DATA}\"is_active\":false"
+            fi
         fi
         DATA="${DATA}}"
 
-        result=$(api_call "PUT" "/api/v1/users/$EMAIL" "$DATA")
+        result=$(api_call "PUT" "/v1/users/$USER_ID" "$DATA")
         echo "$result"
         ;;
     user-delete)
         if [ -z "$1" ]; then
-            echo "Error: Email is required"
+            echo "Error: User ID is required"
             usage
         fi
 
-        EMAIL="$1"
-        result=$(api_call "DELETE" "/api/v1/users/$EMAIL" "")
+        USER_ID="$1"
+        result=$(api_call "DELETE" "/v1/users/$USER_ID" "")
         echo "$result"
         ;;
     user-activate)
         if [ -z "$1" ]; then
-            echo "Error: Email is required"
+            echo "Error: User ID is required"
             usage
         fi
 
-        EMAIL="$1"
-        DATA="{\"status\":\"active\"}"
-        result=$(api_call "PUT" "/api/v1/users/$EMAIL" "$DATA")
+        USER_ID="$1"
+        DATA="{\"is_active\":true}"
+        result=$(api_call "PUT" "/v1/users/$USER_ID" "$DATA")
         echo "$result"
         ;;
     user-deactivate)
         if [ -z "$1" ]; then
-            echo "Error: Email is required"
+            echo "Error: User ID is required"
             usage
         fi
 
-        EMAIL="$1"
-        DATA="{\"status\":\"inactive\"}"
-        result=$(api_call "PUT" "/api/v1/users/$EMAIL" "$DATA")
+        USER_ID="$1"
+        DATA="{\"is_active\":false}"
+        result=$(api_call "PUT" "/v1/users/$USER_ID" "$DATA")
         echo "$result"
         ;;
     import)

@@ -1348,14 +1348,31 @@ Result<std::vector<std::string>> SQLitePersistenceLayer::get_role_permissions(co
 Result<void> SQLitePersistenceLayer::execute_sql(const std::string& sql) {
     char* error_msg = nullptr;
     int rc = sqlite3_exec(db_, sql.c_str(), nullptr, nullptr, &error_msg);
-    
+
     if (rc != SQLITE_OK) {
         std::string error = error_msg ? error_msg : "Unknown error";
         sqlite3_free(error_msg);
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "SQL execution failed: " + error);
     }
-    
+
     return {};
+}
+
+Result<sqlite3_stmt*> SQLitePersistenceLayer::prepare_statement(const std::string& sql) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr);
+
+    if (rc != SQLITE_OK) {
+        std::string error = sqlite3_errmsg(db_);
+        if (stmt) {
+            sqlite3_finalize(stmt);
+        }
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + error);
+    }
+
+    return stmt;
 }
 
 std::string SQLitePersistenceLayer::generate_id() const {
