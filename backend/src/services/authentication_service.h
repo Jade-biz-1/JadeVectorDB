@@ -4,6 +4,7 @@
 #include "lib/logging.h"
 #include "lib/error_handling.h"
 #include "security_audit_logger.h"
+#include "sqlite_persistence_layer.h"
 #include <string>
 #include <memory>
 #include <unordered_map>
@@ -12,6 +13,8 @@
 #include <vector>
 
 namespace jadevectordb {
+
+// Forward declaration - we'll use the User from models/auth.h only in .cpp file
 
 // User authentication credentials
 struct UserCredentials {
@@ -29,8 +32,8 @@ struct UserCredentials {
     UserCredentials() : is_active(true), failed_login_attempts(0) {}
 };
 
-// Authentication token
-struct AuthToken {
+// Local authentication token (uses chrono for in-memory token management)
+struct LocalAuthToken {
     std::string token_id;
     std::string user_id;
     std::string token_value;
@@ -40,11 +43,11 @@ struct AuthToken {
     std::string ip_address;
     std::string user_agent;
 
-    AuthToken() : is_valid(true) {}
+    LocalAuthToken() : is_valid(true) {}
 };
 
-// Authentication session
-struct AuthSession {
+// Local authentication session (uses chrono for in-memory session management)
+struct LocalAuthSession {
     std::string session_id;
     std::string user_id;
     std::string token_id;
@@ -54,7 +57,7 @@ struct AuthSession {
     std::string ip_address;
     bool is_active;
 
-    AuthSession() : is_active(true) {}
+    LocalAuthSession() : is_active(true) {}
 };
 
 // Authentication configuration
@@ -84,15 +87,18 @@ private:
     std::shared_ptr<logging::Logger> logger_;
     AuthenticationConfig config_;
     std::shared_ptr<SecurityAuditLogger> audit_logger_;
+    std::unique_ptr<SQLitePersistenceLayer> persistence_;
+    std::string data_directory_;
 
-    // User credentials storage (in production, this would be a database)
+    // User credentials storage (DEPRECATED - now using SQLite persistence)
+    // Kept for backward compatibility during transition
     std::unordered_map<std::string, UserCredentials> users_;
 
     // Active tokens
-    std::unordered_map<std::string, AuthToken> tokens_;
+    std::unordered_map<std::string, LocalAuthToken> tokens_;
 
     // Active sessions
-    std::unordered_map<std::string, AuthSession> sessions_;
+    std::unordered_map<std::string, LocalAuthSession> sessions_;
 
     // API keys (api_key -> user_id) - allows multiple keys per user
     std::unordered_map<std::string, std::string> api_keys_;
@@ -103,7 +109,7 @@ private:
     mutable std::mutex api_keys_mutex_;
 
 public:
-    explicit AuthenticationService();
+    explicit AuthenticationService(const std::string& data_directory = "data");
     ~AuthenticationService() = default;
 
     // Initialize authentication service
@@ -129,7 +135,7 @@ public:
                              const std::vector<std::string>& new_roles);
 
     // User authentication
-    Result<AuthToken> authenticate(const std::string& username,
+    Result<LocalAuthToken> authenticate(const std::string& username,
                                   const std::string& password,
                                   const std::string& ip_address = "",
                                   const std::string& user_agent = "");
@@ -142,7 +148,7 @@ public:
     Result<std::string> validate_token(const std::string& token_value);
 
     // Refresh token
-    Result<AuthToken> refresh_token(const std::string& token_value,
+    Result<LocalAuthToken> refresh_token(const std::string& token_value,
                                    const std::string& ip_address = "");
 
     // Revoke token
@@ -152,7 +158,7 @@ public:
     Result<bool> logout(const std::string& token_value);
 
     // Create session
-    Result<AuthSession> create_session(const std::string& user_id,
+    Result<LocalAuthSession> create_session(const std::string& user_id,
                                        const std::string& token_id,
                                        const std::string& ip_address);
 
@@ -190,7 +196,7 @@ public:
     bool is_user_locked_out(const std::string& user_id) const;
 
     // Get active sessions for user
-    Result<std::vector<AuthSession>> get_user_sessions(const std::string& user_id) const;
+    Result<std::vector<LocalAuthSession>> get_user_sessions(const std::string& user_id) const;
 
     // Cleanup expired tokens and sessions
     void cleanup_expired_entries();
@@ -244,10 +250,10 @@ private:
     std::string generate_api_key_value() const;
 
     // Check if token is expired
-    bool is_token_expired(const AuthToken& token) const;
+    bool is_token_expired(const LocalAuthToken& token) const;
 
     // Check if session is expired
-    bool is_session_expired(const AuthSession& session) const;
+    bool is_session_expired(const LocalAuthSession& session) const;
 
     // Log authentication event
     void log_auth_event(SecurityEventType event_type,

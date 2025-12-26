@@ -145,7 +145,7 @@ crow::response RestApiImpl::handle_login_request(const crow::request& req) {
             return crow::response(401, "{\"error\":\"Invalid username or password\"}");
         }
 
-        AuthToken token = auth_result.value();
+        LocalAuthToken token = auth_result.value();
 
         // Log successful authentication event
         if (security_audit_logger_) {

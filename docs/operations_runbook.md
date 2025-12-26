@@ -4,8 +4,8 @@
 
 This runbook provides operational procedures for deploying, maintaining, and troubleshooting JadeVectorDB in production environments.
 
-**Last Updated**: December 17, 2025  
-**Version**: 1.6
+**Last Updated**: December 26, 2025
+**Version**: 1.7
 
 ---
 
@@ -17,6 +17,7 @@ This runbook provides operational procedures for deploying, maintaining, and tro
 4. [Scaling](#scaling)
 5. [Performance Tuning](#performance-tuning)
 6. [Security Operations](#security-operations)
+7. [Shutdown Procedures](#shutdown-procedures)
 
 ---
 
@@ -376,6 +377,203 @@ cp /backup/latest/jadevectordb.db /data/
 # 4. Restart service
 docker start jadevectordb
 ```
+
+---
+
+## Shutdown Procedures
+
+### Graceful Shutdown via Admin Endpoint
+
+JadeVectorDB provides a secure admin endpoint for graceful server shutdown. This is the recommended method for controlled shutdowns.
+
+**Prerequisites**:
+- Admin user credentials
+- Valid JWT authentication token
+- Admin role assigned to user
+
+**Step-by-Step Procedure**:
+
+```bash
+# Step 1: Login as admin user
+TOKEN=$(curl -s -X POST http://localhost:8080/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' | \
+  jq -r '.token')
+
+# Step 2: Initiate graceful shutdown
+curl -X POST http://localhost:8080/admin/shutdown \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json"
+
+# Expected response:
+# {
+#   "status": "shutting_down",
+#   "message": "Server shutdown initiated"
+# }
+
+# Step 3: Verify server has stopped (after ~1 second)
+curl http://localhost:8080/health
+# Should fail with connection refused
+```
+
+**What Happens During Graceful Shutdown**:
+1. Authentication and authorization are verified
+2. HTTP response is sent to client
+3. After 500ms delay:
+   - Server stops accepting new connections
+   - In-flight requests are completed
+   - Database connections are closed properly
+   - Persistent data is flushed to disk
+   - Server process exits cleanly
+
+**Using the Frontend Dashboard**:
+
+Admin users can also shutdown the server from the web dashboard:
+
+1. Login to the dashboard as admin user
+2. Navigate to the dashboard page (http://localhost:8080/dashboard)
+3. Click the red "Shutdown Server" button (visible only to admin users)
+4. Confirm the shutdown in the dialog
+5. Server will initiate graceful shutdown
+
+**When to Use Graceful Shutdown**:
+- Planned maintenance windows
+- Configuration changes requiring restart
+- Version upgrades
+- Clean environment teardown
+- Before backup operations (optional)
+
+### Emergency Shutdown Methods
+
+If the admin endpoint is unavailable, use these alternative methods:
+
+**Docker Container Shutdown**:
+```bash
+# Graceful stop (30 second timeout)
+docker stop jadevectordb
+
+# Force stop (immediate)
+docker stop -t 0 jadevectordb
+
+# Stop and remove
+docker stop jadevectordb && docker rm jadevectordb
+```
+
+**Kubernetes Pod Shutdown**:
+```bash
+# Delete deployment (graceful)
+kubectl delete deployment jadevectordb
+
+# Delete pod (will be recreated if deployment exists)
+kubectl delete pod jadevectordb-<pod-id>
+
+# Scale to zero
+kubectl scale deployment jadevectordb --replicas=0
+```
+
+**Process-Level Shutdown**:
+```bash
+# Find process ID
+PID=$(ps aux | grep jadevectordb | grep -v grep | awk '{print $2}')
+
+# Graceful shutdown (SIGTERM)
+kill $PID
+
+# Force shutdown if frozen (SIGKILL)
+kill -9 $PID
+```
+
+### Pre-Shutdown Checklist
+
+Before initiating shutdown in production:
+
+- [ ] Notify affected users/teams
+- [ ] Drain active connections from load balancer
+- [ ] Complete or pause long-running operations
+- [ ] Verify recent backup exists
+- [ ] Document reason for shutdown
+- [ ] Schedule maintenance window
+- [ ] Prepare rollback plan
+
+### Post-Shutdown Verification
+
+After shutdown, verify:
+
+```bash
+# Confirm process is stopped
+ps aux | grep jadevectordb
+# Should return no results
+
+# Check data persistence
+ls -lh /data/jadevectordb*.db
+# Database files should exist with recent timestamps
+
+# Verify backup integrity (if backup was triggered)
+sqlite3 /backup/latest/jadevectordb.db "PRAGMA integrity_check;"
+```
+
+### Restart After Shutdown
+
+```bash
+# Docker
+docker start jadevectordb
+
+# Kubernetes
+kubectl scale deployment jadevectordb --replicas=1
+
+# Verify startup
+curl http://localhost:8080/health
+```
+
+### Troubleshooting Shutdown Issues
+
+**Issue: Shutdown endpoint returns 401 Unauthorized**
+
+```bash
+# Verify user has admin role
+curl -X GET http://localhost:8080/v1/users/<user-id> \
+  -H "Authorization: Bearer $TOKEN"
+
+# Check roles array includes "admin"
+```
+
+**Issue: Server hangs and doesn't shutdown**
+
+```bash
+# Wait 30 seconds for graceful shutdown
+sleep 30
+
+# If still running, force shutdown
+docker stop -t 0 jadevectordb
+# or
+kill -9 <PID>
+```
+
+**Issue: Data loss after shutdown**
+
+```bash
+# This should not happen with graceful shutdown
+# If data is missing, restore from backup:
+cp /backup/latest/jadevectordb.db /data/
+docker start jadevectordb
+```
+
+### Security Considerations
+
+- Admin shutdown endpoint is protected by RBAC
+- All shutdown attempts are logged in audit logs
+- Unauthorized attempts will be blocked
+- Consider restricting network access to admin endpoints
+- Monitor for unusual shutdown patterns
+
+**Audit Log Example**:
+```
+[2025-12-26 20:55:41] [INFO] Shutdown authorized by user: admin
+[2025-12-26 20:55:41] [INFO] Shutdown initiated successfully
+[2025-12-26 20:55:41] [INFO] Executing shutdown callback...
+```
+
+For detailed information about the admin shutdown endpoint, see [Admin Endpoints Reference](admin_endpoints.md).
 
 ---
 

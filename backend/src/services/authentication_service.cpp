@@ -1,5 +1,6 @@
 
 #include "authentication_service.h"
+#include "models/auth.h"
 #include "lib/logging.h"
 #include "lib/error_handling.h"
 #include "metrics/prometheus_metrics.h"
@@ -35,13 +36,17 @@ Result<bool> AuthenticationService::update_password(const std::string& user_id,
     RETURN_ERROR(ErrorCode::NOT_IMPLEMENTED, "update_password is not yet implemented");
 }
 
-AuthenticationService::AuthenticationService() {
+AuthenticationService::AuthenticationService(const std::string& data_directory)
+    : data_directory_(data_directory) {
     logger_ = logging::LoggerManager::get_logger("AuthenticationService");
+    std::cout << "[DEBUG] AuthenticationService constructor - data_directory: " << data_directory << std::endl;
 }
 
 bool AuthenticationService::initialize(const AuthenticationConfig& config,
                                       std::shared_ptr<SecurityAuditLogger> audit_logger) {
     try {
+        std::cout << "[DEBUG] AuthenticationService::initialize() called" << std::endl;
+
         if (!validate_config(config)) {
             LOG_ERROR(logger_, "Invalid authentication configuration");
             return false;
@@ -50,9 +55,23 @@ bool AuthenticationService::initialize(const AuthenticationConfig& config,
         config_ = config;
         audit_logger_ = audit_logger;
 
-        LOG_INFO(logger_, "AuthenticationService initialized successfully");
+        // Initialize SQLite persistence layer
+        std::cout << "[DEBUG] Initializing SQLite persistence at: " << data_directory_ << std::endl;
+        persistence_ = std::make_unique<SQLitePersistenceLayer>(data_directory_);
+
+        auto init_result = persistence_->initialize();
+        if (!init_result.has_value()) {
+            LOG_ERROR(logger_, "Failed to initialize persistence layer: " +
+                     ErrorHandler::format_error(init_result.error()));
+            std::cout << "[DEBUG] Persistence initialization FAILED" << std::endl;
+            return false;
+        }
+
+        std::cout << "[DEBUG] Persistence initialized successfully" << std::endl;
+        LOG_INFO(logger_, "AuthenticationService initialized successfully with SQLite persistence");
         return true;
     } catch (const std::exception& e) {
+        std::cout << "[DEBUG] Exception in initialize: " << e.what() << std::endl;
         LOG_ERROR(logger_, "Exception in initialize: " + std::string(e.what()));
         return false;
     }
@@ -63,6 +82,8 @@ Result<std::string> AuthenticationService::register_user(const std::string& user
                                                          const std::vector<std::string>& roles,
                                                          const std::string& user_id_override) {
     try {
+        std::cout << "[DEBUG] register_user() called for: " << username << std::endl;
+
         if (username.empty() || password.empty()) {
             RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Username and password are required");
         }
@@ -73,14 +94,16 @@ Result<std::string> AuthenticationService::register_user(const std::string& user
                         "Password does not meet strength requirements");
         }
 
-        std::lock_guard<std::mutex> lock(users_mutex_);
-
-        // Check if username already exists
-        for (const auto& [user_id, user] : users_) {
-            if (user.username == username) {
-                LOG_WARN(logger_, "Attempt to register existing username: " + username);
-                RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "Username already exists");
-            }
+        // Check if username already exists in database
+        auto exists_result = persistence_->user_exists(username);
+        if (!exists_result.has_value()) {
+            RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to check if user exists: " +
+                        ErrorHandler::format_error(exists_result.error()));
+        }
+        if (exists_result.value()) {
+            std::cout << "[DEBUG] User " << username << " already exists in database" << std::endl;
+            LOG_WARN(logger_, "Attempt to register existing username: " + username);
+            RETURN_ERROR(ErrorCode::ALREADY_EXISTS, "Username already exists");
         }
 
         // Generate user ID
@@ -93,25 +116,41 @@ Result<std::string> AuthenticationService::register_user(const std::string& user
         std::string salt = generate_salt();
         std::string password_hash = hash_password(password, salt);
 
-        // Create user credentials
-        UserCredentials credentials;
-        credentials.user_id = user_id;
-        credentials.username = username;
-        credentials.password_hash = password_hash;
-        credentials.salt = salt;
-        credentials.roles = roles;
-        credentials.is_active = true;
-        credentials.created_at = std::chrono::system_clock::now();
-        credentials.failed_login_attempts = 0;
+        std::cout << "[DEBUG] Creating user in database: " << username << " with ID: " << user_id << std::endl;
 
-        users_[user_id] = credentials;
+        // Create user in database
+        std::string email = username + "@jadevectordb.local";  // Default email
+        auto create_result = persistence_->create_user(username, email, password_hash, salt);
+        if (!create_result.has_value()) {
+            std::cout << "[DEBUG] Failed to create user in database: " <<
+                      ErrorHandler::format_error(create_result.error()) << std::endl;
+            RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to create user: " +
+                        ErrorHandler::format_error(create_result.error()));
+        }
+
+        user_id = create_result.value();  // Use the ID returned by persistence layer
+
+        std::cout << "[DEBUG] User created successfully with ID: " << user_id << std::endl;
+
+        // Assign roles to user
+        for (const auto& role : roles) {
+            std::cout << "[DEBUG] Assigning role: " << role << " to user: " << username << std::endl;
+            auto role_result = persistence_->assign_role_to_user(user_id, role);
+            if (!role_result.has_value()) {
+                LOG_WARN(logger_, "Failed to assign role '" + role + "' to user: " +
+                         ErrorHandler::format_error(role_result.error()));
+            }
+        }
 
         LOG_INFO(logger_, "User registered successfully: " + username + " (" + user_id + ")");
         log_auth_event(SecurityEventType::AUTHENTICATION_SUCCESS, user_id, "", true,
                       "User registration");
 
+        std::cout << "[DEBUG] User " << username << " registered successfully" << std::endl;
+
         return user_id;
     } catch (const std::exception& e) {
+        std::cout << "[DEBUG] Exception in register_user: " << e.what() << std::endl;
         LOG_ERROR(logger_, "Exception in register_user: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to register user: " + std::string(e.what()));
     }
@@ -147,7 +186,7 @@ Result<bool> AuthenticationService::update_username(const std::string& user_id,
     }
 }
 
-Result<AuthToken> AuthenticationService::authenticate(const std::string& username,
+Result<LocalAuthToken> AuthenticationService::authenticate(const std::string& username,
                                                       const std::string& password,
                                                       const std::string& ip_address,
                                                       const std::string& user_agent) {
@@ -157,37 +196,34 @@ Result<AuthToken> AuthenticationService::authenticate(const std::string& usernam
     metrics->record_auth_request("login", "initiated");
     
     try {
+        std::cout << "[DEBUG] authenticate() called for user: " << username << std::endl;
+
         if (username.empty() || password.empty()) {
             metrics->record_auth_request("login", "invalid_input");
             metrics->record_auth_error("login", "empty_credentials");
             RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Username and password are required");
         }
 
-        std::lock_guard<std::mutex> lock(users_mutex_);
-
-        // Find user by username
-        UserCredentials* user_creds = nullptr;
-        std::string user_id;
-
-        for (auto& [id, creds] : users_) {
-            if (creds.username == username) {
-                user_creds = &creds;
-                user_id = id;
-                break;
-            }
-        }
-
-        if (!user_creds) {
+        // Get user from database
+        auto user_result = persistence_->get_user_by_username(username);
+        if (!user_result.has_value()) {
+            std::cout << "[DEBUG] User not found in database: " << username << std::endl;
             metrics->record_auth_request("login", "user_not_found");
             metrics->record_failed_login();
             LOG_WARN(logger_, "Authentication failed: user not found - " + username);
             log_auth_event(SecurityEventType::AUTHENTICATION_FAILURE, "", ip_address, false,
                           "User not found");
-            RETURN_ERROR(ErrorCode::NOT_FOUND, "Invalid credentials");
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "Invalid username or password");
         }
 
+        auto& user = user_result.value();
+        std::string user_id = user.user_id;
+
+        std::cout << "[DEBUG] User found: " << username << ", user_id: " << user_id << std::endl;
+
         // Check if user is active
-        if (!user_creds->is_active) {
+        if (!user.is_active) {
+            std::cout << "[DEBUG] User is inactive: " << username << std::endl;
             metrics->record_auth_request("login", "inactive_user");
             metrics->record_failed_login();
             LOG_WARN(logger_, "Authentication failed: inactive user - " + username);
@@ -197,7 +233,8 @@ Result<AuthToken> AuthenticationService::authenticate(const std::string& usernam
         }
 
         // Check if user is locked out
-        if (is_user_locked_out(user_id)) {
+        if (user.account_locked_until > 0 && user.account_locked_until > std::time(nullptr)) {
+            std::cout << "[DEBUG] User is locked: " << username << std::endl;
             metrics->record_auth_request("login", "locked_out");
             metrics->record_failed_login();
             LOG_WARN(logger_, "Authentication failed: user locked out - " + username);
@@ -207,7 +244,8 @@ Result<AuthToken> AuthenticationService::authenticate(const std::string& usernam
         }
 
         // Verify password
-        if (!verify_password(password, user_creds->password_hash, user_creds->salt)) {
+        std::cout << "[DEBUG] Verifying password for user: " << username << std::endl;
+        if (!verify_password(password, user.password_hash, user.salt)) {
             handle_failed_login(user_id, ip_address);
             metrics->record_auth_request("login", "invalid_password");
             metrics->record_failed_login();
@@ -218,11 +256,18 @@ Result<AuthToken> AuthenticationService::authenticate(const std::string& usernam
         }
 
         // Authentication successful
+        std::cout << "[DEBUG] Authentication successful for user: " << username << std::endl;
+
+        // Update last login in database
+        auto update_result = persistence_->update_last_login(user_id);
+        if (!update_result.has_value()) {
+            LOG_WARN(logger_, "Failed to update last login for user: " + user_id);
+        }
+
         reset_failed_login_attempts(user_id);
-        user_creds->last_login = std::chrono::system_clock::now();
 
         // Generate token
-        AuthToken token;
+        LocalAuthToken token;
         token.token_id = generate_token();
         token.user_id = user_id;
         token.token_value = generate_token();
@@ -301,7 +346,7 @@ Result<std::string> AuthenticationService::validate_token(const std::string& tok
             RETURN_ERROR(ErrorCode::NOT_FOUND, "Invalid token");
         }
 
-        AuthToken& token = it->second;
+        LocalAuthToken& token = it->second;
 
         if (!token.is_valid) {
             RETURN_ERROR(ErrorCode::PERMISSION_DENIED, "Token has been revoked");
@@ -319,7 +364,7 @@ Result<std::string> AuthenticationService::validate_token(const std::string& tok
     }
 }
 
-Result<AuthToken> AuthenticationService::refresh_token(const std::string& token_value,
+Result<LocalAuthToken> AuthenticationService::refresh_token(const std::string& token_value,
                                                        const std::string& ip_address) {
     try {
         // Validate current token
@@ -334,7 +379,7 @@ Result<AuthToken> AuthenticationService::refresh_token(const std::string& token_
         revoke_token(token_value);
 
         // Generate new token
-        AuthToken new_token;
+        LocalAuthToken new_token;
         new_token.token_id = generate_token();
         new_token.user_id = user_id;
         new_token.token_value = generate_token();
@@ -404,11 +449,11 @@ Result<bool> AuthenticationService::logout(const std::string& token_value) {
     }
 }
 
-Result<AuthSession> AuthenticationService::create_session(const std::string& user_id,
+Result<LocalAuthSession> AuthenticationService::create_session(const std::string& user_id,
                                                           const std::string& token_id,
                                                           const std::string& ip_address) {
     try {
-        AuthSession session;
+        LocalAuthSession session;
         session.session_id = generate_session_id();
         session.user_id = user_id;
         session.token_id = token_id;
@@ -442,7 +487,7 @@ Result<bool> AuthenticationService::validate_session(const std::string& session_
             RETURN_ERROR(ErrorCode::NOT_FOUND, "Session not found");
         }
 
-        AuthSession& session = it->second;
+        LocalAuthSession& session = it->second;
 
         if (!session.is_active) {
             RETURN_ERROR(ErrorCode::PERMISSION_DENIED, "Session is inactive");
@@ -622,11 +667,12 @@ std::string AuthenticationService::generate_api_key_value() const {
     return "jadevdb_" + generate_token();
 }
 
-bool AuthenticationService::is_token_expired(const AuthToken& token) const {
+bool AuthenticationService::is_token_expired(const LocalAuthToken& token) const {
+    // LocalAuthToken uses std::chrono::system_clock::time_point
     return std::chrono::system_clock::now() > token.expires_at;
 }
 
-bool AuthenticationService::is_session_expired(const AuthSession& session) const {
+bool AuthenticationService::is_session_expired(const LocalAuthSession& session) const {
     return std::chrono::system_clock::now() > session.expires_at;
 }
 
@@ -766,7 +812,7 @@ Result<UserCredentials> AuthenticationService::get_user_by_username(const std::s
     }
 }
 
-Result<std::vector<AuthSession>> AuthenticationService::get_user_sessions(const std::string& user_id) const {
+Result<std::vector<LocalAuthSession>> AuthenticationService::get_user_sessions(const std::string& user_id) const {
     try {
         if (user_id.empty()) {
             RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "User ID is required");
@@ -775,7 +821,7 @@ Result<std::vector<AuthSession>> AuthenticationService::get_user_sessions(const 
         std::lock_guard<std::mutex> lock(sessions_mutex_);
 
         // Collect all sessions for the given user
-        std::vector<AuthSession> user_sessions;
+        std::vector<LocalAuthSession> user_sessions;
         for (const auto& [session_id, session] : sessions_) {
             if (session.user_id == user_id) {
                 user_sessions.push_back(session);
@@ -794,12 +840,21 @@ Result<std::vector<AuthSession>> AuthenticationService::get_user_sessions(const 
 
 Result<bool> AuthenticationService::seed_default_users() {
     try {
+        // DEBUG: Print to console to verify execution
+        std::cout << "[DEBUG] seed_default_users() called" << std::endl;
+
         // Check environment - only seed in non-production environments
-        const char* env = std::getenv("JADE_ENV");
+        const char* env = std::getenv("JADEVECTORDB_ENV");
         std::string environment = env ? env : "development";
+
+        // DEBUG: Print environment variable
+        std::cout << "[DEBUG] JADEVECTORDB_ENV = " << (env ? env : "NULL") << std::endl;
+        std::cout << "[DEBUG] environment after default = " << environment << std::endl;
 
         // Convert to lowercase for comparison
         std::transform(environment.begin(), environment.end(), environment.begin(), ::tolower);
+
+        std::cout << "[DEBUG] environment after lowercase = " << environment << std::endl;
 
         // Only seed in development, test, or local environments
         if (environment != "development" &&
@@ -807,10 +862,12 @@ Result<bool> AuthenticationService::seed_default_users() {
             environment != "test" &&
             environment != "testing" &&
             environment != "local") {
+            std::cout << "[DEBUG] Skipping seeding - environment is: " << environment << std::endl;
             LOG_INFO(logger_, "Skipping default user seeding in " + environment + " environment");
             return true;  // Not an error, just skipping
         }
 
+        std::cout << "[DEBUG] Proceeding with seeding for environment: " << environment << std::endl;
         LOG_INFO(logger_, "Seeding default users for " + environment + " environment");
 
         // Define default users
@@ -845,26 +902,23 @@ Result<bool> AuthenticationService::seed_default_users() {
         int created_count = 0;
         int skipped_count = 0;
 
-        for (const auto& default_user : default_users) {
-            // Check if user already exists (idempotent operation)
-            bool user_exists = false;
-            {
-                std::lock_guard<std::mutex> lock(users_mutex_);
-                for (const auto& [user_id, user] : users_) {
-                    if (user.username == default_user.username) {
-                        user_exists = true;
-                        break;
-                    }
-                }
-            }
+        std::cout << "[DEBUG] Starting to process " << default_users.size() << " default users" << std::endl;
 
-            if (user_exists) {
+        for (const auto& default_user : default_users) {
+            std::cout << "[DEBUG] Processing user: " << default_user.username << std::endl;
+
+            // Check if user already exists in database (idempotent operation)
+            auto exists_result = persistence_->user_exists(default_user.username);
+            if (exists_result.has_value() && exists_result.value()) {
+                std::cout << "[DEBUG] User '" << default_user.username << "' already exists in database, skipping" << std::endl;
                 LOG_DEBUG(logger_, "Default user '" + default_user.username + "' already exists, skipping");
                 skipped_count++;
                 continue;
             }
 
-            // Register the default user
+            std::cout << "[DEBUG] Attempting to register user: " << default_user.username << std::endl;
+
+            // Register the default user (this will persist to database)
             auto result = register_user(
                 default_user.username,
                 default_user.password,
@@ -873,6 +927,7 @@ Result<bool> AuthenticationService::seed_default_users() {
             );
 
             if (result.has_value()) {
+                std::cout << "[DEBUG] Successfully created user: " << default_user.username << std::endl;
                 LOG_INFO(logger_, "Created default user: " + default_user.username +
                         " with roles: [" + [&]() {
                             std::string roles_str;
@@ -884,10 +939,13 @@ Result<bool> AuthenticationService::seed_default_users() {
                         }() + "]");
                 created_count++;
             } else {
+                std::cout << "[DEBUG] Failed to create user '" << default_user.username << "': " << result.error().message << std::endl;
                 LOG_WARN(logger_, "Failed to create default user '" + default_user.username +
                         "': " + result.error().message);
             }
         }
+
+        std::cout << "[DEBUG] Seeding complete: " << created_count << " created, " << skipped_count << " skipped" << std::endl;
 
         LOG_INFO(logger_, "Default user seeding complete: " +
                 std::to_string(created_count) + " created, " +
@@ -895,6 +953,7 @@ Result<bool> AuthenticationService::seed_default_users() {
 
         return true;
     } catch (const std::exception& e) {
+        std::cout << "[DEBUG] Exception in seed_default_users: " << e.what() << std::endl;
         LOG_ERROR(logger_, "Exception in seed_default_users: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to seed default users: " + std::string(e.what()));
     }
@@ -931,22 +990,63 @@ Result<bool> AuthenticationService::revoke_api_key(const std::string& api_key) {
 }
 
 Result<std::vector<UserCredentials>> AuthenticationService::list_users() const {
-    std::lock_guard<std::mutex> lock(users_mutex_);
+    try {
+        // Get users from database instead of in-memory map
+        auto db_users_result = persistence_->list_users();
+        if (!db_users_result.has_value()) {
+            RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to list users from database: " +
+                        ErrorHandler::format_error(db_users_result.error()));
+        }
 
-    std::vector<UserCredentials> users;
-    users.reserve(users_.size());
+        auto db_users = db_users_result.value();
+        std::vector<UserCredentials> users;
+        users.reserve(db_users.size());
 
-    for (const auto& [user_id, user] : users_) {
-        users.push_back(user);
+        // Convert User objects to UserCredentials
+        for (const auto& db_user : db_users) {
+            UserCredentials user_cred;
+            user_cred.user_id = db_user.user_id;
+            user_cred.username = db_user.username;
+            user_cred.email = db_user.email;
+            user_cred.is_active = db_user.is_active;
+            user_cred.password_hash = db_user.password_hash;
+            user_cred.salt = db_user.salt;
+            user_cred.failed_login_attempts = db_user.failed_login_attempts;
+
+            // Convert int64_t timestamps to chrono::time_point
+            user_cred.created_at = std::chrono::system_clock::from_time_t(db_user.created_at);
+            user_cred.last_login = std::chrono::system_clock::from_time_t(db_user.last_login);
+
+            // Get roles for this user
+            auto roles_result = persistence_->get_user_roles(db_user.user_id);
+            if (roles_result.has_value()) {
+                user_cred.roles = roles_result.value();
+            }
+
+            users.push_back(user_cred);
+        }
+
+        LOG_INFO(logger_, "Listed " + std::to_string(users.size()) + " users from database");
+        return users;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in list_users: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to list users: " + std::string(e.what()));
     }
-
-    LOG_INFO(logger_, "Listed " + std::to_string(users.size()) + " users");
-    return users;
 }
 
 Result<size_t> AuthenticationService::get_user_count() const {
-    std::lock_guard<std::mutex> lock(users_mutex_);
-    return users_.size();
+    try {
+        // Get count from database instead of in-memory map
+        auto users_result = persistence_->list_users();
+        if (!users_result.has_value()) {
+            RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to get user count from database: " +
+                        ErrorHandler::format_error(users_result.error()));
+        }
+        return users_result.value().size();
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in get_user_count: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to get user count: " + std::string(e.what()));
+    }
 }
 
 Result<std::vector<std::pair<std::string, std::string>>> AuthenticationService::list_api_keys() const {

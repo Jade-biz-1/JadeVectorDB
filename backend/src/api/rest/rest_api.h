@@ -76,7 +76,31 @@ public:
     
     // Get the server address
     std::string get_server_address() const { return server_address_; }
-    
+
+    /**
+     * @brief Registers callback function for admin shutdown endpoint
+     *
+     * This callback is invoked when an authorized admin user calls the
+     * POST /admin/shutdown endpoint. The callback should perform graceful
+     * shutdown of the application (close connections, save state, exit).
+     *
+     * @param callback Function to execute when shutdown is requested
+     *                 Typically the main application's request_shutdown()
+     *
+     * @note Callback is executed in a detached thread with 500ms delay
+     *       to allow HTTP response to be sent before shutdown begins
+     *
+     * @example
+     * rest_api->set_shutdown_callback([this]() {
+     *     LOG_INFO("Shutdown requested via API");
+     *     request_shutdown();
+     * });
+     *
+     * @see handle_shutdown_request() in rest_api.cpp
+     * @see docs/admin_endpoints.md for complete documentation
+     */
+    void set_shutdown_callback(std::function<void()> callback);
+
 private:
     void run_server();
 };
@@ -148,7 +172,10 @@ private:
     std::unique_ptr<crow::App<>> app_;
     int server_port_;
     bool server_stopped_;  // Track if stop() has been called
-    
+
+    // Shutdown callback for admin endpoint
+    std::function<void()> shutdown_callback_;
+
 public:
     explicit RestApiImpl(std::shared_ptr<DistributedServiceManager> distributed_service_manager = nullptr,
                         std::shared_ptr<DatabaseLayer> db_layer = nullptr);
@@ -165,12 +192,16 @@ public:
     
     // Stop the server
     void stop_server();
-    
+
+    // Set shutdown callback (called by admin shutdown endpoint)
+    void set_shutdown_callback(std::function<void()> callback);
+
     // Individual route handlers
     void handle_health_check();           // GET /health
     void handle_database_health_check();  // GET /health/db
     void handle_metrics();                // GET /metrics (Prometheus)
     void handle_system_status();          // GET /status
+    void handle_shutdown();               // POST /shutdown
     void handle_database_status();        // GET /v1/databases/{databaseId}/status
     
     // Request handling methods
@@ -180,6 +211,7 @@ public:
     crow::response handle_update_database_request(const crow::request& req, const std::string& database_id);
     crow::response handle_delete_database_request(const crow::request& req, const std::string& database_id);
     
+    crow::response handle_list_vectors_request(const crow::request& req, const std::string& database_id);
     crow::response handle_store_vector_request(const crow::request& req, const std::string& database_id);
     crow::response handle_get_vector_request(const crow::request& req, const std::string& database_id, const std::string& vector_id);
     crow::response handle_update_vector_request(const crow::request& req, const std::string& database_id, const std::string& vector_id);
@@ -273,6 +305,23 @@ public:
 
     crow::response handle_performance_metrics_request(const crow::request& req);
 
+    // ============================================================================
+    // Admin Endpoints
+    // ============================================================================
+    // These methods handle administrative operations that require elevated
+    // privileges (admin role). All methods enforce authentication and authorization.
+
+    /**
+     * @brief Handles graceful server shutdown (POST /admin/shutdown)
+     *
+     * Requires admin role. Initiates graceful server shutdown after sending
+     * HTTP response. See docs/admin_endpoints.md for details.
+     *
+     * @param req HTTP request with Authorization header
+     * @return HTTP 200 on success, 401 if unauthorized, 500 on error
+     */
+    crow::response handle_shutdown_request(const crow::request& req);
+
     // Helper methods
     void setup_error_handling();
     void setup_authentication();
@@ -289,7 +338,28 @@ public:
     crow::json::wvalue serialize_alert(const AlertRecord& record) const;
     crow::json::wvalue serialize_audit_event(const SecurityEvent& event) const;
     std::string to_iso_string(const std::chrono::system_clock::time_point& time_point) const;
+
+    /**
+     * @brief Extracts JWT token or API key from Authorization header
+     *
+     * Supports "Bearer <token>" and "ApiKey <key>" formats.
+     *
+     * @param req HTTP request
+     * @return Extracted token/key or empty string if not found
+     */
     std::string extract_api_key(const crow::request& req) const;
+
+    /**
+     * @brief Authorizes request by validating token and checking role
+     *
+     * Validates JWT token, retrieves user from database, and verifies the
+     * user has the required role/permission.
+     *
+     * @param req HTTP request with Authorization header
+     * @param permission Required role (e.g., "admin", "developer", "user")
+     *                   Empty string skips permission check
+     * @return Result containing user_id on success, error on failure
+     */
     Result<std::string> authorize_api_key(const crow::request& req, const std::string& permission = "") const;
 };
 

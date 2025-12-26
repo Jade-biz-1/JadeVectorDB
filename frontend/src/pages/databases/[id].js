@@ -11,12 +11,12 @@ export default function DatabaseDetails() {
   const [vectors, setVectors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [expandedVectorId, setExpandedVectorId] = useState(null);
 
   useEffect(() => {
     if (id) {
       fetchDatabaseDetails();
-      // Temporarily disable vector fetching until backend supports it
-      // fetchVectors();
+      fetchVectors();
     }
   }, [id]);
 
@@ -36,11 +36,15 @@ export default function DatabaseDetails() {
 
   const fetchVectors = async () => {
     try {
-      const response = await vectorApi.listVectors(id, 10, 0);
+      const response = await vectorApi.listVectors(id, 5, 0);
       setVectors(response.vectors || []);
     } catch (error) {
       console.error('Error fetching vectors:', error);
     }
+  };
+
+  const toggleVectorExpand = (vectorId) => {
+    setExpandedVectorId(expandedVectorId === vectorId ? null : vectorId);
   };
 
   if (loading) {
@@ -220,22 +224,138 @@ export default function DatabaseDetails() {
         }
 
         .vector-item {
-          padding: 15px;
           border: 1px solid #e1e8ed;
           border-radius: 6px;
+          background: #ffffff;
+          overflow: hidden;
+          transition: box-shadow 0.2s;
+        }
+
+        .vector-item:hover {
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .vector-item-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 15px;
           background: #f8f9fa;
         }
 
-        .vector-id {
+        .vector-id-link {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          transition: opacity 0.2s;
+        }
+
+        .vector-id-link:hover {
+          opacity: 0.7;
+        }
+
+        .vector-id-badge {
           font-family: monospace;
           font-size: 14px;
           color: #3498db;
-          margin-bottom: 10px;
+          font-weight: 600;
+        }
+
+        .expand-icon {
+          color: #7f8c8d;
+          font-size: 12px;
         }
 
         .vector-dims {
           font-size: 12px;
           color: #7f8c8d;
+          background: #e1e8ed;
+          padding: 4px 12px;
+          border-radius: 12px;
+        }
+
+        .vector-details {
+          padding: 15px;
+          border-top: 1px solid #e1e8ed;
+          animation: slideDown 0.2s ease-out;
+        }
+
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            max-height: 0;
+          }
+          to {
+            opacity: 1;
+            max-height: 500px;
+          }
+        }
+
+        .vector-details-section {
+          margin-bottom: 15px;
+        }
+
+        .vector-details-section:last-child {
+          margin-bottom: 0;
+        }
+
+        .detail-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: #7f8c8d;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-bottom: 8px;
+        }
+
+        .values-preview {
+          display: flex;
+          align-items: start;
+          gap: 10px;
+        }
+
+        .values-text {
+          font-family: monospace;
+          font-size: 12px;
+          color: #2c3e50;
+          background: #f8f9fa;
+          padding: 10px;
+          border-radius: 4px;
+          flex: 1;
+          word-break: break-all;
+        }
+
+        .btn-copy {
+          padding: 6px 12px;
+          background: #3498db;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          font-size: 11px;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: background 0.2s;
+        }
+
+        .btn-copy:hover {
+          background: #2980b9;
+        }
+
+        .metadata-content {
+          font-family: monospace;
+          font-size: 12px;
+          color: #2c3e50;
+          background: #f8f9fa;
+          padding: 10px;
+          border-radius: 4px;
+          overflow-x: auto;
+          margin: 0;
+        }
+
+        .no-data {
+          font-size: 12px;
+          color: #95a5a6;
+          font-style: italic;
         }
 
         .empty-state {
@@ -323,14 +443,66 @@ export default function DatabaseDetails() {
 
           {vectors.length > 0 ? (
             <div className="vectors-list">
-              {vectors.map((vector, index) => (
-                <div key={vector.id || index} className="vector-item">
-                  <div className="vector-id">ID: {vector.id}</div>
-                  <div className="vector-dims">
-                    Dimensions: {vector.vector?.length || database.vectorDimension}
+              {vectors.map((vector, index) => {
+                const isExpanded = expandedVectorId === vector.id;
+                const vectorLength = vector.values?.length || vector.vector?.length || database.vectorDimension;
+
+                return (
+                  <div key={vector.id || index} className="vector-item">
+                    <div className="vector-item-header">
+                      <div
+                        className="vector-id-link"
+                        onClick={() => toggleVectorExpand(vector.id)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <span className="vector-id-badge">ID: {vector.id}</span>
+                        <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
+                      </div>
+                      <div className="vector-dims">
+                        {vectorLength} dimensions
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="vector-details">
+                        <div className="vector-details-section">
+                          <div className="detail-label">Vector Values:</div>
+                          <div className="vector-values">
+                            {vector.values ? (
+                              <div className="values-preview">
+                                <span className="values-text">
+                                  [{vector.values.slice(0, 10).join(', ')}
+                                  {vector.values.length > 10 ? `, ... (${vector.values.length - 10} more)` : ''}]
+                                </span>
+                                <button
+                                  className="btn-copy"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(JSON.stringify(vector.values));
+                                    alert('Vector values copied to clipboard!');
+                                  }}
+                                >
+                                  Copy All
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="no-data">No vector data available</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {vector.metadata && Object.keys(vector.metadata).length > 0 && (
+                          <div className="vector-details-section">
+                            <div className="detail-label">Metadata:</div>
+                            <pre className="metadata-content">
+                              {JSON.stringify(vector.metadata, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="empty-state">

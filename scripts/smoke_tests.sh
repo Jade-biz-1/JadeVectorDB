@@ -64,7 +64,7 @@ echo "--- Authentication Tests ---"
 log_info "Testing login with default admin user..."
 LOGIN_RESPONSE=$(curl -s -X POST "$BASE_URL/v1/auth/login" \
     -H "Content-Type: application/json" \
-    -d '{"username":"admin","password":"Admin@123456"}' 2>/dev/null)
+    -d '{"username":"admin","password":"admin123"}' 2>/dev/null)
 
 if echo "$LOGIN_RESPONSE" | grep -q '"success":true\|"token"'; then
     log_pass "Login successful with default admin user"

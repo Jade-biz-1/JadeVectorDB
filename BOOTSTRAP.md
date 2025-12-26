@@ -28,6 +28,8 @@ This document helps you (Claude) quickly get up to speed when starting a new ses
 
 ### Known Issues:
 - ✅ Test compilation issues largely resolved; current automated suite shows 26/26 passing
+- ✅ **Runtime crash on startup** - FIXED (2025-12-12) - Singleton ownership issue resolved
+- ✅ **Application hanging on Ctrl-C** - FIXED (2025-12-26) - Signal handler now calls immediate exit
 - See `CleanupReport.md` and `TasksTracking/SPRINT_2_3_TEST_RESULTS.md` for test details
 
 ---
@@ -714,13 +716,13 @@ The authentication system enforces the following password rules:
 
 **Default User Credentials (Development/Test Only)**
 
-When `JADE_ENV` is set to `development`, `dev`, `test`, `testing`, or `local`, the system automatically creates default users:
+When `JADEVECTORDB_ENV` is set to `development`, `dev`, `test`, `testing`, or `local`, the system automatically creates default users:
 
 | Username | Password | Roles | User ID |
 |----------|----------|-------|---------|
-| `admin` | `Admin@123456` | admin, developer, user | user_admin_default |
-| `dev` | `Developer@123` | developer, user | user_dev_default |
-| `test` | `Tester@123456` | tester, user | user_test_default |
+| `admin` | `admin123` | admin, developer, user | user_admin_default |
+| `dev` | `dev123` | developer, user | user_dev_default |
+| `test` | `test123` | tester, user | user_test_default |
 
 **IMPORTANT**: These default users are ONLY created in non-production environments and are NOT created in production mode.
 
@@ -793,6 +795,8 @@ The project uses **AuthenticationService** (located in `backend/src/services/aut
 - ✅ **AuthManager cleanup COMPLETE** - Deleted lib/auth.h, lib/auth.cpp (2025-12-12)
 - ✅ **Fixed double-free crash** - Singleton ownership issue in main.cpp (2025-12-12)
 - ✅ **Valgrind clean** - 0 errors on shutdown (2025-12-12)
+- ✅ **Fixed Ctrl-C hanging** - Signal handler now exits immediately (2025-12-26)
+- ✅ **Added shutdown API endpoint** - POST /shutdown for graceful termination (2025-12-26)
 
 ---
 

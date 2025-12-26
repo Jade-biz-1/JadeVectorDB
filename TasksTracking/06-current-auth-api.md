@@ -197,7 +197,7 @@ Added to CMakeLists.txt. See backend/tests/T230_TEST_IMPLEMENTATION_SUMMARY.md f
 - **dev/dev123** - Development permissions (roles: developer, user)
 - **test/test123** - Limited/test permissions (roles: tester, user)
 
-Uses JADE_ENV environment variable for detection. Idempotent operation. Removed legacy seeding code to prevent conflicts. Updated README.md, created INSTALLATION_GUIDE.md and UserGuide.md with complete default user documentation. See backend/T236_IMPLEMENTATION_SUMMARY.md and backend/FR029_COMPLIANCE_ANALYSIS.md for details.
+Uses JADEVECTORDB_ENV environment variable for detection. Idempotent operation. Removed legacy seeding code to prevent conflicts. Updated README.md, created INSTALLATION_GUIDE.md and UserGuide.md with complete default user documentation. See backend/T236_IMPLEMENTATION_SUMMARY.md and backend/FR029_COMPLIANCE_ANALYSIS.md for details.
 **Priority**: HIGH
 **Estimated Effort**: 1-2 days
 
@@ -240,9 +240,9 @@ Uses JADE_ENV environment variable for detection. Idempotent operation. Removed 
 **Issue 1**: Password Validation Failure
 - **Problem**: Default passwords ("admin123", "dev123", "test123") were 8 characters but minimum requirement is 10
 - **Fix**: Updated passwords in authentication_service.cpp:
-  - admin: `Admin@123456`
-  - dev: `Developer@123`
-  - test: `Tester@123456`
+  - admin: `admin123`
+  - dev: `dev123`
+  - test: `test123`
 - **Result**: ✅ Login successful, authentication working end-to-end
 
 **Issue 2**: Missing Methods in AuthenticationService
@@ -358,7 +358,7 @@ Uses JADE_ENV environment variable for detection. Idempotent operation. Removed 
 **Description**: Remove std::cerr debug output added during troubleshooting
 **Actions Required**:
 1. Remove `std::cerr << "[DEBUG] seed_default_users() called" << std::endl;` (line ~890)
-2. Remove `std::cerr << "[DEBUG] JADE_ENV=" << jade_env << ", environment=" << environment << std::endl;`
+2. Remove `std::cerr << "[DEBUG] JADEVECTORDB_ENV=" << jade_env << ", environment=" << environment << std::endl;`
 3. Remove `std::cerr << "[DEBUG] Seeding default users for " << environment << " environment" << std::endl;`
 
 **Testing**: No debug output in logs
@@ -386,7 +386,7 @@ Uses JADE_ENV environment variable for detection. Idempotent operation. Removed 
    ```bash
    curl -X POST http://localhost:8080/v1/auth/login \
      -H "Content-Type: application/json" \
-     -d '{"username":"admin","password":"Admin@123456"}'
+     -d '{"username":"admin","password":"admin123"}'
    ```
 3. Verify response contains valid token
 4. Test token usage on authenticated endpoint

@@ -292,11 +292,12 @@ def user_add(args: argparse.Namespace):
     client = JadeVectorDB(args.url, args.api_key)
     try:
         user = client.create_user(
-            email=args.email,
-            role=args.role,
-            password=args.password if hasattr(args, 'password') else None
+            username=args.username,
+            password=args.password if hasattr(args, 'password') and args.password else None,
+            roles=[args.role] if args.role else ["user"],
+            email=args.email if hasattr(args, 'email') and args.email else None
         )
-        print(f"Successfully created user: {args.email}")
+        print(f"Successfully created user: {args.username}")
         print(json.dumps(user, indent=2))
     except JadeVectorDBError as e:
         print(f"Error creating user: {e}")
@@ -319,7 +320,7 @@ def user_show(args: argparse.Namespace):
     """Show user details"""
     client = JadeVectorDB(args.url, args.api_key)
     try:
-        user = client.get_user(email=args.email)
+        user = client.get_user(args.user_id)
         print(json.dumps(user, indent=2))
     except JadeVectorDBError as e:
         print(f"Error retrieving user: {e}")
@@ -329,12 +330,22 @@ def user_update(args: argparse.Namespace):
     """Update user information"""
     client = JadeVectorDB(args.url, args.api_key)
     try:
+        # Convert status string to boolean if provided
+        is_active = None
+        if hasattr(args, 'status') and args.status:
+            is_active = args.status.lower() == 'active'
+
+        # Convert role to roles list if provided
+        roles = None
+        if hasattr(args, 'role') and args.role:
+            roles = [args.role]
+
         user = client.update_user(
-            email=args.email,
-            role=args.role if hasattr(args, 'role') and args.role else None,
-            status=args.status if hasattr(args, 'status') and args.status else None
+            user_id=args.user_id,
+            is_active=is_active,
+            roles=roles
         )
-        print(f"Successfully updated user: {args.email}")
+        print(f"Successfully updated user: {args.user_id}")
         print(json.dumps(user, indent=2))
     except JadeVectorDBError as e:
         print(f"Error updating user: {e}")
@@ -344,9 +355,9 @@ def user_delete(args: argparse.Namespace):
     """Delete a user"""
     client = JadeVectorDB(args.url, args.api_key)
     try:
-        success = client.delete_user(email=args.email)
+        success = client.delete_user(args.user_id)
         if success:
-            print(f"Successfully deleted user: {args.email}")
+            print(f"Successfully deleted user: {args.user_id}")
         else:
             print("Failed to delete user")
     except JadeVectorDBError as e:
@@ -357,8 +368,8 @@ def user_activate(args: argparse.Namespace):
     """Activate a user"""
     client = JadeVectorDB(args.url, args.api_key)
     try:
-        user = client.activate_user(email=args.email)
-        print(f"Successfully activated user: {args.email}")
+        user = client.activate_user(args.user_id)
+        print(f"Successfully activated user: {args.user_id}")
         print(json.dumps(user, indent=2))
     except JadeVectorDBError as e:
         print(f"Error activating user: {e}")
@@ -368,8 +379,8 @@ def user_deactivate(args: argparse.Namespace):
     """Deactivate a user"""
     client = JadeVectorDB(args.url, args.api_key)
     try:
-        user = client.deactivate_user(email=args.email)
-        print(f"Successfully deactivated user: {args.email}")
+        user = client.deactivate_user(args.user_id)
+        print(f"Successfully deactivated user: {args.user_id}")
         print(json.dumps(user, indent=2))
     except JadeVectorDBError as e:
         print(f"Error deactivating user: {e}")
@@ -547,9 +558,10 @@ def setup_parser():
 
     # User management subcommands
     user_add_parser = subparsers.add_parser("user-add", help="Add a new user")
-    user_add_parser.add_argument("email", help="User email address")
-    user_add_parser.add_argument("--role", required=True, help="User role (admin, developer, viewer, etc.)")
-    user_add_parser.add_argument("--password", help="Optional password")
+    user_add_parser.add_argument("username", help="Username")
+    user_add_parser.add_argument("--role", required=True, help="User role (admin, developer, user, etc.)")
+    user_add_parser.add_argument("--password", help="Password (required)")
+    user_add_parser.add_argument("--email", help="Email address (optional)")
     user_add_parser.set_defaults(func=user_add)
 
     user_list_parser = subparsers.add_parser("user-list", help="List all users")
@@ -558,25 +570,25 @@ def setup_parser():
     user_list_parser.set_defaults(func=user_list)
 
     user_show_parser = subparsers.add_parser("user-show", help="Show user details")
-    user_show_parser.add_argument("email", help="User email address")
+    user_show_parser.add_argument("user_id", help="User ID")
     user_show_parser.set_defaults(func=user_show)
 
     user_update_parser = subparsers.add_parser("user-update", help="Update user information")
-    user_update_parser.add_argument("email", help="User email address")
+    user_update_parser.add_argument("user_id", help="User ID")
     user_update_parser.add_argument("--role", help="New role")
     user_update_parser.add_argument("--status", help="New status (active, inactive)")
     user_update_parser.set_defaults(func=user_update)
 
     user_delete_parser = subparsers.add_parser("user-delete", help="Delete a user")
-    user_delete_parser.add_argument("email", help="User email address")
+    user_delete_parser.add_argument("user_id", help="User ID")
     user_delete_parser.set_defaults(func=user_delete)
 
     user_activate_parser = subparsers.add_parser("user-activate", help="Activate a user")
-    user_activate_parser.add_argument("email", help="User email address")
+    user_activate_parser.add_argument("user_id", help="User ID")
     user_activate_parser.set_defaults(func=user_activate)
 
     user_deactivate_parser = subparsers.add_parser("user-deactivate", help="Deactivate a user")
-    user_deactivate_parser.add_argument("email", help="User email address")
+    user_deactivate_parser.add_argument("user_id", help="User ID")
     user_deactivate_parser.set_defaults(func=user_deactivate)
 
     # Import/Export subcommands

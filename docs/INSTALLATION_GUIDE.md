@@ -129,34 +129,34 @@ The frontend will be available at **http://localhost:3000**
 ### When Are Default Users Created?
 
 Default users are **automatically created** when you start the server in:
-- **Development** mode (`JADE_ENV=development` or `JADE_ENV=dev`)
-- **Test** mode (`JADE_ENV=test` or `JADE_ENV=testing`)
-- **Local** mode (`JADE_ENV=local`)
-- **Default** (when `JADE_ENV` is not set)
+- **Development** mode (`JADEVECTORDB_ENV=development` or `JADEVECTORDB_ENV=dev`)
+- **Test** mode (`JADEVECTORDB_ENV=test` or `JADEVECTORDB_ENV=testing`)
+- **Local** mode (`JADEVECTORDB_ENV=local`)
+- **Default** (when `JADEVECTORDB_ENV` is not set)
 
 ### When Are Default Users NOT Created?
 
 Default users are **NOT created** when you start the server in:
-- **Production** mode (`JADE_ENV=production` or `JADE_ENV=prod`)
+- **Production** mode (`JADEVECTORDB_ENV=production` or `JADEVECTORDB_ENV=prod`)
 - Any other environment value
 
 **Security Note**: This is by design for security. Production deployments require you to create users with strong passwords manually.
 
 ### Environment Configuration
 
-Control default user creation using the `JADE_ENV` environment variable:
+Control default user creation using the `JADEVECTORDB_ENV` environment variable:
 
 ```bash
 # Development mode (creates default users) - DEFAULT
-export JADE_ENV=development
+export JADEVECTORDB_ENV=development
 ./jadevectordb
 
 # Test mode (creates default users)
-export JADE_ENV=test
+export JADEVECTORDB_ENV=test
 ./jadevectordb
 
 # Production mode (NO default users created)
-export JADE_ENV=production
+export JADEVECTORDB_ENV=production
 ./jadevectordb
 ```
 
@@ -280,11 +280,11 @@ export JDB_PORT=8081
 
 **Issue**: Default users not created
 ```bash
-# Solution: Check JADE_ENV variable
-echo $JADE_ENV
+# Solution: Check JADEVECTORDB_ENV variable
+echo $JADEVECTORDB_ENV
 
 # If set to production, change to development
-export JADE_ENV=development
+export JADEVECTORDB_ENV=development
 ./jadevectordb
 
 # Check logs to confirm user creation
@@ -331,7 +331,7 @@ npm install
 
 Before deploying to production:
 
-- [ ] Set `JADE_ENV=production` to prevent default user creation
+- [ ] Set `JADEVECTORDB_ENV=production` to prevent default user creation
 - [ ] Create admin users with strong passwords manually
 - [ ] Enable SSL/TLS for HTTPS
 - [ ] Configure firewall rules
@@ -344,7 +344,7 @@ Before deploying to production:
 
 ```bash
 # Set production environment
-export JADE_ENV=production
+export JADEVECTORDB_ENV=production
 ./jadevectordb &
 
 # Create admin user with strong password
