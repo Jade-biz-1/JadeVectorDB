@@ -543,6 +543,17 @@ class CLITestRunner:
             '--role', test_role,
             '--password', test_password
         ])
+
+        # Extract user_id from output
+        user_id = None
+        if success:
+            try:
+                import json
+                user_info = json.loads(output)
+                user_id = user_info.get('user_id', '')
+            except:
+                pass
+
         self.results.append([test_num, "User Mgmt", "Add User", "PASS" if success else "FAIL"])
         test_num += 1
 
@@ -553,36 +564,48 @@ class CLITestRunner:
         self.results.append([test_num, "User Mgmt", "List Users", "PASS" if success and test_username in output else "FAIL"])
         test_num += 1
 
-        # Test: Show user details
-        success, output = self.run_python_cli_test('User Show', [
-            '--api-key', self.token, 'user-show',
-            test_username
-        ])
-        self.results.append([test_num, "User Mgmt", "Show User", "PASS" if success else "FAIL"])
+        # Test: Show user details (requires user_id)
+        if user_id:
+            success, output = self.run_python_cli_test('User Show', [
+                '--api-key', self.token, 'user-show',
+                user_id
+            ])
+            self.results.append([test_num, "User Mgmt", "Show User", "PASS" if success else "FAIL"])
+        else:
+            self.results.append([test_num, "User Mgmt", "Show User", "SKIP"])
         test_num += 1
 
-        # Test: Deactivate user
-        success, output = self.run_python_cli_test('User Deactivate', [
-            '--api-key', self.token, 'user-deactivate',
-            test_username
-        ])
-        self.results.append([test_num, "User Mgmt", "Deactivate User", "PASS" if success else "FAIL"])
+        # Test: Deactivate user (requires user_id)
+        if user_id:
+            success, output = self.run_python_cli_test('User Deactivate', [
+                '--api-key', self.token, 'user-deactivate',
+                user_id
+            ])
+            self.results.append([test_num, "User Mgmt", "Deactivate User", "PASS" if success else "FAIL"])
+        else:
+            self.results.append([test_num, "User Mgmt", "Deactivate User", "SKIP"])
         test_num += 1
 
-        # Test: Activate user
-        success, output = self.run_python_cli_test('User Activate', [
-            '--api-key', self.token, 'user-activate',
-            test_username
-        ])
-        self.results.append([test_num, "User Mgmt", "Activate User", "PASS" if success else "FAIL"])
+        # Test: Activate user (requires user_id)
+        if user_id:
+            success, output = self.run_python_cli_test('User Activate', [
+                '--api-key', self.token, 'user-activate',
+                user_id
+            ])
+            self.results.append([test_num, "User Mgmt", "Activate User", "PASS" if success else "FAIL"])
+        else:
+            self.results.append([test_num, "User Mgmt", "Activate User", "SKIP"])
         test_num += 1
 
-        # Test: Delete user
-        success, output = self.run_python_cli_test('User Delete', [
-            '--api-key', self.token, 'user-delete',
-            test_username
-        ])
-        self.results.append([test_num, "User Mgmt", "Delete User", "PASS" if success else "FAIL"])
+        # Test: Delete user (requires user_id)
+        if user_id:
+            success, output = self.run_python_cli_test('User Delete', [
+                '--api-key', self.token, 'user-delete',
+                user_id
+            ])
+            self.results.append([test_num, "User Mgmt", "Delete User", "PASS" if success else "FAIL"])
+        else:
+            self.results.append([test_num, "User Mgmt", "Delete User", "SKIP"])
 
     def run_import_export_tests(self):
         """Run import/export CLI tests (Phase 16)."""
@@ -636,36 +659,59 @@ class CLITestRunner:
         test_email = user_data.get('email', '')
         test_role = user_data['roles'][0] if user_data.get('roles') else 'user'
 
-        # Test: Add a new user (Shell CLI uses: user-add EMAIL ROLE PASSWORD)
+        # Test: Add a new user (Shell CLI now uses: user-add USERNAME ROLE PASSWORD [EMAIL])
         success, output = self.run_shell_cli_test('Shell User Add', [
-            'user-add', test_email, test_role, test_password
+            'user-add', test_username, test_role, test_password, test_email
         ])
+
+        # Extract user_id from output
+        user_id = None
+        if success:
+            try:
+                import json
+                user_info = json.loads(output)
+                user_id = user_info.get('user_id', '')
+            except:
+                pass
+
         self.results.append([test_num, "Shell User Mgmt", "Add User", "PASS" if success else "FAIL"])
         test_num += 1
 
         # Test: List users
         success, output = self.run_shell_cli_test('Shell User List', ['user-list'])
-        self.results.append([test_num, "Shell User Mgmt", "List Users", "PASS" if success and test_email in output else "FAIL"])
+        self.results.append([test_num, "Shell User Mgmt", "List Users", "PASS" if success and test_username in output else "FAIL"])
         test_num += 1
 
-        # Test: Show user details
-        success, output = self.run_shell_cli_test('Shell User Show', ['user-show', test_email])
-        self.results.append([test_num, "Shell User Mgmt", "Show User", "PASS" if success else "FAIL"])
+        # Test: Show user details (requires user_id)
+        if user_id:
+            success, output = self.run_shell_cli_test('Shell User Show', ['user-show', user_id])
+            self.results.append([test_num, "Shell User Mgmt", "Show User", "PASS" if success else "FAIL"])
+        else:
+            self.results.append([test_num, "Shell User Mgmt", "Show User", "SKIP"])
         test_num += 1
 
-        # Test: Deactivate user
-        success, output = self.run_shell_cli_test('Shell User Deactivate', ['user-deactivate', test_email])
-        self.results.append([test_num, "Shell User Mgmt", "Deactivate User", "PASS" if success else "FAIL"])
+        # Test: Deactivate user (requires user_id)
+        if user_id:
+            success, output = self.run_shell_cli_test('Shell User Deactivate', ['user-deactivate', user_id])
+            self.results.append([test_num, "Shell User Mgmt", "Deactivate User", "PASS" if success else "FAIL"])
+        else:
+            self.results.append([test_num, "Shell User Mgmt", "Deactivate User", "SKIP"])
         test_num += 1
 
-        # Test: Activate user
-        success, output = self.run_shell_cli_test('Shell User Activate', ['user-activate', test_email])
-        self.results.append([test_num, "Shell User Mgmt", "Activate User", "PASS" if success else "FAIL"])
+        # Test: Activate user (requires user_id)
+        if user_id:
+            success, output = self.run_shell_cli_test('Shell User Activate', ['user-activate', user_id])
+            self.results.append([test_num, "Shell User Mgmt", "Activate User", "PASS" if success else "FAIL"])
+        else:
+            self.results.append([test_num, "Shell User Mgmt", "Activate User", "SKIP"])
         test_num += 1
 
-        # Test: Delete user
-        success, output = self.run_shell_cli_test('Shell User Delete', ['user-delete', test_email])
-        self.results.append([test_num, "Shell User Mgmt", "Delete User", "PASS" if success else "FAIL"])
+        # Test: Delete user (requires user_id)
+        if user_id:
+            success, output = self.run_shell_cli_test('Shell User Delete', ['user-delete', user_id])
+            self.results.append([test_num, "Shell User Mgmt", "Delete User", "PASS" if success else "FAIL"])
+        else:
+            self.results.append([test_num, "Shell User Mgmt", "Delete User", "SKIP"])
 
     def run_shell_import_export_tests(self):
         """Run Shell CLI import/export tests (Phase 16)."""

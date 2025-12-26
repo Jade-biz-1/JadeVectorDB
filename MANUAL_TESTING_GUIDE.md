@@ -1,8 +1,269 @@
 # Manual Testing Guide - Persistent Vector Storage
 
-**Date:** December 19, 2025  
-**Sprint:** 2.3 - Advanced Persistence Features (COMPLETE)  
+**Date:** December 26, 2025
+**Sprint:** 2.3 - Advanced Persistence Features (COMPLETE)
+**Latest Feature:** Admin Shutdown Endpoint
 **Status:** Ready for Comprehensive Manual Testing
+
+---
+
+## 🚀 Getting Started - READ THIS FIRST!
+
+Before you begin testing, you need to start both the backend server and frontend application, and understand the default login credentials.
+
+### Prerequisites
+
+Ensure you have:
+- [x] JadeVectorDB backend compiled (`backend/build/jadevectordb` executable exists)
+- [x] Node.js installed (for frontend)
+- [x] Terminal access to the project directory
+
+### Step 1: Start the Backend Server
+
+**IMPORTANT**: The backend must be started with the development environment variable to enable default test users.
+
+```bash
+# Navigate to backend build directory
+cd /home/deepak/Public/JadeVectorDB/backend/build
+
+# Set environment to development (enables default users)
+export JADEVECTORDB_ENV=development
+
+# Start the backend server with logs to console
+# Note: Application logs go to logs/jadevectordb.log by default
+# To see logs in console, tail the log file in another terminal:
+# tail -f logs/jadevectordb.log
+./jadevectordb
+```
+
+**Expected Output:**
+```
+[INFO] JadeVectorDB Server Starting...
+[INFO] Environment: development
+[INFO] Creating default users for development environment
+[INFO] Default user 'admin' created successfully
+[INFO] Default user 'dev' created successfully
+[INFO] Default user 'test' created successfully
+[INFO] Crow/1.0 server is running at http://0.0.0.0:8080 using 24 threads
+[INFO] Server started successfully
+```
+
+**Alternative**: Run in background
+```bash
+# Start backend in background
+export JADEVECTORDB_ENV=development
+cd /home/deepak/Public/JadeVectorDB/backend/build
+./jadevectordb &
+
+# Note the process ID for later shutdown
+echo $! > jadevectordb.pid
+```
+
+**Health Check:**
+```bash
+# Verify backend is running
+curl http://localhost:8080/health
+
+# Expected response: {"status": "healthy"}
+```
+
+---
+
+### Step 2: Start the Frontend Application
+
+Open a **new terminal** and run:
+
+```bash
+# Navigate to frontend directory
+cd /home/deepak/Public/JadeVectorDB/frontend
+
+# Install dependencies (first time only)
+npm install
+
+# Start the development server
+npm run dev
+```
+
+**Expected Output:**
+```
+> jadevectordb-frontend@0.1.0 dev
+> next dev -p 3003
+
+  ▲ Next.js 14.2.33
+  - Local:        http://localhost:3003
+  - Ready in 2.3s
+```
+
+**Access the UI:**
+Open your browser and navigate to: **http://localhost:3003**
+
+---
+
+### Step 3: Default User Credentials
+
+**⚠️ IMPORTANT**: Default users are **ONLY** created in development/test environments. They will **NOT** be available in production.
+
+The following default users are automatically created when `JADEVECTORDB_ENV` is set to `development`, `dev`, `test`, `testing`, or `local`:
+
+| Username | Password | Roles | User ID | Use Case |
+|----------|----------|-------|---------|----------|
+| **admin** | `admin123` | admin, developer, user | user_admin_default | Full system access |
+| **dev** | `dev123` | developer, user | user_dev_default | Development tasks |
+| **test** | `test123` | tester, user | user_test_default | Testing workflows |
+
+**Note:** These are simplified development passwords. In production, use strong passwords with proper complexity requirements.
+
+**Login Steps:**
+1. Open http://localhost:3003
+2. Click **"Login"** (if not redirected automatically)
+3. Enter username: `admin`
+4. Enter password: `admin123`
+5. Click **"Sign In"**
+
+**First-Time Setup (If Default Users Not Created):**
+
+If you forgot to set `JADEVECTORDB_ENV=development`, default users won't exist. You have two options:
+
+**Option 1: Restart with Environment Variable (Recommended)**
+```bash
+# Stop backend
+pkill jadevectordb
+
+# Restart with development environment
+export JADEVECTORDB_ENV=development
+cd /home/deepak/Public/JadeVectorDB/backend/build
+./jadevectordb
+```
+
+**Option 2: Register New User**
+1. On login page, click **"Register"** or **"Sign Up"**
+2. Create account with strong password (10+ chars)
+3. Login with new credentials
+
+---
+
+### Step 4: Verify System is Ready
+
+Before starting tests, verify everything is working:
+
+**✅ Backend Health Check:**
+```bash
+curl http://localhost:8080/health
+# Expected: {"status": "healthy"}
+```
+
+**✅ Frontend Accessible:**
+- Open http://localhost:3003 in browser
+- Should see JadeVectorDB login page
+
+**✅ Can Login:**
+- Login with `admin` / `admin123`
+- Should see dashboard after successful login
+
+**✅ Check Logs:**
+```bash
+# Backend logs (in terminal where backend is running)
+# Should see no ERROR messages
+
+# Check log files (if configured)
+tail -f /home/deepak/Public/JadeVectorDB/backend/build/logs/*.log
+```
+
+**✅ Test API Access:**
+```bash
+# Test authentication endpoint
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
+
+# Should return: {"token":"<jwt-token>","user":{...}}
+```
+
+---
+
+### Troubleshooting Startup Issues
+
+**Issue: Backend won't start**
+```bash
+# Check if port 8080 is already in use
+lsof -i :8080
+
+# Kill existing process if needed
+pkill jadevectordb
+
+# Check for build errors
+cd /home/deepak/Public/JadeVectorDB/backend
+./build.sh --no-tests --no-benchmarks
+```
+
+**Issue: Default users not created**
+```bash
+# Verify environment variable is set
+echo $JADEVECTORDB_ENV
+# Should output: development
+
+# If not set, restart backend with:
+export JADEVECTORDB_ENV=development
+./jadevectordb
+```
+
+**Issue: Frontend won't start**
+```bash
+# Check if port 3003 is in use
+lsof -i :3003
+
+# Reinstall dependencies
+cd /home/deepak/Public/JadeVectorDB/frontend
+rm -rf node_modules package-lock.json
+npm install
+npm run dev
+```
+
+**Issue: Cannot login**
+- Check backend is running: `curl http://localhost:8080/health`
+- Verify password meets requirements (10+ chars, uppercase, lowercase, digit, special)
+- Check backend logs for authentication errors
+- Try resetting: stop backend, delete `data/jadevectordb_auth.db`, restart with `JADEVECTORDB_ENV=development`
+
+---
+
+### Quick Commands Reference
+
+```bash
+# START BACKEND (Development Mode)
+export JADEVECTORDB_ENV=development
+cd /home/deepak/Public/JadeVectorDB/backend/build
+./jadevectordb
+
+# START FRONTEND
+cd /home/deepak/Public/JadeVectorDB/frontend
+npm run dev
+
+# STOP BACKEND (Graceful)
+# Option 1: Use the admin shutdown endpoint (recommended - NEW!)
+# First, get admin token
+TOKEN=$(curl -s -X POST http://localhost:8080/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' | jq -r '.token')
+# Then shutdown
+curl -X POST http://localhost:8080/admin/shutdown \
+  -H "Authorization: Bearer $TOKEN"
+# Option 2: Use the dashboard shutdown button (admin users only)
+# Login to http://localhost:3003/dashboard and click "Shutdown Server" button
+# Option 3: Send SIGTERM signal
+pkill -SIGTERM jadevectordb
+# Option 4: Press Ctrl+C in the backend terminal (may hang - avoid if possible)
+
+# STOP FRONTEND
+# Press Ctrl+C in terminal where npm is running
+
+# CHECK RUNNING PROCESSES
+ps aux | grep jadevectordb
+ps aux | grep "next dev"
+
+# VIEW LOGS
+tail -f /home/deepak/Public/JadeVectorDB/backend/build/logs/*.log
+```
 
 ---
 
@@ -473,6 +734,7 @@ watch -n 2 'ps aux | grep jadevectordb | grep -v grep'
 - [ ] Test 12: Statistics tracking works
 - [ ] Test 13: Integrity verifier detects issues
 - [ ] Test 14: Free list reuses space efficiently
+- [ ] Test 15: **Admin shutdown endpoint** (NEW - December 26, 2025)
 
 ### Should Pass:
 - [ ] Test 6: Can handle 1,000+ vectors
@@ -532,6 +794,59 @@ Test 3: Restart Persistence
 
 ---
 
+### Test 15: Admin Shutdown Endpoint (NEW - December 26, 2025)
+**Goal:** Verify graceful server shutdown via admin endpoint
+
+**Steps:**
+1. Login as admin user to get JWT token:
+   ```bash
+   TOKEN=$(curl -s -X POST http://localhost:8080/v1/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"username":"admin","password":"admin123"}' | jq -r '.token')
+   ```
+2. Call shutdown endpoint:
+   ```bash
+   curl -X POST http://localhost:8080/admin/shutdown \
+     -H "Authorization: Bearer $TOKEN"
+   ```
+3. Verify server shuts down gracefully
+
+**Expected Results:**
+- ✅ Response: `{"status":"shutting_down","message":"Server shutdown initiated"}`
+- ✅ Server stops accepting new connections
+- ✅ In-flight requests complete
+- ✅ Server process exits cleanly after ~500ms
+- ✅ Shutdown attempt logged in audit logs
+
+**Security Test:**
+1. Try shutdown with non-admin user (e.g., `dev` / `dev123`)
+2. Should return: `{"error":"Unauthorized: admin privileges required"}`
+3. Try shutdown with invalid token
+4. Should return 401 Unauthorized
+
+**Frontend Test:**
+1. Login to dashboard as admin user
+2. Navigate to http://localhost:3003/dashboard
+3. Verify "Shutdown Server" button is visible (red button, top right)
+4. Click the shutdown button
+5. Confirm in the dialog
+6. Verify server shuts down
+7. Login as non-admin user (e.g., `dev`)
+8. Verify shutdown button is NOT visible
+
+**Verification:**
+```bash
+# Check audit logs for shutdown attempt
+grep -i shutdown /tmp/jadedb.log
+
+# Expected log entries:
+# [INFO] Shutdown authorized by user: admin
+# [INFO] Shutdown initiated successfully
+# [INFO] Executing shutdown callback...
+```
+
+---
+
 ## After Testing
 
 ### If Tests Pass:
@@ -552,10 +867,258 @@ Test 3: Restart Persistence
 
 ---
 
+## CLI Testing (Optional)
+
+The JadeVectorDB CLI tools provide command-line interfaces for managing databases, vectors, and users. Both Python and Shell CLIs are available.
+
+### Prerequisites
+
+**Get an API Token:**
+```bash
+# Login to get authentication token
+TOKEN=$(curl -s -X POST http://localhost:8080/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin123"}' | python3 -c "import sys, json; print(json.load(sys.stdin)['token'])")
+
+echo "Your token: $TOKEN"
+```
+
+---
+
+### Python CLI Testing
+
+**Installation:**
+```bash
+cd /home/deepak/Public/JadeVectorDB/cli/python
+pip install -e .
+```
+
+#### User Management
+
+**Add a new user:**
+```bash
+python3 -m jadevectordb.cli --url http://localhost:8080 --api-key "$TOKEN" \
+  user-add john --role developer --password "Pass123!@#" --email "john@example.com"
+
+# Output includes user_id - save it for other commands
+# Example: "user_id": "f9ff8ff325a6fd26"
+```
+
+**List all users:**
+```bash
+python3 -m jadevectordb.cli --url http://localhost:8080 --api-key "$TOKEN" \
+  user-list
+```
+
+**Show user details:**
+```bash
+# Use user_id from the add-user response
+python3 -m jadevectordb.cli --url http://localhost:8080 --api-key "$TOKEN" \
+  user-show f9ff8ff325a6fd26
+```
+
+**Deactivate a user:**
+```bash
+python3 -m jadevectordb.cli --url http://localhost:8080 --api-key "$TOKEN" \
+  user-deactivate f9ff8ff325a6fd26
+```
+
+**Activate a user:**
+```bash
+python3 -m jadevectordb.cli --url http://localhost:8080 --api-key "$TOKEN" \
+  user-activate f9ff8ff325a6fd26
+```
+
+**Delete a user:**
+```bash
+python3 -m jadevectordb.cli --url http://localhost:8080 --api-key "$TOKEN" \
+  user-delete f9ff8ff325a6fd26
+```
+
+#### Database Operations
+
+**Create a database:**
+```bash
+python3 -m jadevectordb.cli --url http://localhost:8080 --api-key "$TOKEN" \
+  create-db --name my_db --dimension 128 --index-type hnsw
+```
+
+**List databases:**
+```bash
+python3 -m jadevectordb.cli --url http://localhost:8080 --api-key "$TOKEN" \
+  list-dbs
+```
+
+**Get database info:**
+```bash
+python3 -m jadevectordb.cli --url http://localhost:8080 --api-key "$TOKEN" \
+  get-db --database-id db_1766737450595945231
+```
+
+#### Vector Operations
+
+**Store a vector:**
+```bash
+python3 -m jadevectordb.cli --url http://localhost:8080 --api-key "$TOKEN" \
+  store --database-id db_1766737450595945231 \
+  --vector-id vec_001 \
+  --values '[0.1, 0.2, 0.3, 0.4, 0.5]' \
+  --metadata '{"category": "test"}'
+```
+
+**Search vectors:**
+```bash
+python3 -m jadevectordb.cli --url http://localhost:8080 --api-key "$TOKEN" \
+  search --database-id db_1766737450595945231 \
+  --query-vector '[0.1, 0.2, 0.3, 0.4, 0.5]' \
+  --top-k 5
+```
+
+#### Import/Export
+
+**Export vectors:**
+```bash
+python3 -m jadevectordb.cli --url http://localhost:8080 --api-key "$TOKEN" \
+  export --database-id db_1766737450595945231 \
+  --file /tmp/vectors_export.json
+```
+
+**Import vectors:**
+```bash
+python3 -m jadevectordb.cli --url http://localhost:8080 --api-key "$TOKEN" \
+  import --database-id db_1766737450595945231 \
+  --file /tmp/vectors_export.json
+```
+
+---
+
+### Shell CLI Testing
+
+The Shell CLI is located at: `/home/deepak/Public/JadeVectorDB/cli/shell/scripts/jade-db.sh`
+
+#### User Management
+
+**Add a new user:**
+```bash
+cd /home/deepak/Public/JadeVectorDB/cli/shell
+./scripts/jade-db.sh --url http://localhost:8080 --api-key "$TOKEN" \
+  user-add john developer "Pass123!@#" "john@example.com"
+
+# Save the user_id from the response
+```
+
+**List all users:**
+```bash
+./scripts/jade-db.sh --url http://localhost:8080 --api-key "$TOKEN" \
+  user-list
+```
+
+**Show user details:**
+```bash
+# Use user_id from the add-user response
+./scripts/jade-db.sh --url http://localhost:8080 --api-key "$TOKEN" \
+  user-show f9ff8ff325a6fd26
+```
+
+**Deactivate a user:**
+```bash
+./scripts/jade-db.sh --url http://localhost:8080 --api-key "$TOKEN" \
+  user-deactivate f9ff8ff325a6fd26
+```
+
+**Activate a user:**
+```bash
+./scripts/jade-db.sh --url http://localhost:8080 --api-key "$TOKEN" \
+  user-activate f9ff8ff325a6fd26
+```
+
+**Delete a user:**
+```bash
+./scripts/jade-db.sh --url http://localhost:8080 --api-key "$TOKEN" \
+  user-delete f9ff8ff325a6fd26
+```
+
+#### Database Operations
+
+**Create a database:**
+```bash
+./scripts/jade-db.sh --url http://localhost:8080 --api-key "$TOKEN" \
+  create-db my_db "Test database" 128 hnsw
+```
+
+**List databases:**
+```bash
+./scripts/jade-db.sh --url http://localhost:8080 --api-key "$TOKEN" \
+  list-dbs
+```
+
+**Get database info:**
+```bash
+./scripts/jade-db.sh --url http://localhost:8080 --api-key "$TOKEN" \
+  get-db db_1766737450595945231
+```
+
+---
+
+### Automated CLI Test Suite
+
+To run the comprehensive CLI test suite:
+
+```bash
+cd /home/deepak/Public/JadeVectorDB
+python3 tests/run_cli_tests.py
+```
+
+This will test:
+- Python CLI (database, vector, user operations)
+- Shell CLI (database, vector, user operations)
+- Persistence (data survives across operations)
+- RBAC (role-based access control)
+- Import/Export functionality
+
+**Expected Results:**
+- 22+ tests should pass
+- Core functionality: Database creation, vector storage, search, user management
+- All user management commands should work correctly
+
+---
+
+### CLI Tips
+
+**Using Environment Variables:**
+```bash
+# Set these to avoid repeating them
+export JADEVECTORDB_URL="http://localhost:8080"
+export JADEVECTORDB_API_KEY="$TOKEN"
+
+# Then commands become shorter
+python3 -m jadevectordb.cli user-list
+```
+
+**Getting Help:**
+```bash
+# Python CLI help
+python3 -m jadevectordb.cli --help
+python3 -m jadevectordb.cli user-add --help
+
+# Shell CLI help
+./scripts/jade-db.sh --help
+```
+
+**Generate cURL Commands (Python CLI):**
+```bash
+# Use --curl-only to see the cURL command without executing
+python3 -m jadevectordb.cli --curl-only --url http://localhost:8080 --api-key "$TOKEN" \
+  user-list
+```
+
+---
+
 ## Quick Start Command Reference
 
 ```bash
-# Start backend
+# Start backend (Development Mode)
+export JADEVECTORDB_ENV=development
 cd /home/deepak/Public/JadeVectorDB/backend/build
 ./jadevectordb &
 
@@ -563,17 +1126,30 @@ cd /home/deepak/Public/JadeVectorDB/backend/build
 cd /home/deepak/Public/JadeVectorDB/frontend
 npm run dev
 
-# Stop backend gracefully
+# Stop backend gracefully (NEW - Recommended Method)
+TOKEN=$(curl -s -X POST http://localhost:8080/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' | jq -r '.token')
+curl -X POST http://localhost:8080/admin/shutdown \
+  -H "Authorization: Bearer $TOKEN"
+
+# Alternative: Stop backend with SIGTERM
 pkill -SIGTERM jadevectordb
 
 # Monitor logs
-tail -f /home/deepak/Public/JadeVectorDB/backend/build/logs/*.log
+tail -f /tmp/jadedb.log
 
 # Check storage
 find /home/deepak/Public/JadeVectorDB/backend/build/data/ -name "*.jvdb" -ls
 
 # Test health
 curl http://localhost:8080/health
+
+# Test admin shutdown endpoint
+TOKEN=$(curl -s -X POST http://localhost:8080/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' | jq -r '.token')
+curl -X POST http://localhost:8080/admin/shutdown -H "Authorization: Bearer $TOKEN"
 ```
 
 ---

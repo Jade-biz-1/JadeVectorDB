@@ -28,6 +28,7 @@ export default function Layout({ children, title = 'JadeVectorDB' }) {
   const navItems = [
     { name: 'Dashboard', href: '/dashboard' },
     { name: 'Databases', href: '/databases' },
+    { name: 'Vectors', href: '/vectors' },
     { name: 'Search', href: '/search' },
     { name: 'Users', href: '/users' },
     { name: 'API Keys', href: '/api-keys' },

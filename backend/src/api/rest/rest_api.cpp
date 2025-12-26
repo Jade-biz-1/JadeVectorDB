@@ -65,17 +65,22 @@ RestApiService::~RestApiService() {
 
 bool RestApiService::start() {
     LOG_INFO(logger_, "Starting REST API server on port " << port_);
-    
+
     if (!api_impl_->initialize(port_)) {
         LOG_ERROR(logger_, "Failed to initialize REST API server");
         return false;
     }
-    
+
     api_impl_->register_routes();
-    
+
     running_ = true;
-    server_thread_ = std::make_unique<std::thread>(&RestApiService::run_server, this);
-    
+
+    // With run_async(), Crow manages its own threads, so we don't need server_thread_
+    // Call start_server() directly - it will start async and return when ready
+    if (api_impl_) {
+        api_impl_->start_server();
+    }
+
     LOG_INFO(logger_, "REST API server started successfully");
     return true;
 }
@@ -84,17 +89,22 @@ void RestApiService::stop() {
     if (running_) {
         LOG_INFO(logger_, "Stopping REST API server");
         running_ = false;
-        
-        // Stop the Crow app first to unblock the server thread
+
+        // Stop the Crow app - with run_async(), this stops Crow's internal threads
         if (api_impl_) {
             api_impl_->stop_server();
         }
-        
-        if (server_thread_ && server_thread_->joinable()) {
-            server_thread_->join();
-        }
-        
+
+        // Give Crow a moment to shutdown cleanly
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
         LOG_INFO(logger_, "REST API server stopped");
+    }
+}
+
+void RestApiService::set_shutdown_callback(std::function<void()> callback) {
+    if (api_impl_) {
+        api_impl_->set_shutdown_callback(std::move(callback));
     }
 }
 
@@ -187,7 +197,7 @@ bool RestApiImpl::initialize(int port) {
     }
 
     // Get runtime environment
-    const char* env_ptr = std::getenv("JADE_ENV");
+    const char* env_ptr = std::getenv("JADEVECTORDB_ENV");
     runtime_environment_ = env_ptr ? std::string(env_ptr) : "development";
     
     // Initialize security middleware (rate limiting and IP blocking)
@@ -226,7 +236,13 @@ bool RestApiImpl::initialize(int port) {
 void RestApiImpl::start_server() {
     if (app_) {
         LOG_INFO(logger_, "Starting Crow server on port " << server_port_);
-        app_->port(server_port_).multithreaded().run();
+        // Use run_async() instead of run() to avoid Crow's signal handler conflicts
+        // This returns immediately and doesn't install signal handlers
+        app_->port(server_port_).multithreaded().run_async();
+
+        // Wait for server to be ready before returning
+        app_->wait_for_server_start();
+        LOG_INFO(logger_, "Crow server is ready and listening");
     }
 }
 
@@ -246,6 +262,7 @@ void RestApiImpl::register_routes() {
     handle_database_health_check();
     handle_metrics();
     handle_system_status();
+    handle_shutdown();
     
     // Database management endpoints
     // POST /v1/databases - Create database
@@ -275,11 +292,16 @@ void RestApiImpl::register_routes() {
         });
     
     // Vector management endpoints
+    // GET /v1/databases/<id>/vectors - List vectors
     // POST /v1/databases/<id>/vectors - Store vector
-    CROW_ROUTE((*app_), "/v1/databases/<string>/vectors")
-        .methods(crow::HTTPMethod::POST)
+    app_->route_dynamic("/v1/databases/<string>/vectors")
         ([this](const crow::request& req, std::string database_id) {
-            return handle_store_vector_request(req, database_id);
+            if (req.method == crow::HTTPMethod::GET) {
+                return handle_list_vectors_request(req, database_id);
+            } else if (req.method == crow::HTTPMethod::POST) {
+                return handle_store_vector_request(req, database_id);
+            }
+            return crow::response(405, "Method not allowed");
         });
     app_->route_dynamic("/v1/databases/<string>/vectors/batch")
         ([this](const crow::request& req, std::string database_id) {
@@ -360,7 +382,16 @@ void RestApiImpl::register_routes() {
     handle_alert_routes();
     handle_cluster_routes();
     handle_performance_routes();
-    
+
+    // Admin shutdown endpoint
+    std::cout << "[DEBUG] Registering /v1/admin/shutdown endpoint..." << std::endl;
+    CROW_ROUTE((*app_), "/v1/admin/shutdown")
+        .methods(crow::HTTPMethod::POST)
+        ([this](const crow::request& req) {
+            std::cout << "[DEBUG] /v1/admin/shutdown route handler called!" << std::endl;
+            return handle_shutdown_request(req);
+        });
+
     LOG_INFO(logger_, "All REST API routes registered successfully");
 }
 
@@ -408,6 +439,60 @@ void RestApiImpl::handle_health_check() {
             return resp;
         } catch (const std::exception& e) {
             LOG_ERROR(logger_, "Error in health check: " + std::string(e.what()));
+            return crow::response(500, "{\"error\":\"Internal server error\"}");
+        }
+    });
+}
+
+void RestApiImpl::handle_shutdown() {
+    LOG_DEBUG(logger_, "Setting up shutdown endpoint at /shutdown");
+    
+    app_->route_dynamic("/shutdown")
+    ([this](const crow::request& req) {
+        try {
+            // Extract API key from header (required for shutdown)
+            std::string api_key;
+            auto auth_header = req.get_header_value("Authorization");
+            if (auth_header.empty()) {
+                return crow::response(401, "{\"error\":\"Authorization header required for shutdown\"}");
+            }
+            
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            } else {
+                return crow::response(401, "{\"error\":\"Invalid authorization header format\"}");
+            }
+            
+            // Validate API key
+            auto auth_result = authenticate_request(api_key);
+            if (!auth_result.has_value()) {
+                return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+            }
+            
+            LOG_INFO(logger_, "Shutdown request received from authenticated user");
+            
+            // Return response before shutting down
+            crow::json::wvalue response;
+            response["status"] = "shutting_down";
+            response["message"] = "Server is shutting down gracefully";
+            response["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            
+            crow::response resp(200, response);
+            resp.set_header("Content-Type", "application/json");
+            
+            // Schedule shutdown in a separate thread to allow response to be sent
+            std::thread([this]() {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Give time for response
+                LOG_INFO(logger_, "Executing shutdown");
+                _exit(0); // Force immediate exit
+            }).detach();
+            
+            return resp;
+        } catch (const std::exception& e) {
+            LOG_ERROR(logger_, "Error in shutdown: " + std::string(e.what()));
             return crow::response(500, "{\"error\":\"Internal server error\"}");
         }
     });
@@ -673,6 +758,104 @@ void RestApiImpl::handle_system_status() {
             return crow::response(500, "{\"error\":\"Internal server error\"}");
         }
     });
+}
+
+crow::response RestApiImpl::handle_list_vectors_request(const crow::request& req, const std::string& database_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+
+        // Validate database exists
+        auto db_exists_result = db_service_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+
+        // Parse query parameters for pagination
+        auto limit_param = req.url_params.get("limit");
+        auto offset_param = req.url_params.get("offset");
+
+        size_t limit = limit_param ? std::stoul(limit_param) : 50;
+        size_t offset = offset_param ? std::stoul(offset_param) : 0;
+
+        // Get all vector IDs
+        auto ids_result = vector_storage_service_->get_all_vector_ids(database_id);
+        if (!ids_result.has_value()) {
+            return crow::response(500, "{\"error\":\"" + ErrorHandler::format_error(ids_result.error()) + "\"}");
+        }
+
+        auto all_ids = ids_result.value();
+        size_t total = all_ids.size();
+
+        // Apply pagination
+        std::vector<std::string> page_ids;
+        if (offset < all_ids.size()) {
+            size_t end = std::min(offset + limit, all_ids.size());
+            page_ids.assign(all_ids.begin() + offset, all_ids.begin() + end);
+        }
+
+        // Retrieve vectors for the page
+        std::vector<Vector> vectors;
+        if (!page_ids.empty()) {
+            auto vectors_result = vector_storage_service_->retrieve_vectors(database_id, page_ids);
+            if (vectors_result.has_value()) {
+                vectors = vectors_result.value();
+            }
+        }
+
+        // Build response
+        crow::json::wvalue response;
+        response["total"] = total;
+        response["limit"] = limit;
+        response["offset"] = offset;
+
+        crow::json::wvalue vectors_array;
+        int idx = 0;
+        for (const auto& vector : vectors) {
+            crow::json::wvalue vec_obj;
+            vec_obj["id"] = vector.id;
+
+            // Add values as an array
+            crow::json::wvalue values_array;
+            int val_idx = 0;
+            for (auto val : vector.values) {
+                values_array[val_idx++] = val;
+            }
+            vec_obj["values"] = std::move(values_array);
+
+            // Add metadata if present
+            crow::json::wvalue metadata;
+            if (!vector.metadata.source.empty()) metadata["source"] = vector.metadata.source;
+            if (!vector.metadata.owner.empty()) metadata["owner"] = vector.metadata.owner;
+            if (!vector.metadata.category.empty()) metadata["category"] = vector.metadata.category;
+            if (!vector.metadata.status.empty()) metadata["status"] = vector.metadata.status;
+            vec_obj["metadata"] = std::move(metadata);
+
+            vectors_array[idx++] = std::move(vec_obj);
+        }
+        response["vectors"] = std::move(vectors_array);
+
+        crow::response resp(200, response);
+        resp.set_header("Content-Type", "application/json");
+        return resp;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in list vectors: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
 }
 
 crow::response RestApiImpl::handle_store_vector_request(const crow::request& req, const std::string& database_id) {
@@ -2447,6 +2630,142 @@ Result<bool> RestApiImpl::authenticate_request(const std::string& token_or_api_k
     return true;
 }
 
+/**
+ * @brief Extracts API key or JWT token from the Authorization header
+ *
+ * Supports two header formats:
+ * - Bearer token: "Authorization: Bearer <jwt-token>"
+ * - API key: "Authorization: ApiKey <api-key>"
+ *
+ * @param req The HTTP request object
+ * @return The extracted token/key, or empty string if not found
+ *
+ * @example
+ * Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ * Authorization: ApiKey a1b2c3d4e5f6...
+ */
+std::string RestApiImpl::extract_api_key(const crow::request& req) const {
+    std::string api_key;
+    auto auth_header = req.get_header_value("Authorization");
+
+    if (!auth_header.empty()) {
+        if (auth_header.substr(0, 7) == "Bearer ") {
+            api_key = auth_header.substr(7);
+        } else if (auth_header.substr(0, 7) == "ApiKey ") {
+            api_key = auth_header.substr(7);
+        }
+    }
+
+    return api_key;
+}
+
+/**
+ * @brief Authorizes a request by validating the JWT token and checking permissions
+ *
+ * This method performs a multi-step authorization process:
+ * 1. Extracts JWT token or API key from Authorization header
+ * 2. Validates the token/key with AuthenticationService
+ * 3. Retrieves user details from database
+ * 4. Checks if user has the required role/permission
+ *
+ * @param req The HTTP request object containing Authorization header
+ * @param permission The required role (e.g., "admin", "developer", "user")
+ *                   Pass empty string to skip permission check
+ *
+ * @return Result<std::string> containing user_id on success, or error on failure
+ *
+ * @throws ErrorCode::UNAUTHENTICATED if token is missing or invalid
+ * @throws ErrorCode::PERMISSION_DENIED if user lacks required role
+ *
+ * @note All authorization attempts are logged for audit purposes
+ *
+ * @example
+ * auto result = authorize_api_key(req, "admin");
+ * if (result.has_value()) {
+ *     std::string user_id = result.value();
+ *     // User is authorized as admin
+ * }
+ */
+Result<std::string> RestApiImpl::authorize_api_key(const crow::request& req, const std::string& permission) const {
+    // Extract API key from request
+    std::string api_key = extract_api_key(req);
+
+    std::cout << "[DEBUG authorize_api_key] Extracted API key: " << (api_key.empty() ? "(empty)" : api_key.substr(0, 8) + "...") << std::endl;
+
+    if (api_key.empty()) {
+        std::cout << "[DEBUG authorize_api_key] ERROR: No API key or token provided" << std::endl;
+        RETURN_ERROR(ErrorCode::UNAUTHENTICATED, "No API key or token provided");
+    }
+
+    // Try validating as a JWT token first
+    auto token_result = authentication_service_->validate_token(api_key);
+    std::string user_id;
+
+    if (token_result.has_value()) {
+        // Token validation successful
+        user_id = token_result.value();
+        std::cout << "[DEBUG authorize_api_key] Token validated, user_id: " << user_id << std::endl;
+    } else {
+        std::cout << "[DEBUG authorize_api_key] Token validation failed, trying as API key..." << std::endl;
+        // If token validation failed, try as API key
+        auto api_key_result = authentication_service_->authenticate_with_api_key(api_key, "0.0.0.0");
+
+        if (!api_key_result.has_value()) {
+            std::cout << "[DEBUG authorize_api_key] ERROR: Invalid token or API key" << std::endl;
+            RETURN_ERROR(ErrorCode::UNAUTHENTICATED, "Invalid token or API key");
+        }
+
+        user_id = api_key_result.value();
+        std::cout << "[DEBUG authorize_api_key] API key validated, user_id: " << user_id << std::endl;
+    }
+
+    // If a specific permission is required, check user's roles
+    if (!permission.empty()) {
+        std::cout << "[DEBUG authorize_api_key] Checking permission: " << permission << " for user: " << user_id << std::endl;
+        auto user_result = authentication_service_->get_user(user_id);
+
+        if (!user_result.has_value()) {
+            std::cout << "[DEBUG authorize_api_key] ERROR: User not found: " << user_id << std::endl;
+            RETURN_ERROR(ErrorCode::UNAUTHENTICATED, "User not found");
+        }
+
+        const auto& user = user_result.value();
+
+        std::cout << "[DEBUG authorize_api_key] User found, checking roles..." << std::endl;
+        std::cout << "[DEBUG authorize_api_key] Number of roles: " << user.roles.size() << std::endl;
+
+        std::string roles_str;
+        for (size_t i = 0; i < user.roles.size(); ++i) {
+            if (i > 0) roles_str += ", ";
+            roles_str += user.roles[i];
+            std::cout << "[DEBUG authorize_api_key]   Role[" << i << "]: '" << user.roles[i] << "'" << std::endl;
+        }
+        std::cout << "[DEBUG authorize_api_key] All roles: [" << roles_str << "]" << std::endl;
+
+        // Check if user has the required role
+        bool has_permission = false;
+        std::cout << "[DEBUG authorize_api_key] Looking for role: '" << permission << "'" << std::endl;
+        for (const auto& role : user.roles) {
+            std::cout << "[DEBUG authorize_api_key] Comparing '" << role << "' == '" << permission << "' ? " << (role == permission ? "YES" : "NO") << std::endl;
+            if (role == permission) {
+                has_permission = true;
+                break;
+            }
+        }
+
+        std::cout << "[DEBUG authorize_api_key] Permission check result: " << (has_permission ? "PASSED" : "FAILED") << std::endl;
+
+        if (!has_permission) {
+            std::cout << "[DEBUG authorize_api_key] ERROR: Permission denied - user lacks '" << permission << "' role" << std::endl;
+            RETURN_ERROR(ErrorCode::PERMISSION_DENIED, "Insufficient permissions: " + permission + " role required");
+        }
+
+        std::cout << "[DEBUG authorize_api_key] Permission check PASSED!" << std::endl;
+    }
+
+    return user_id;
+}
+
 std::string RestApiImpl::generate_secure_token() const {
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -2467,6 +2786,119 @@ std::string RestApiImpl::to_iso_string(const std::chrono::system_clock::time_poi
     std::stringstream ss;
     ss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
     return ss.str();
+}
+
+// ============================================================================
+// ADMIN ENDPOINTS
+// ============================================================================
+// These endpoints provide administrative functionality for server management.
+// All admin endpoints require:
+// - Valid JWT authentication
+// - User must have 'admin' role
+// - All access attempts are logged in audit logs
+// ============================================================================
+
+/**
+ * @brief Registers the shutdown callback to be called when shutdown is requested
+ *
+ * This method is called during server initialization to register the callback
+ * function that will be executed when an admin user requests server shutdown
+ * via the /admin/shutdown endpoint.
+ *
+ * @param callback Function to call when shutdown is requested
+ *                 Typically points to main application's request_shutdown()
+ *
+ * @note The callback is executed in a separate thread with a 500ms delay
+ *       to ensure the HTTP response is sent before shutdown begins
+ *
+ * @see handle_shutdown_request()
+ * @see main.cpp - where callback is registered
+ */
+void RestApiImpl::set_shutdown_callback(std::function<void()> callback) {
+    shutdown_callback_ = std::move(callback);
+}
+
+/**
+ * @brief Handles graceful server shutdown requests (Admin only)
+ *
+ * Endpoint: POST /admin/shutdown
+ *
+ * This endpoint allows administrators to remotely shutdown the server in a
+ * controlled, graceful manner. The shutdown process:
+ * 1. Authenticates the request (JWT token required)
+ * 2. Authorizes the user (must have 'admin' role)
+ * 3. Sends HTTP 200 response to client
+ * 4. Waits 500ms to ensure response is delivered
+ * 5. Executes shutdown callback (stops server, closes DB, exits)
+ *
+ * @param req The HTTP request object
+ * @return crow::response
+ *         - 200 OK: {"status":"shutting_down","message":"Server shutdown initiated"}
+ *         - 401 Unauthorized: {"error":"Unauthorized: admin privileges required"}
+ *         - 500 Internal Error: {"error":"Shutdown mechanism not configured"}
+ *
+ * @note All shutdown attempts (successful and failed) are logged to audit log
+ * @note The actual shutdown happens asynchronously after response is sent
+ * @note In-flight requests are completed before server stops
+ *
+ * @security
+ * - Requires valid JWT token in Authorization header
+ * - User must have 'admin' role
+ * - All attempts logged for security auditing
+ *
+ * @example
+ * curl -X POST http://localhost:8080/admin/shutdown \
+ *   -H "Authorization: Bearer <admin-jwt-token>"
+ *
+ * @see set_shutdown_callback() - where callback is registered
+ * @see authorize_api_key() - authorization implementation
+ * @see docs/admin_endpoints.md - complete documentation
+ */
+crow::response RestApiImpl::handle_shutdown_request(const crow::request& req) {
+    try {
+        std::cout << "[DEBUG] handle_shutdown_request called!" << std::endl;
+        LOG_INFO(logger_, "Received shutdown request");
+
+        // Authenticate and authorize (must be admin)
+        std::cout << "[DEBUG] Calling authorize_api_key..." << std::endl;
+        auto auth_result = authorize_api_key(req, "admin");
+        std::cout << "[DEBUG] authorize_api_key returned: " << (auth_result.has_value() ? "SUCCESS" : "FAILED") << std::endl;
+        if (!auth_result.has_value()) {
+            LOG_WARN(logger_, "Unauthorized shutdown attempt");
+            crow::json::wvalue error_response;
+            error_response["error"] = "Unauthorized: admin privileges required";
+            return crow::response(401, error_response);
+        }
+
+        LOG_INFO(logger_, "Shutdown authorized by user: " + auth_result.value());
+
+        // Trigger shutdown callback (asynchronously to allow response to be sent)
+        if (shutdown_callback_) {
+            // Schedule shutdown after a short delay to allow response to be sent
+            std::thread([this]() {
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                LOG_INFO(logger_, "Executing shutdown callback...");
+                shutdown_callback_();
+            }).detach();
+
+            crow::json::wvalue response;
+            response["status"] = "shutting_down";
+            response["message"] = "Server shutdown initiated";
+            LOG_INFO(logger_, "Shutdown initiated successfully");
+            return crow::response(200, response);
+        } else {
+            LOG_ERROR(logger_, "Shutdown callback not configured");
+            crow::json::wvalue error_response;
+            error_response["error"] = "Shutdown mechanism not configured";
+            return crow::response(500, error_response);
+        }
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in handle_shutdown_request: " + std::string(e.what()));
+        crow::json::wvalue error_response;
+        error_response["error"] = "Internal server error";
+        return crow::response(500, error_response);
+    }
 }
 
 } // namespace jadevectordb

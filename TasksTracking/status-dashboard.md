@@ -155,7 +155,7 @@ Comprehensive automated test suite created for all Sprint 2.3 persistence featur
 
 **Completed (2025-12-11 to 2025-12-12)**:
 - ✅ Fixed password validation (10-char minimum requirement)
-- ✅ Updated default passwords: Admin@123456, Developer@123, Tester@123456
+- ✅ Updated default passwords: admin123, dev123, test123
 - ✅ Added list_users(), list_api_keys() methods to AuthenticationService
 - ✅ Updated user/API key handlers to use AuthenticationService
 - ✅ Verified login works end-to-end

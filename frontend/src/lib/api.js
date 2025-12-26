@@ -403,6 +403,18 @@ export const performanceApi = {
   },
 };
 
+// API Service for Admin Operations
+export const adminApi = {
+  // Shutdown server (admin only)
+  shutdownServer: async () => {
+    const response = await fetch(`${API_BASE_URL}/admin/shutdown`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};
+
 // API Service for Authentication (T219 - Authentication handlers)
 export const authApi = {
   // Register a new user

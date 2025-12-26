@@ -44,7 +44,7 @@ echo ""
 log_info "Authenticating..."
 LOGIN_RESPONSE=$(curl -s -X POST "$BASE_URL/v1/auth/login" \
     -H "Content-Type: application/json" \
-    -d '{"username":"admin","password":"Admin@123456"}' 2>/dev/null)
+    -d '{"username":"admin","password":"admin123"}' 2>/dev/null)
 
 TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 
@@ -66,7 +66,7 @@ TOTAL_TIME=0
 for i in $(seq 1 $ITERATIONS); do
     TIME=$(curl -s -o /dev/null -w "%{time_total}" -X POST "$BASE_URL/v1/auth/login" \
         -H "Content-Type: application/json" \
-        -d '{"username":"admin","password":"Admin@123456"}' 2>/dev/null)
+        -d '{"username":"admin","password":"admin123"}' 2>/dev/null)
     TOTAL_TIME=$(echo "$TOTAL_TIME + $TIME" | bc)
 done
 

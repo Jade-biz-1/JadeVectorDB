@@ -82,8 +82,132 @@ JadeVectorDB has reached **100% completion** (338/338 tasks) with all core featu
 ✅ **Docker** - Complete deployment configurations
 ✅ **Documentation** - 60+ comprehensive documentation files
 
-**Automated Testing Report**: See `docs/archive/AUTOMATED_TEST_REPORT_2025-12-13.md` for full verification results  
+**Automated Testing Report**: See `docs/archive/AUTOMATED_TEST_REPORT_2025-12-13.md` for full verification results
 
+---
+
+## 🚀 How to Enable Distributed Features
+
+**Note**: Distributed features are fully implemented (12,259+ lines) but **disabled by default** in Phase 1. They can be enabled for testing or production use.
+
+### Three Ways to Enable Distributed Features:
+
+#### Option 1: Environment Variables (Recommended for Testing)
+
+```bash
+# Set environment variables
+export JADEVECTORDB_ENABLE_SHARDING=true
+export JADEVECTORDB_ENABLE_REPLICATION=true
+export JADEVECTORDB_ENABLE_CLUSTERING=true
+export JADEVECTORDB_NUM_SHARDS=16
+export JADEVECTORDB_REPLICATION_FACTOR=3
+export JADEVECTORDB_CLUSTER_HOST=0.0.0.0
+export JADEVECTORDB_CLUSTER_PORT=9080
+export JADEVECTORDB_SEED_NODES=node1:9080,node2:9080,node3:9080
+
+# Run the application
+cd backend/build
+./jadevectordb
+```
+
+#### Option 2: JSON Configuration (Recommended for Production)
+
+Use the example configuration file:
+
+```bash
+# Copy the example distributed config
+cp backend/config/distributed.json backend/config/my-distributed.json
+
+# Edit the config file to customize settings
+nano backend/config/my-distributed.json
+
+# Run with production environment
+export JADEVECTORDB_ENV=production
+cd backend/build
+./jadevectordb
+```
+
+**Config File Location**: `backend/config/`
+- `development.json` - Single-node (distributed disabled)
+- `production.json` - Single-node (distributed disabled)
+- `distributed.json` - **Example with distributed enabled** ✅
+
+**Example `distributed.json`**:
+```json
+{
+  "distributed": {
+    "enable_sharding": true,
+    "enable_replication": true,
+    "enable_clustering": true,
+    "sharding_strategy": "hash",
+    "num_shards": 16,
+    "replication_factor": 3,
+    "cluster_host": "0.0.0.0",
+    "cluster_port": 9080,
+    "seed_nodes": ["node1:9080", "node2:9080", "node3:9080"]
+  }
+}
+```
+
+#### Option 3: Docker Compose
+
+Use the distributed deployment configuration:
+
+```bash
+# Use the distributed compose file
+docker compose -f docker-compose.distributed.yml up --build
+
+# Or set environment variables in docker-compose.yml
+services:
+  jadevectordb:
+    environment:
+      - JADEVECTORDB_ENABLE_SHARDING=true
+      - JADEVECTORDB_ENABLE_REPLICATION=true
+      - JADEVECTORDB_ENABLE_CLUSTERING=true
+```
+
+### Verify Distributed Features Are Running
+
+Check the logs for:
+```
+[INFO] Distributed config: sharding=true, replication=true, clustering=true
+[INFO] Distributed services initialized successfully
+```
+
+**Full Documentation**: See `ENABLE_DISTRIBUTED.md` for complete setup guide
+
+---
+
+## 📅 Roadmap: Phase 2 - Distributed Features
+
+### Phase 1 (Current - Production Ready) ✅
+- **Status**: Complete (338/338 tasks, 26/26 tests passing)
+- **Deployment**: Single-node vector database
+- **Focus**: Core features, persistence, RBAC, authentication
+- **Goal**: Stable, reliable production system
+
+### Phase 2 (Post-Launch - Distributed Rollout) 🚀
+- **Status**: Planned (distributed code complete, needs multi-node testing)
+- **Activities**:
+  1. Set up multi-node test environment (3+ nodes)
+  2. Enable distributed features incrementally:
+     - **Step 1**: Clustering (master election, node coordination)
+     - **Step 2**: Replication (high availability, fault tolerance)
+     - **Step 3**: Sharding (horizontal scaling, data distribution)
+  3. Performance benchmarking under distributed load
+  4. Chaos engineering experiments (network failures, node crashes)
+  5. Production validation in multi-node deployment
+  6. Update deployment guides with tested configurations
+
+- **Timeline**: Post Phase 1 launch (when single-node proven in production)
+- **Goal**: Horizontal scaling, high availability, geographic distribution
+
+**Why Phase 2?**
+- Distributed features are **fully coded** (12,259+ lines) but not production-tested in multi-node setup
+- Phase 1 focuses on getting a working system to users quickly
+- Phase 2 adds enterprise-grade distributed capabilities after core validation
+
+---
 
 ### 🤝 **Join Our Development Team!**
 

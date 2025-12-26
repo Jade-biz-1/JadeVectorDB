@@ -12,6 +12,7 @@ services:
       - JADE_DB_LOG_LEVEL=INFO
       - JADE_DB_DATA_DIR=/data
       - JADE_DB_CONFIG_DIR=/config
+      - JADEVECTORDB_ENV=development
     volumes:
       - jadevectordb_data:/data
       - jadevectordb_config:/config
