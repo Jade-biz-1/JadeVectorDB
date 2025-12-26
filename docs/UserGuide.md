@@ -295,7 +295,7 @@ curl -X DELETE http://localhost:8080/v1/api-keys/key_123456 \
 ### Development Mode (Default)
 
 export JADEVECTORDB_ENV=development
-export JADE_ENV=development
+export JADEVECTORDB_ENV=development
 ./jadevectordb
 ```
 
@@ -308,7 +308,7 @@ export JADEVECTORDB_ENV=production
 ### Test Mode
 
 ```bash
-export JADE_ENV=test
+export JADEVECTORDB_ENV=test
 echo $JADEVECTORDB_ENV  # Should be 'development', 'dev', 'test', or not set
 ```
 export JADEVECTORDB_ENV=development
@@ -321,7 +321,7 @@ export JADEVECTORDB_ENV=development
 ### Production Mode
 
 ```bash
-export JADE_ENV=production
+export JADEVECTORDB_ENV=production
 ./jadevectordb
 ```
 
@@ -333,7 +333,7 @@ export JADE_ENV=production
 - ✅ Rate limiting enabled
 
 **Production Security Checklist**:
-- [ ] Set `JADE_ENV=production`
+- [ ] Set `JADEVECTORDB_ENV=production`
 - [ ] Create admin users with strong passwords
 - [ ] Enable HTTPS/TLS
 - [ ] Configure firewall rules
@@ -412,7 +412,7 @@ curl -X POST http://localhost:8080/v1/databases/documents/search \
 **Solutions**:
 1. Verify you're running in development/test mode:
    ```bash
-   echo $JADE_ENV  # Should be empty, "development", or "test"
+   echo $JADEVECTORDB_ENV  # Should be empty, "development", or "test"
    ```
 
 2. Check server logs for user creation messages:

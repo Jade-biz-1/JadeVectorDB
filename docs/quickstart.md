@@ -143,7 +143,7 @@ For local development and testing, JadeVectorDB provides default user accounts:
 | dev | dev123 | developer, user |
 | test | test123 | tester, user |
 
-*Note: Default users are only seeded when `JADE_ENV` is set to `development`, `test`, or `local`.*
+*Note: Default users are only seeded when `JADEVECTORDB_ENV` is set to `development`, `test`, or `local`.*
 
 **Login Example:**
 ```bash

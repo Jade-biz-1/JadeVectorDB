@@ -152,13 +152,13 @@ JadeVectorDB uses AES-256-GCM for data encryption:
 
 ## Default Users (Development Only)
 
-Default users are only created when `JADE_ENV` is set to `development`, `test`, or `local`:
+Default users are only created when `JADEVECTORDB_ENV` is set to `development`, `test`, or `local`:
 
 | Username | Password | Roles | Purpose |
 |----------|----------|-------|---------|
-| admin | Admin@123456 | admin, developer, user | Full administrative access |
-| dev | Developer@123 | developer, user | Development testing |
-| test | Tester@123456 | tester, user | Automated testing |
+| admin | admin123 | admin, developer, user | Full administrative access |
+| dev | dev123 | developer, user | Development testing |
+| test | test123 | tester, user | Automated testing |
 
 **⚠️ WARNING**: These users are NOT created in production. You must create admin users manually with strong passwords.
 
@@ -167,7 +167,7 @@ Default users are only created when `JADE_ENV` is set to `development`, `test`, 
 ### Pre-Deployment Checklist
 
 - [ ] Change all default configurations
-- [ ] Set `JADE_ENV=production`
+- [ ] Set `JADEVECTORDB_ENV=production`
 - [ ] Enable HTTPS/TLS
 - [ ] Configure proper token expiry times
 - [ ] Set up audit log retention

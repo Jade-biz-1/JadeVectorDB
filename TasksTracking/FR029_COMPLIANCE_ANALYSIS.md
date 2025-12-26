@@ -90,7 +90,7 @@ if (environment != "development" && environment != "dev" &&
 | Create `admin` user | ✅ PASS | Username correct |
 | Create `dev` user | ❌ FAIL | Created as `developer` instead |
 | Create `test` user | ❌ FAIL | Created as `tester` instead |
-| Environment-aware | ✅ PASS | Uses JADE_ENV correctly |
+| Environment-aware | ✅ PASS | Uses JADEVECTORDB_ENV correctly |
 | Production safety | ✅ PASS | Users removed (not created) |
 | Status = active | ✅ PASS | All created users are active |
 | Documentation | ✅ PASS | T236_IMPLEMENTATION_SUMMARY.md exists |
@@ -150,7 +150,7 @@ if (allow_default_users) {
 - ⚠️ Uses different role names: `role_admin`, `role_user`
 - ✅ Includes email addresses
 - ✅ Uses stronger passwords
-- ⚠️ Environment variable is `JADEVECTORDB_ENV` (different from T236's `JADE_ENV`)
+- ⚠️ Environment variable is `JADEVECTORDB_ENV` (different from T236's `JADEVECTORDB_ENV`)
 
 **Conflict**: We now have TWO seeding mechanisms that may create different users!
 
@@ -181,9 +181,9 @@ Both seeding mechanisms will run:
    - **Recommendation**: Update T236 (cleaner, better documented), remove legacy
 
 3. ✅ **Unify environment variable**:
-   - Choose either `JADE_ENV` or `JADEVECTORDB_ENV`
+   - Choose either `JADEVECTORDB_ENV` or `JADEVECTORDB_ENV`
    - Update all references to use the same one
-   - **Recommendation**: Use `JADE_ENV` (shorter, simpler)
+   - **Recommendation**: Use `JADEVECTORDB_ENV` (shorter, simpler)
 
 4. ❌ **Add tests** (can be separate task):
    - Verify FR-029 compliance

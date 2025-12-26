@@ -44,7 +44,7 @@ JadeVectorDB comes with a default admin account:
 
 ```
 Username: admin
-Password: Admin@123456
+Password: admin123
 ```
 
 **⚠️ CRITICAL**: Change the default password immediately after first login!
@@ -55,7 +55,7 @@ Password: Admin@123456
 # Using CLI
 ./jade-db.sh change-password \
   --username admin \
-  --old-password Admin@123456 \
+  --old-password admin123 \
   --new-password "YourSecurePassword123!"
 
 # Using API
@@ -63,7 +63,7 @@ curl -X PUT https://api.example.com/v1/auth/password \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "old_password": "Admin@123456",
+    "old_password": "admin123",
     "new_password": "YourSecurePassword123!"
   }'
 ```

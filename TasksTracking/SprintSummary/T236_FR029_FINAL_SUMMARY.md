@@ -17,7 +17,7 @@ Successfully implemented environment-specific default user seeding (T236) in ful
 | Create `admin` user | ✅ PASS | Username: `admin`, Password: `admin123` |
 | Create `dev` user | ✅ PASS | Username: `dev`, Password: `dev123` |
 | Create `test` user | ✅ PASS | Username: `test`, Password: `test123` |
-| Environment-aware creation | ✅ PASS | Uses `JADE_ENV` variable |
+| Environment-aware creation | ✅ PASS | Uses `JADEVECTORDB_ENV` variable |
 | Production safety | ✅ PASS | Users NOT created in production |
 | Status = active | ✅ PASS | All users created with active status |
 | Documentation | ✅ PASS | Complete documentation created |
@@ -41,7 +41,7 @@ All three users are created with their complete credentials including unique use
 
 ### Environment Detection
 
-**Environment Variable**: `JADE_ENV`
+**Environment Variable**: `JADEVECTORDB_ENV`
 
 **Creates users in**:
 - `development` or `dev`
@@ -63,7 +63,7 @@ All three users are created with their complete credentials including unique use
 **File**: `backend/src/services/authentication_service.cpp`
 - Added: `seed_default_users()` implementation (lines 719-825, 107 lines)
 - Features:
-  - Environment detection via `JADE_ENV`
+  - Environment detection via `JADEVECTORDB_ENV`
   - Idempotent operation (checks for existing users)
   - Thread-safe (uses existing mutexes)
   - Comprehensive logging
@@ -74,7 +74,7 @@ All three users are created with their complete credentials including unique use
 **File**: `backend/src/api/rest/rest_api.cpp`
 - **Added**: Call to `seed_default_users()` after authentication service init (lines 132-136)
 - **Removed**: Legacy seeding code (previously lines 138-188, ~50 lines)
-- **Fixed**: Environment variable changed from `JADEVECTORDB_ENV` to `JADE_ENV` for consistency
+- **Fixed**: Environment variable changed from `JADEVECTORDB_ENV` to `JADEVECTORDB_ENV` for consistency
 
 ### Issues Fixed
 
@@ -87,8 +87,8 @@ All three users are created with their complete credentials including unique use
 **After**: Single implementation creating exactly 3 users
 
 #### Issue 3: Environment Variable Inconsistency ✅ FIXED
-**Before**: T236 used `JADE_ENV`, legacy used `JADEVECTORDB_ENV`
-**After**: All code uses `JADE_ENV`
+**Before**: T236 used `JADEVECTORDB_ENV`, legacy used `JADEVECTORDB_ENV`
+**After**: All code uses `JADEVECTORDB_ENV`
 
 ## Documentation Created
 
@@ -223,7 +223,7 @@ curl -X POST http://localhost:8080/v1/auth/login \
 ### Production Deployment
 
 ```bash
-export JADE_ENV=production
+export JADEVECTORDB_ENV=production
 ./jadevectordb
 
 # No default users created - create admin manually:
@@ -262,7 +262,7 @@ curl -X POST http://localhost:8080/v1/auth/register \
 - Auto-created on first server start
 
 ### Production Environments ✅
-- **Automatic prevention**: Users NOT created when `JADE_ENV=production`
+- **Automatic prevention**: Users NOT created when `JADEVECTORDB_ENV=production`
 - No weak credentials in production
 - Requires manual user creation with strong passwords
 - Environment detection via variable (no hard-coding)

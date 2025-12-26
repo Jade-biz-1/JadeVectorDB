@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
-import { clusterApi, databaseApi, monitoringApi, securityApi } from '../lib/api';
+import { clusterApi, databaseApi, monitoringApi, securityApi, adminApi, authApi, usersApi } from '../lib/api';
 
 export default function Dashboard() {
   const [nodes, setNodes] = useState([]);
@@ -9,12 +9,30 @@ export default function Dashboard() {
   const [recentLogs, setRecentLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [userRoles, setUserRoles] = useState([]);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
+    fetchUserRoles();
     const interval = setInterval(fetchDashboardData, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  const fetchUserRoles = async () => {
+    try {
+      const currentUser = authApi.getCurrentUser();
+      if (currentUser && currentUser.user_id) {
+        const userDetails = await usersApi.getUser(currentUser.user_id);
+        if (userDetails && userDetails.roles) {
+          setUserRoles(userDetails.roles);
+          setIsAdmin(userDetails.roles.includes('admin'));
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching user roles:', error);
+    }
+  };
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -35,6 +53,24 @@ export default function Dashboard() {
       console.error('Error loading dashboard:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleShutdown = async () => {
+    if (!window.confirm('Are you sure you want to shut down the server? This will stop all operations and disconnect all clients.')) {
+      return;
+    }
+
+    try {
+      await adminApi.shutdownServer();
+      alert('Server shutdown initiated successfully. The server will stop shortly.');
+      // Optionally redirect to a shutdown confirmation page
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 2000);
+    } catch (error) {
+      alert('Failed to shutdown server: ' + error.message);
+      console.error('Error shutting down server:', error);
     }
   };
 
@@ -66,6 +102,10 @@ export default function Dashboard() {
           color: #7f8c8d;
           margin-top: 5px;
         }
+        .header-buttons {
+          display: flex;
+          gap: 10px;
+        }
         .btn-refresh {
           padding: 10px 20px;
           background: #3498db;
@@ -83,6 +123,20 @@ export default function Dashboard() {
         .btn-refresh:disabled {
           opacity: 0.5;
           cursor: not-allowed;
+        }
+        .btn-shutdown {
+          padding: 10px 20px;
+          background: #e74c3c;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 500;
+          transition: all 0.3s ease;
+        }
+        .btn-shutdown:hover {
+          background: #c0392b;
         }
         .grid {
           display: grid;
@@ -193,13 +247,33 @@ export default function Dashboard() {
               </div>
             )}
           </div>
-          <button
-            onClick={fetchDashboardData}
-            disabled={loading}
-            className="btn-refresh"
-          >
-            {loading ? 'Refreshing...' : 'Refresh'}
-          </button>
+          <div className="header-buttons">
+            <button
+              onClick={fetchDashboardData}
+              disabled={loading}
+              className="btn-refresh"
+            >
+              {loading ? 'Refreshing...' : 'Refresh'}
+            </button>
+            {isAdmin && (
+              <button
+                onClick={handleShutdown}
+                className="btn-shutdown"
+              >
+                Shutdown Server
+              </button>
+            )}
+            {/* Temporary: Show shutdown button for testing */}
+            {!isAdmin && (
+              <button
+                onClick={handleShutdown}
+                className="btn-shutdown"
+                title="Temporary testing button - normally requires admin role"
+              >
+                Shutdown Server (Test)
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid">

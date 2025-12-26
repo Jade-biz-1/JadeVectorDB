@@ -5,6 +5,12 @@
 #include <chrono>
 #include <csignal>
 #include <atomic>
+#include <mutex>
+#include <condition_variable>
+#include <fstream>
+#include <ctime>
+#include <cstring>   // for strlen
+#include <unistd.h>  // for write, STDOUT_FILENO (async-signal-safe I/O)
 
 #include "lib/logging.h"
 #include "lib/error_handling.h"
@@ -26,13 +32,19 @@
 #include "api/rest/rest_api.h"
 #include "api/grpc/grpc_service.h"
 
-namespace jadevectordb {
+// Global flag for signal handling
+static std::atomic<bool> g_shutdown_requested(false);
 
-// Forward declarations for services
-class DatabaseService;
-class VectorStorageService;
-class SimilaritySearchService;
-class IndexService;
+// Forward declaration for JadeVectorDBApp
+namespace jadevectordb {
+class JadeVectorDBApp;
+}
+static jadevectordb::JadeVectorDBApp* g_app_instance = nullptr;
+
+// Forward declare signal handler (defined after class)
+void shutdown_signal_handler(int signal);
+
+namespace jadevectordb {
 
 // Main application class
 class JadeVectorDBApp {
@@ -49,7 +61,9 @@ private:
     std::unique_ptr<VectorDatabaseService> grpc_service_;
     
     bool running_;
-
+    std::mutex shutdown_mutex_;
+    std::condition_variable shutdown_cv_;
+    
 public:
     JadeVectorDBApp() : config_mgr_(nullptr), metrics_registry_(nullptr), running_(false) {
         // Initialize logging
@@ -225,7 +239,13 @@ public:
         }
         
         running_ = true;
-        
+
+        // Set shutdown callback for /admin/shutdown endpoint
+        rest_api_service_->set_shutdown_callback([this]() {
+            LOG_INFO(logger_, "Shutdown requested via REST API endpoint");
+            request_shutdown();
+        });
+
         // Start REST API service
         if (!rest_api_service_->start()) {
             RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to start REST API service");
@@ -242,15 +262,22 @@ public:
         // Main application loop - run until shutdown is requested
         // The server will run continuously until SIGINT (Ctrl+C) or SIGTERM is received
         LOG_INFO(logger_, "Server is running. Press Ctrl+C to stop.");
-        while (running_) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-            // Server continues running, processing requests via REST API and gRPC
+        while (running_ && !g_shutdown_requested) {
+            // Check for shutdown every 100ms instead of using condition variable
+            // This makes the loop more responsive to signals
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
         // Explicitly shutdown before returning
         auto shutdown_result = shutdown();
         
         return Result<void>{};
+    }
+
+    // Public method to stop the application (called from signal handler)
+    void stop() {
+        running_ = false;
+        shutdown_cv_.notify_all();
     }
 
     Result<void> shutdown() {
@@ -296,21 +323,26 @@ public:
     bool is_running() const { return running_; }
 
     void request_shutdown() {
+        std::unique_lock<std::mutex> lock(shutdown_mutex_);
         running_ = false;
+        shutdown_cv_.notify_all();
     }
 };
 
 } // namespace jadevectordb
 
-// Global flag for signal handling
-static std::atomic<bool> g_shutdown_requested(false);
-static jadevectordb::JadeVectorDBApp* g_app_instance = nullptr;
-
-// Signal handler for graceful shutdown
-void signal_handler(int signal) {
+// Signal handler for graceful shutdown (defined after class to access methods)
+// IMPORTANT: This must be async-signal-safe (no I/O, no heap allocation, etc.)
+void shutdown_signal_handler(int signal) {
     if (signal == SIGINT || signal == SIGTERM) {
-        std::cout << "\nReceived shutdown signal. Shutting down gracefully..." << std::endl;
-        g_shutdown_requested = true;
+        // Use write() instead of cout (async-signal-safe)
+        const char* msg = "\nReceived shutdown signal. Shutting down gracefully...\n";
+        (void)write(STDOUT_FILENO, msg, strlen(msg));  // Cast to void to ignore return value
+
+        // Set atomic flag
+        g_shutdown_requested.store(true, std::memory_order_release);
+
+        // Trigger application shutdown (this calls rest_api_service_->stop())
         if (g_app_instance) {
             g_app_instance->request_shutdown();
         }
@@ -321,24 +353,41 @@ int main(int argc, char* argv[]) {
     (void)argc; // Unused - future: parse command line args
     (void)argv; // Unused - future: parse command line args
     std::cout << "Starting JadeVectorDB..." << std::endl;
+    std::cout << "[DEBUG] Build timestamp: " << __DATE__ << " " << __TIME__ << std::endl;
 
-    // Register signal handlers for graceful shutdown
-    std::signal(SIGINT, signal_handler);
-    std::signal(SIGTERM, signal_handler);
+    const char* env = std::getenv("JADEVECTORDB_ENV");
+    std::cout << "[DEBUG] JADEVECTORDB_ENV at startup = " << (env ? env : "NULL (not set)") << std::endl;
+
+    // Register signal handlers for graceful shutdown using sigaction (more reliable)
+    struct sigaction sa;
+    sa.sa_handler = shutdown_signal_handler;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+    
+    if (sigaction(SIGINT, &sa, nullptr) == -1) {
+        std::cerr << "Failed to install SIGINT handler" << std::endl;
+    } else {
+        std::cout << "[DEBUG] SIGINT handler installed successfully" << std::endl;
+    }
+    if (sigaction(SIGTERM, &sa, nullptr) == -1) {
+        std::cerr << "Failed to install SIGTERM handler" << std::endl;
+    } else {
+        std::cout << "[DEBUG] SIGTERM handler installed successfully" << std::endl;
+    }
 
     jadevectordb::JadeVectorDBApp app;
     g_app_instance = &app;
 
     auto result = app.start();
 
-    g_app_instance = nullptr;
-    
     if (!result) {
         std::cerr << "Application failed to start: " << 
                      jadevectordb::ErrorHandler::format_error(result.error()) << std::endl;
+        g_app_instance = nullptr;
         return 1;
     }
     
     std::cout << "JadeVectorDB application completed successfully" << std::endl;
+    g_app_instance = nullptr;
     return 0;
 }
