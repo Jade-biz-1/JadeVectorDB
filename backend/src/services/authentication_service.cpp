@@ -771,13 +771,47 @@ Result<UserCredentials> AuthenticationService::get_user(const std::string& user_
             RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "User ID is required");
         }
 
-        std::lock_guard<std::mutex> lock(users_mutex_);
+        {
+            std::lock_guard<std::mutex> lock(users_mutex_);
 
-        // Lookup user by ID
-        auto it = users_.find(user_id);
-        if (it != users_.end()) {
-            LOG_DEBUG(logger_, "Found user by ID: " + user_id);
-            return it->second;
+            // Lookup user by ID in memory first
+            auto it = users_.find(user_id);
+            if (it != users_.end()) {
+                LOG_DEBUG(logger_, "Found user in memory by ID: " + user_id);
+                return it->second;
+            }
+        }
+
+        // If not in memory, try database
+        if (persistence_) {
+            auto db_result = persistence_->get_user(user_id);
+            if (db_result.has_value()) {
+                LOG_DEBUG(logger_, "Found user in database by ID: " + user_id);
+                // Convert User to UserCredentials
+                const auto& db_user = db_result.value();
+                UserCredentials creds;
+                creds.user_id = db_user.user_id;
+                creds.username = db_user.username;
+                creds.email = db_user.email;
+                creds.password_hash = db_user.password_hash;
+                creds.salt = db_user.salt;
+                creds.is_active = db_user.is_active;
+                creds.failed_login_attempts = db_user.failed_login_attempts;
+
+                // Convert int64_t timestamps to time_point
+                creds.created_at = std::chrono::system_clock::time_point(
+                    std::chrono::milliseconds(db_user.created_at));
+                creds.last_login = std::chrono::system_clock::time_point(
+                    std::chrono::milliseconds(db_user.last_login));
+
+                // Get roles from database (separate query)
+                auto roles_result = persistence_->get_user_roles(user_id);
+                if (roles_result.has_value()) {
+                    creds.roles = roles_result.value();
+                }
+
+                return creds;
+            }
         }
 
         LOG_WARN(logger_, "User not found with ID: " + user_id);
