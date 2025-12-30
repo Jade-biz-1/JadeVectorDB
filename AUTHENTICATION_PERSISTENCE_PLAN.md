@@ -1,7 +1,8 @@
 # Authentication Persistence & Consistency Fix Plan
 
 **Created**: 2025-12-26
-**Status**: In Progress
+**Updated**: 2025-12-30
+**Status**: ✅ COMPLETE
 **Priority**: Critical
 
 ## User Requirements Summary
@@ -191,12 +192,165 @@ Files to update:
 - [x] Zero references to JADE_ENV in codebase (except this tracking document)
 - [x] Zero inconsistent passwords in codebase (all standardized to admin123/dev123/test123)
 
+## Phase 6: Production Security Enhancements ✅ COMPLETE
+
+**Added**: 2025-12-30
+**Goal**: Implement secure password management for production deployment
+
+### ✅ Completed Features
+
+#### 1. Production Admin Bootstrap
+- [x] Added `JADEVECTORDB_ADMIN_PASSWORD` environment variable support
+- [x] Admin user created automatically in production mode from env var
+- [x] Admin user set with `must_change_password=true` flag
+- [x] Comprehensive logging for production admin creation
+- [x] Security: No default admin if env var not set
+
+**Files Modified**:
+- `backend/src/services/authentication_service.cpp` (seed_default_users)
+- `backend/src/models/auth.h` (added must_change_password field)
+- `backend/src/services/authentication_service.h` (updated UserCredentials)
+
+#### 2. Database Schema Updates
+- [x] Added `must_change_password INTEGER DEFAULT 0` column to users table
+- [x] Updated all SQL SELECT queries to include must_change_password
+- [x] Updated user mapping to populate must_change_password field
+- [x] Updated create_user() signature to accept must_change_password parameter
+
+**Files Modified**:
+- `backend/src/services/sqlite_persistence_layer.h`
+- `backend/src/services/sqlite_persistence_layer.cpp`
+
+#### 3. Password Management Implementation
+- [x] Fully implemented `update_password()` (was stub before)
+- [x] Old password verification before update
+- [x] Password strength validation (10+ chars, uppercase, lowercase, digit, special)
+- [x] Clears `must_change_password` flag after successful change
+- [x] Prevents reusing same password
+- [x] Enhanced `reset_password()` to set `must_change_password=true`
+
+**Files Modified**:
+- `backend/src/services/authentication_service.cpp` (update_password, reset_password)
+
+#### 4. REST API Endpoints
+- [x] Implemented `PUT /v1/users/{id}/password` - Self-service password change
+- [x] Implemented `POST /v1/admin/users/{id}/reset-password` - Admin password reset
+- [x] Updated login response to include `must_change_password` flag
+- [x] Added security message when password change required
+
+**Files Modified**:
+- `backend/src/api/rest/rest_api.h` (handler declarations)
+- `backend/src/api/rest/rest_api_user_handlers.cpp` (handlers implementation)
+- `backend/src/api/rest/rest_api_auth_handlers.cpp` (login enhancement)
+
+#### 5. Frontend Implementation
+- [x] Updated `authApi.login()` to store must_change_password in localStorage
+- [x] Added `authApi.changePassword()` for self-service password changes
+- [x] Added `authApi.adminResetPassword()` for admin password resets
+- [x] Created `/change-password` page with password change form
+- [x] Added password strength indicator to change password form
+- [x] Updated login page to detect and redirect on must_change_password
+- [x] Added password reset modal to admin users page
+- [x] Added "Reset Password" button to user management table
+
+**Files Modified**:
+- `frontend/src/lib/api.js`
+- `frontend/src/pages/login.js`
+- `frontend/src/pages/change-password.js` (new file)
+- `frontend/src/pages/users.js`
+
+#### 6. Documentation
+- [x] Created comprehensive `PRODUCTION_DEPLOYMENT_GUIDE.md`
+- [x] Documented production admin setup with JADEVECTORDB_ADMIN_PASSWORD
+- [x] Documented password requirements and security policies
+- [x] Documented environment variables and configuration
+- [x] Documented first-time admin setup procedure
+- [x] Created `PASSWORD_MANAGEMENT_TEST_PLAN.md` with full test coverage
+- [x] Documented all password management features and APIs
+- [x] Updated AUTHENTICATION_PERSISTENCE_PLAN.md status to COMPLETE
+
+**Files Created**:
+- `PRODUCTION_DEPLOYMENT_GUIDE.md`
+- `PASSWORD_MANAGEMENT_TEST_PLAN.md`
+
+### Password Requirements (Production Security Policy)
+
+All passwords in JadeVectorDB must meet these requirements:
+- **Minimum Length**: 10 characters
+- **Uppercase**: At least one (A-Z)
+- **Lowercase**: At least one (a-z)
+- **Digit**: At least one (0-9)
+- **Special Character**: At least one (!@#$%^&* etc.)
+
+**Implementation**: Validated in `authentication_service.cpp::validate_password_strength()`
+
+### Security Best Practices Implemented
+
+1. **Forced Password Changes**: Users with admin-reset passwords must change on next login
+2. **Old Password Verification**: Users must provide current password to change
+3. **Password Strength Enforcement**: All passwords validated against security policy
+4. **No Password Reuse**: Users cannot reuse their current password
+5. **Secure Storage**: Passwords hashed with bcrypt (cost factor 12)
+6. **Production Admin Security**: Admin created from env var must change password immediately
+7. **JWT Token Enhancement**: Login response includes must_change_password flag
+8. **Frontend Protection**: Automatic redirect to change password when required
+
+### Production Deployment Flow
+
+1. **Set Environment Variable**:
+   ```bash
+   export JADEVECTORDB_ADMIN_PASSWORD="Adm1nSecureP@ss2025!"
+   export JADEVECTORDB_ENV="production"
+   ```
+
+2. **Start Server**:
+   - Server creates admin user with username "admin"
+   - Admin user has `must_change_password=true`
+   - Server logs: "Created admin user with must_change_password=true"
+
+3. **First Login**:
+   - Admin logs in with JADEVECTORDB_ADMIN_PASSWORD
+   - Server returns: `{"must_change_password": true, "message": "..."}`
+   - Frontend redirects to `/change-password`
+
+4. **Password Change**:
+   - Admin enters current password and new password
+   - Server validates old password and new password strength
+   - Server clears `must_change_password` flag
+   - Admin redirected to dashboard
+
+5. **Subsequent Logins**:
+   - Admin logs in with new password
+   - Server returns: `{"must_change_password": false}`
+   - Admin proceeds to dashboard normally
+
+### Test Coverage
+
+See `PASSWORD_MANAGEMENT_TEST_PLAN.md` for comprehensive test cases including:
+- Development mode default users
+- Production mode admin bootstrap
+- Self-service password change
+- Admin password reset
+- Password strength validation
+- Old password verification
+- Frontend integration tests
+- Security tests
+
 ## Next Immediate Action
 
-**Phase 4: Final Testing (Optional)**
-- Test production mode (JADEVECTORDB_ENV=production) to verify no default users created
-- Optional: Remove debug std::cout statements from code for cleaner logs
+✅ **ALL PHASES COMPLETE**
 
-**Phase 5: Cleanup**
-- Consider deleting fix_consistency.sh (completed its purpose)
-- Consider deleting this tracking document after user review
+The authentication persistence and password management system is now production-ready with:
+- SQLite persistence for all authentication data
+- Consistent passwords (admin123/dev123/test123) in development mode
+- Production admin bootstrap via environment variable
+- Comprehensive password management with forced changes
+- Full frontend integration with password change UI
+- Complete documentation and test plans
+
+**Optional Future Enhancements**:
+- Password history tracking (prevent reusing last N passwords)
+- Password expiry policy (require change after X days)
+- Email notifications for password resets
+- Two-factor authentication (2FA)
+- Account lockout after N failed attempts (partially implemented)

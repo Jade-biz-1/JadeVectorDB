@@ -25,11 +25,12 @@ struct UserCredentials {
     std::string salt;
     std::vector<std::string> roles;
     bool is_active;
+    bool must_change_password;  // Force password change on next login
     std::chrono::system_clock::time_point created_at;
     std::chrono::system_clock::time_point last_login;
     int failed_login_attempts;
 
-    UserCredentials() : is_active(true), failed_login_attempts(0) {}
+    UserCredentials() : is_active(true), must_change_password(false), failed_login_attempts(0) {}
 };
 
 // Local authentication token (uses chrono for in-memory token management)
@@ -120,7 +121,8 @@ public:
     Result<std::string> register_user(const std::string& username,
                                      const std::string& password,
                                      const std::vector<std::string>& roles,
-                                     const std::string& user_id_override = "");
+                                     const std::string& user_id_override = "",
+                                     bool must_change_password = false);
     
     // Update username
     Result<bool> update_username(const std::string& user_id,
