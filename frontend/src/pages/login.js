@@ -33,6 +33,16 @@ export default function Login() {
       // Call the login API
       const response = await authApi.login(username, password);
 
+      // Check if user must change password
+      if (response.must_change_password) {
+        setSuccess('Login successful. You must change your password before continuing.');
+        // Redirect to password change page immediately
+        setTimeout(() => {
+          router.push('/change-password');
+        }, 1000);
+        return;
+      }
+
       setSuccess(`Successfully logged in as ${response.username || username}`);
 
       // Redirect to dashboard after successful login

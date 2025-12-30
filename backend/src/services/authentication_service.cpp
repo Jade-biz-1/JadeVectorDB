@@ -18,22 +18,70 @@ namespace jadevectordb {
 Result<bool> AuthenticationService::update_password(const std::string& user_id,
                                                    const std::string& old_password,
                                                    const std::string& new_password) {
-    // STUB IMPLEMENTATION
-    // TODO: Implement full password update logic.
-    // Steps should include:
-    // 1. Validate input arguments.
-    // 2. Lock users_mutex_.
-    // 3. Find user by user_id.
-    // 4. Verify old_password matches current password.
-    // 5. Check new_password strength if required.
-    // 6. Generate new salt and hash for new_password.
-    // 7. Update user credentials and reset failed attempts.
-    // 8. Log the password update event.
-    // 9. Return appropriate Result<bool>.
-    (void)user_id;
-    (void)old_password;
-    (void)new_password;
-    RETURN_ERROR(ErrorCode::NOT_IMPLEMENTED, "update_password is not yet implemented");
+    try {
+        // 1. Validate input arguments
+        if (user_id.empty() || old_password.empty() || new_password.empty()) {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "User ID, old password, and new password are required");
+        }
+
+        if (old_password == new_password) {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "New password must be different from old password");
+        }
+
+        // 5. Check new password strength if required
+        if (config_.require_strong_passwords && !is_strong_password(new_password)) {
+            RETURN_ERROR(ErrorCode::INVALID_ARGUMENT,
+                        "New password does not meet strength requirements: "
+                        "minimum 10 characters, uppercase, lowercase, digit, and special character required");
+        }
+
+        // Get user from database
+        auto user_result = persistence_->get_user(user_id);
+        if (!user_result.has_value()) {
+            LOG_WARN(logger_, "Attempt to update password for non-existent user: " + user_id);
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found");
+        }
+
+        auto& user = user_result.value();
+
+        // 4. Verify old password matches current password
+        std::string old_password_hash = hash_password(old_password, user.salt);
+        if (old_password_hash != user.password_hash) {
+            LOG_WARN(logger_, "Failed password update for user " + user_id + ": incorrect old password");
+            log_auth_event(SecurityEventType::AUTHENTICATION_FAILURE, user_id, "",
+                          false, "Failed password change - incorrect old password");
+            RETURN_ERROR(ErrorCode::UNAUTHENTICATED, "Old password is incorrect");
+        }
+
+        // 6. Generate new salt and hash for new password
+        std::string new_salt = generate_salt();
+        std::string new_password_hash = hash_password(new_password, new_salt);
+
+        // 7. Update user credentials and reset failed attempts
+        user.password_hash = new_password_hash;
+        user.salt = new_salt;
+        user.failed_login_attempts = 0;
+        user.account_locked_until = 0;
+        user.must_change_password = false;  // Clear the flag after password change
+
+        auto update_result = persistence_->update_user(user_id, user);
+        if (!update_result.has_value()) {
+            LOG_ERROR(logger_, "Failed to update user password in database: " +
+                     ErrorHandler::format_error(update_result.error()));
+            RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to update password: " +
+                        ErrorHandler::format_error(update_result.error()));
+        }
+
+        // 8. Log the password update event
+        LOG_INFO(logger_, "Password updated successfully for user: " + user_id);
+        log_auth_event(SecurityEventType::AUTHENTICATION_SUCCESS, user_id, "",
+                      true, "Password changed successfully");
+
+        return true;
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in update_password: " + std::string(e.what()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to update password: " + std::string(e.what()));
+    }
 }
 
 AuthenticationService::AuthenticationService(const std::string& data_directory)
@@ -80,9 +128,11 @@ bool AuthenticationService::initialize(const AuthenticationConfig& config,
 Result<std::string> AuthenticationService::register_user(const std::string& username,
                                                          const std::string& password,
                                                          const std::vector<std::string>& roles,
-                                                         const std::string& user_id_override) {
+                                                         const std::string& user_id_override,
+                                                         bool must_change_password) {
     try {
-        std::cout << "[DEBUG] register_user() called for: " << username << std::endl;
+        std::cout << "[DEBUG] register_user() called for: " << username
+                  << " (must_change_password=" << must_change_password << ")" << std::endl;
 
         if (username.empty() || password.empty()) {
             RETURN_ERROR(ErrorCode::INVALID_ARGUMENT, "Username and password are required");
@@ -120,7 +170,7 @@ Result<std::string> AuthenticationService::register_user(const std::string& user
 
         // Create user in database
         std::string email = username + "@jadevectordb.local";  // Default email
-        auto create_result = persistence_->create_user(username, email, password_hash, salt);
+        auto create_result = persistence_->create_user(username, email, password_hash, salt, must_change_password);
         if (!create_result.has_value()) {
             std::cout << "[DEBUG] Failed to create user in database: " <<
                       ErrorHandler::format_error(create_result.error()) << std::endl;
@@ -734,29 +784,41 @@ Result<bool> AuthenticationService::reset_password(const std::string& user_id,
         // Check password strength if enabled
         if (config_.require_strong_passwords && !is_strong_password(new_password)) {
             RETURN_ERROR(ErrorCode::INVALID_ARGUMENT,
-                        "Password does not meet strength requirements");
+                        "Password does not meet strength requirements: "
+                        "minimum 10 characters, uppercase, lowercase, digit, and special character required");
         }
 
-        std::lock_guard<std::mutex> lock(users_mutex_);
-
-        auto it = users_.find(user_id);
-        if (it == users_.end()) {
+        // Get user from database
+        auto user_result = persistence_->get_user(user_id);
+        if (!user_result.has_value()) {
             LOG_WARN(logger_, "Attempt to reset password for non-existent user: " + user_id);
             RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found");
         }
 
+        auto& user = user_result.value();
+
         // Generate new salt and hash password
-        std::string salt = generate_salt();
-        std::string password_hash = hash_password(new_password, salt);
+        std::string new_salt = generate_salt();
+        std::string new_password_hash = hash_password(new_password, new_salt);
 
         // Update user credentials
-        it->second.password_hash = password_hash;
-        it->second.salt = salt;
-        it->second.failed_login_attempts = 0;  // Reset failed attempts
+        user.password_hash = new_password_hash;
+        user.salt = new_salt;
+        user.failed_login_attempts = 0;  // Reset failed attempts
+        user.account_locked_until = 0;
+        user.must_change_password = true;  // Force user to change password on next login (security best practice)
 
-        LOG_INFO(logger_, "Password reset successfully for user: " + user_id);
+        auto update_result = persistence_->update_user(user_id, user);
+        if (!update_result.has_value()) {
+            LOG_ERROR(logger_, "Failed to update user password in database: " +
+                     ErrorHandler::format_error(update_result.error()));
+            RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to reset password: " +
+                        ErrorHandler::format_error(update_result.error()));
+        }
+
+        LOG_INFO(logger_, "Password reset successfully for user: " + user_id + " (must change on next login)");
         log_auth_event(SecurityEventType::ADMIN_OPERATION, user_id, "", true,
-                      "Password reset");
+                      "Password reset by admin - must change on next login");
 
         return true;
     } catch (const std::exception& e) {
@@ -796,6 +858,7 @@ Result<UserCredentials> AuthenticationService::get_user(const std::string& user_
                 creds.password_hash = db_user.password_hash;
                 creds.salt = db_user.salt;
                 creds.is_active = db_user.is_active;
+                creds.must_change_password = db_user.must_change_password;  // FIX: Copy must_change_password field
                 creds.failed_login_attempts = db_user.failed_login_attempts;
 
                 // Convert int64_t timestamps to time_point
@@ -890,15 +953,57 @@ Result<bool> AuthenticationService::seed_default_users() {
 
         std::cout << "[DEBUG] environment after lowercase = " << environment << std::endl;
 
-        // Only seed in development, test, or local environments
-        if (environment != "development" &&
-            environment != "dev" &&
-            environment != "test" &&
-            environment != "testing" &&
-            environment != "local") {
-            std::cout << "[DEBUG] Skipping seeding - environment is: " << environment << std::endl;
-            LOG_INFO(logger_, "Skipping default user seeding in " + environment + " environment");
-            return true;  // Not an error, just skipping
+        // Check if this is production environment
+        bool is_production = (environment != "development" &&
+                             environment != "dev" &&
+                             environment != "test" &&
+                             environment != "testing" &&
+                             environment != "local");
+
+        if (is_production) {
+            // In production, check for JADEVECTORDB_ADMIN_PASSWORD environment variable
+            const char* admin_password_env = std::getenv("JADEVECTORDB_ADMIN_PASSWORD");
+
+            if (!admin_password_env || std::string(admin_password_env).empty()) {
+                std::cout << "[INFO] Production mode: No JADEVECTORDB_ADMIN_PASSWORD set, skipping admin user creation" << std::endl;
+                LOG_INFO(logger_, "Production mode: JADEVECTORDB_ADMIN_PASSWORD not set, admin user must be created manually");
+                return true;  // Not an error
+            }
+
+            // Create production admin user
+            std::string admin_password = admin_password_env;
+            std::string admin_user_id = "user_admin_prod";
+
+            std::cout << "[INFO] Production mode: Creating admin user from JADEVECTORDB_ADMIN_PASSWORD" << std::endl;
+            LOG_INFO(logger_, "Production mode: Creating admin user (must change password on first login)");
+
+            // Check if admin already exists
+            auto exists_result = persistence_->user_exists("admin");
+            if (exists_result.has_value() && exists_result.value()) {
+                std::cout << "[INFO] Production admin user already exists, skipping creation" << std::endl;
+                LOG_INFO(logger_, "Production admin user already exists");
+                return true;
+            }
+
+            // Register production admin with must_change_password flag
+            auto result = register_user(
+                "admin",
+                admin_password,
+                {"admin", "developer", "user"},
+                admin_user_id,
+                true  // must_change_password = true
+            );
+
+            if (result.has_value()) {
+                std::cout << "[SUCCESS] Production admin user created successfully" << std::endl;
+                std::cout << "[IMPORTANT] Admin must change password on first login!" << std::endl;
+                LOG_INFO(logger_, "Production admin user created - password change required on first login");
+                return true;
+            } else {
+                std::cout << "[ERROR] Failed to create production admin: " << result.error().message << std::endl;
+                LOG_ERROR(logger_, "Failed to create production admin: " + result.error().message);
+                RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to create production admin user");
+            }
         }
 
         std::cout << "[DEBUG] Proceeding with seeding for environment: " << environment << std::endl;
