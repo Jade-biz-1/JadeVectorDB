@@ -147,13 +147,20 @@ crow::response RestApiImpl::handle_login_request(const crow::request& req) {
 
         LocalAuthToken token = auth_result.value();
 
+        // Check if user must change password
+        bool must_change_password = false;
+        auto user_result = authentication_service_->get_user(token.user_id);
+        if (user_result.has_value()) {
+            must_change_password = user_result.value().must_change_password;
+        }
+
         // Log successful authentication event
         if (security_audit_logger_) {
             security_audit_logger_->log_authentication_attempt(
                 username,
                 ip_address,
                 true,
-                "Login successful"
+                must_change_password ? "Login successful - password change required" : "Login successful"
             );
         }
 
@@ -163,8 +170,14 @@ crow::response RestApiImpl::handle_login_request(const crow::request& req) {
         response["user_id"] = token.user_id;
         response["expires_at"] = to_iso_string(token.expires_at);
         response["token_type"] = "Bearer";
+        response["must_change_password"] = must_change_password;
 
-        LOG_INFO(logger_, "Successfully authenticated user: " + username + " (ID: " + token.user_id + ")");
+        if (must_change_password) {
+            response["message"] = "Login successful. You must change your password before continuing.";
+            LOG_INFO(logger_, "Successfully authenticated user: " + username + " (ID: " + token.user_id + ") - PASSWORD CHANGE REQUIRED");
+        } else {
+            LOG_INFO(logger_, "Successfully authenticated user: " + username + " (ID: " + token.user_id + ")");
+        }
 
         return crow::response(200, response);
 

@@ -439,9 +439,38 @@ export const authApi = {
     if (data.token) {
       localStorage.setItem('jadevectordb_auth_token', data.token);
       localStorage.setItem('jadevectordb_user_id', data.user_id);
-      localStorage.setItem('jadevectordb_username', data.username);
+      localStorage.setItem('jadevectordb_username', data.username || username);
+      // Store must_change_password flag for forced password change
+      if (data.must_change_password) {
+        localStorage.setItem('jadevectordb_must_change_password', 'true');
+      } else {
+        localStorage.removeItem('jadevectordb_must_change_password');
+      }
     }
     return data;
+  },
+
+  // Change user password (self-service)
+  changePassword: async (userId, oldPassword, newPassword) => {
+    const response = await fetch(`${API_BASE_URL}/v1/users/${userId}/password`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+    });
+    const data = await handleResponse(response);
+    // Clear must_change_password flag after successful change
+    localStorage.removeItem('jadevectordb_must_change_password');
+    return data;
+  },
+
+  // Admin reset user password
+  adminResetPassword: async (userId, newPassword) => {
+    const response = await fetch(`${API_BASE_URL}/v1/admin/users/${userId}/reset-password`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ new_password: newPassword }),
+    });
+    return handleResponse(response);
   },
 
   // Logout
@@ -464,6 +493,7 @@ export const authApi = {
     localStorage.removeItem('jadevectordb_user_id');
     localStorage.removeItem('jadevectordb_username');
     localStorage.removeItem('jadevectordb_api_key');
+    localStorage.removeItem('jadevectordb_must_change_password');
 
     return handleResponse(response);
   },

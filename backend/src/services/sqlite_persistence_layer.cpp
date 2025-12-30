@@ -120,6 +120,7 @@ Result<void> SQLitePersistenceLayer::create_tables() {
             salt TEXT NOT NULL,
             is_active INTEGER DEFAULT 1,
             is_system_admin INTEGER DEFAULT 0,
+            must_change_password INTEGER DEFAULT 0,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
             last_login INTEGER,
@@ -473,36 +474,38 @@ Result<std::string> SQLitePersistenceLayer::create_user(
     const std::string& username,
     const std::string& email,
     const std::string& password_hash,
-    const std::string& salt) {
-    
+    const std::string& salt,
+    bool must_change_password) {
+
     // Record metrics
     auto metrics = PrometheusMetricsManager::get_instance();
     auto timer = metrics->create_db_operation_timer("create_user");
-    
+
     std::lock_guard<std::mutex> lock(db_mutex_);
-    
+
     std::string user_id = generate_id();
     int64_t now = current_timestamp();
-    
+
     const char* sql = R"(
-        INSERT INTO users (user_id, username, email, password_hash, salt, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users (user_id, username, email, password_hash, salt, must_change_password, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     )";
-    
+
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         metrics->record_db_operation("create_user", "error");
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
     }
-    
+
     sqlite3_bind_text(stmt, 1, user_id.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, username.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 3, email.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 4, password_hash.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 5, salt.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int64(stmt, 6, now);
+    sqlite3_bind_int(stmt, 6, must_change_password ? 1 : 0);
     sqlite3_bind_int64(stmt, 7, now);
+    sqlite3_bind_int64(stmt, 8, now);
     
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
@@ -530,27 +533,27 @@ Result<User> SQLitePersistenceLayer::get_user(const std::string& user_id) {
     std::lock_guard<std::mutex> lock(db_mutex_);
     
     const char* sql = R"(
-        SELECT user_id, username, email, password_hash, salt, is_active, is_system_admin,
+        SELECT user_id, username, email, password_hash, salt, is_active, is_system_admin, must_change_password,
                created_at, updated_at, last_login, failed_login_attempts, account_locked_until, metadata
         FROM users WHERE user_id = ?
     )";
-    
+
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         metrics->record_db_operation("get_user", "error");
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement");
     }
-    
+
     sqlite3_bind_text(stmt, 1, user_id.c_str(), -1, SQLITE_TRANSIENT);
-    
+
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_ROW) {
         sqlite3_finalize(stmt);
         metrics->record_db_operation("get_user", "not_found");
         RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
     }
-    
+
     User user;
     user.user_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
     user.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
@@ -559,15 +562,16 @@ Result<User> SQLitePersistenceLayer::get_user(const std::string& user_id) {
     user.salt = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
     user.is_active = sqlite3_column_int(stmt, 5) != 0;
     user.is_system_admin = sqlite3_column_int(stmt, 6) != 0;
-    user.created_at = sqlite3_column_int64(stmt, 7);
-    user.updated_at = sqlite3_column_int64(stmt, 8);
-    user.last_login = sqlite3_column_int64(stmt, 9);
-    user.failed_login_attempts = sqlite3_column_int(stmt, 10);
-    user.account_locked_until = sqlite3_column_int64(stmt, 11);
-    if (sqlite3_column_text(stmt, 12)) {
-        user.metadata = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
+    user.must_change_password = sqlite3_column_int(stmt, 7) != 0;
+    user.created_at = sqlite3_column_int64(stmt, 8);
+    user.updated_at = sqlite3_column_int64(stmt, 9);
+    user.last_login = sqlite3_column_int64(stmt, 10);
+    user.failed_login_attempts = sqlite3_column_int(stmt, 11);
+    user.account_locked_until = sqlite3_column_int64(stmt, 12);
+    if (sqlite3_column_text(stmt, 13)) {
+        user.metadata = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 13));
     }
-    
+
     sqlite3_finalize(stmt);
     metrics->record_db_operation("get_user", "success");
     return user;
@@ -575,27 +579,27 @@ Result<User> SQLitePersistenceLayer::get_user(const std::string& user_id) {
 
 Result<User> SQLitePersistenceLayer::get_user_by_username(const std::string& username) {
     std::lock_guard<std::mutex> lock(db_mutex_);
-    
+
     const char* sql = R"(
-        SELECT user_id, username, email, password_hash, salt, is_active, is_system_admin,
+        SELECT user_id, username, email, password_hash, salt, is_active, is_system_admin, must_change_password,
                created_at, updated_at, last_login, failed_login_attempts, account_locked_until, metadata
         FROM users WHERE username = ?
     )";
-    
+
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement");
     }
-    
+
     sqlite3_bind_text(stmt, 1, username.c_str(), -1, SQLITE_TRANSIENT);
-    
+
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_ROW) {
         sqlite3_finalize(stmt);
         RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + username);
     }
-    
+
     User user;
     user.user_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
     user.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
@@ -604,13 +608,14 @@ Result<User> SQLitePersistenceLayer::get_user_by_username(const std::string& use
     user.salt = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
     user.is_active = sqlite3_column_int(stmt, 5) != 0;
     user.is_system_admin = sqlite3_column_int(stmt, 6) != 0;
-    user.created_at = sqlite3_column_int64(stmt, 7);
-    user.updated_at = sqlite3_column_int64(stmt, 8);
-    user.last_login = sqlite3_column_int64(stmt, 9);
-    user.failed_login_attempts = sqlite3_column_int(stmt, 10);
-    user.account_locked_until = sqlite3_column_int64(stmt, 11);
-    if (sqlite3_column_text(stmt, 12)) {
-        user.metadata = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
+    user.must_change_password = sqlite3_column_int(stmt, 7) != 0;
+    user.created_at = sqlite3_column_int64(stmt, 8);
+    user.updated_at = sqlite3_column_int64(stmt, 9);
+    user.last_login = sqlite3_column_int64(stmt, 10);
+    user.failed_login_attempts = sqlite3_column_int(stmt, 11);
+    user.account_locked_until = sqlite3_column_int64(stmt, 12);
+    if (sqlite3_column_text(stmt, 13)) {
+        user.metadata = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 13));
     }
     
     sqlite3_finalize(stmt);
@@ -619,9 +624,9 @@ Result<User> SQLitePersistenceLayer::get_user_by_username(const std::string& use
 
 Result<std::vector<User>> SQLitePersistenceLayer::list_users(int limit, int offset) {
     std::lock_guard<std::mutex> lock(db_mutex_);
-    
+
     const char* sql = R"(
-        SELECT user_id, username, email, password_hash, salt, is_active, is_system_admin,
+        SELECT user_id, username, email, password_hash, salt, is_active, is_system_admin, must_change_password,
                created_at, updated_at, last_login, failed_login_attempts, account_locked_until, metadata
         FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?
     )";
@@ -645,13 +650,14 @@ Result<std::vector<User>> SQLitePersistenceLayer::list_users(int limit, int offs
         user.salt = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
         user.is_active = sqlite3_column_int(stmt, 5) != 0;
         user.is_system_admin = sqlite3_column_int(stmt, 6) != 0;
-        user.created_at = sqlite3_column_int64(stmt, 7);
-        user.updated_at = sqlite3_column_int64(stmt, 8);
-        user.last_login = sqlite3_column_int64(stmt, 9);
-        user.failed_login_attempts = sqlite3_column_int(stmt, 10);
-        user.account_locked_until = sqlite3_column_int64(stmt, 11);
-        if (sqlite3_column_text(stmt, 12)) {
-            user.metadata = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
+        user.must_change_password = sqlite3_column_int(stmt, 7) != 0;
+        user.created_at = sqlite3_column_int64(stmt, 8);
+        user.updated_at = sqlite3_column_int64(stmt, 9);
+        user.last_login = sqlite3_column_int64(stmt, 10);
+        user.failed_login_attempts = sqlite3_column_int(stmt, 11);
+        user.account_locked_until = sqlite3_column_int64(stmt, 12);
+        if (sqlite3_column_text(stmt, 13)) {
+            user.metadata = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 13));
         }
         users.push_back(user);
     }
@@ -686,21 +692,21 @@ Result<void> SQLitePersistenceLayer::update_last_login(const std::string& user_i
 
 Result<User> SQLitePersistenceLayer::get_user_by_email(const std::string& email) {
     std::lock_guard<std::mutex> lock(db_mutex_);
-    
+
     const char* sql = R"(
-        SELECT user_id, username, email, password_hash, salt, is_active, is_system_admin,
+        SELECT user_id, username, email, password_hash, salt, is_active, is_system_admin, must_change_password,
                created_at, updated_at, last_login, failed_login_attempts, account_locked_until
         FROM users WHERE email = ?
     )";
-    
+
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
     }
-    
+
     sqlite3_bind_text(stmt, 1, email.c_str(), -1, SQLITE_TRANSIENT);
-    
+
     User user;
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         user.user_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
@@ -710,11 +716,12 @@ Result<User> SQLitePersistenceLayer::get_user_by_email(const std::string& email)
         user.salt = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
         user.is_active = sqlite3_column_int(stmt, 5) != 0;
         user.is_system_admin = sqlite3_column_int(stmt, 6) != 0;
-        user.created_at = sqlite3_column_int64(stmt, 7);
-        user.updated_at = sqlite3_column_int64(stmt, 8);
-        user.last_login = sqlite3_column_int64(stmt, 9);
-        user.failed_login_attempts = sqlite3_column_int(stmt, 10);
-        user.account_locked_until = sqlite3_column_int64(stmt, 11);
+        user.must_change_password = sqlite3_column_int(stmt, 7) != 0;
+        user.created_at = sqlite3_column_int64(stmt, 8);
+        user.updated_at = sqlite3_column_int64(stmt, 9);
+        user.last_login = sqlite3_column_int64(stmt, 10);
+        user.failed_login_attempts = sqlite3_column_int(stmt, 11);
+        user.account_locked_until = sqlite3_column_int64(stmt, 12);
         
         sqlite3_finalize(stmt);
         return user;
@@ -730,35 +737,37 @@ Result<void> SQLitePersistenceLayer::update_user(const std::string& user_id, con
     int64_t now = current_timestamp();
     
     const char* sql = R"(
-        UPDATE users SET 
-            username = ?, 
-            email = ?, 
-            password_hash = ?, 
+        UPDATE users SET
+            username = ?,
+            email = ?,
+            password_hash = ?,
             salt = ?,
             is_active = ?,
             is_system_admin = ?,
+            must_change_password = ?,
             updated_at = ?,
             failed_login_attempts = ?,
             account_locked_until = ?
         WHERE user_id = ?
     )";
-    
+
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
     }
-    
+
     sqlite3_bind_text(stmt, 1, user.username.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, user.email.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 3, user.password_hash.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 4, user.salt.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt, 5, user.is_active ? 1 : 0);
     sqlite3_bind_int(stmt, 6, user.is_system_admin ? 1 : 0);
-    sqlite3_bind_int64(stmt, 7, now);
-    sqlite3_bind_int(stmt, 8, user.failed_login_attempts);
-    sqlite3_bind_int64(stmt, 9, user.account_locked_until);
-    sqlite3_bind_text(stmt, 10, user_id.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 7, user.must_change_password ? 1 : 0);
+    sqlite3_bind_int64(stmt, 8, now);
+    sqlite3_bind_int(stmt, 9, user.failed_login_attempts);
+    sqlite3_bind_int64(stmt, 10, user.account_locked_until);
+    sqlite3_bind_text(stmt, 11, user_id.c_str(), -1, SQLITE_TRANSIENT);
     
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
