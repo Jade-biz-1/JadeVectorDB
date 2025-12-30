@@ -174,7 +174,7 @@ Check the logs for:
 [INFO] Distributed services initialized successfully
 ```
 
-**Full Documentation**: See `ENABLE_DISTRIBUTED.md` for complete setup guide
+**Full Documentation**: See `docs/ENABLE_DISTRIBUTED.md` for complete setup guide
 
 ---
 
@@ -526,7 +526,7 @@ The test runner provides specific hints for each failure:
 
 For more details, see:
 - **Testing Guide**: `tests/README.md`
-- **Bootstrap Guide**: `BOOTSTRAP.md`
+- **Bootstrap Guide**: `docs/BOOTSTRAP.md`
 
 ## Complete Command Reference
 
@@ -1014,7 +1014,7 @@ Complete documentation is available in the `docs/` directory:
 - [Quickstart Guide](docs/quickstart.md) - Getting started with JadeVectorDB
 - [Architecture Documentation](docs/architecture.md) - System architecture and design decisions
 - [API Documentation](docs/api_documentation.md) - Complete API reference
-- [Developer Guide](BOOTSTRAP.md) - Information for contributors
+- [Developer Guide](docs/BOOTSTRAP.md) - Information for contributors
 - [Build Documentation](BUILD.md) - Complete build system documentation with troubleshooting
 - [Known Issues](docs/KNOWN_ISSUES.md) - Current issues and limitations
 - [Troubleshooting Guide](docs/TROUBLESHOOTING_GUIDE.md) - How to diagnose and resolve common issues
