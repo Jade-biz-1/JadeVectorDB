@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
-import { usersApi } from '../lib/api';
+import { usersApi, authApi } from '../lib/api';
 
 export default function UserManagement() {
   const [users, setUsers] = useState([]);
@@ -10,6 +10,8 @@ export default function UserManagement() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [resetPasswordModal, setResetPasswordModal] = useState({ show: false, userId: null, username: '' });
+  const [newPassword, setNewPassword] = useState('');
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -111,6 +113,55 @@ export default function UserManagement() {
     } catch (error) {
       console.error('Error deleting user:', error);
       setError(`Error deleting user: ${error.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleOpenResetPassword = (user) => {
+    setResetPasswordModal({
+      show: true,
+      userId: user.user_id || user.id,
+      username: user.username
+    });
+    setNewPassword('');
+    setError('');
+    setSuccess('');
+  };
+
+  const handleCloseResetPassword = () => {
+    setResetPasswordModal({ show: false, userId: null, username: '' });
+    setNewPassword('');
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      // Validate password strength
+      if (newPassword.length < 10) {
+        setError('Password must be at least 10 characters long');
+        setSaving(false);
+        return;
+      }
+
+      if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) ||
+          !/[0-9]/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {
+        setError('Password must contain uppercase, lowercase, digit, and special character');
+        setSaving(false);
+        return;
+      }
+
+      await authApi.adminResetPassword(resetPasswordModal.userId, newPassword);
+      setSuccess(`Password reset successfully for ${resetPasswordModal.username}. User will be required to change password on next login.`);
+      handleCloseResetPassword();
+      fetchUsers();
+    } catch (error) {
+      console.error('Error resetting password:', error);
+      setError(`Error resetting password: ${error.message}`);
     } finally {
       setSaving(false);
     }
@@ -279,6 +330,18 @@ export default function UserManagement() {
           background: #2980b9;
         }
 
+        .btn-warning {
+          background: #f39c12;
+          color: white;
+          padding: 6px 12px;
+          font-size: 12px;
+          margin-right: 8px;
+        }
+
+        .btn-warning:hover:not(:disabled) {
+          background: #e67e22;
+        }
+
         .button-group {
           display: flex;
           gap: 10px;
@@ -347,6 +410,60 @@ export default function UserManagement() {
           text-align: center;
           padding: 40px;
           color: #7f8c8d;
+        }
+
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+        }
+
+        .modal {
+          background: white;
+          border-radius: 8px;
+          padding: 30px;
+          max-width: 500px;
+          width: 90%;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+          margin-bottom: 20px;
+        }
+
+        .modal-title {
+          font-size: 24px;
+          font-weight: 600;
+          color: #2c3e50;
+          margin: 0 0 10px 0;
+        }
+
+        .modal-subtitle {
+          font-size: 14px;
+          color: #7f8c8d;
+        }
+
+        .modal-body {
+          margin-bottom: 20px;
+        }
+
+        .modal-footer {
+          display: flex;
+          gap: 10px;
+          justify-content: flex-end;
+        }
+
+        .password-hint {
+          font-size: 12px;
+          color: #7f8c8d;
+          margin-top: 8px;
         }
       `}</style>
 
@@ -496,6 +613,13 @@ export default function UserManagement() {
                           Edit
                         </button>
                         <button
+                          className="btn btn-warning"
+                          onClick={() => handleOpenResetPassword(user)}
+                          disabled={saving}
+                        >
+                          Reset Password
+                        </button>
+                        <button
                           className="btn btn-danger"
                           onClick={() => handleDeleteUser(user.id)}
                           disabled={saving}
@@ -510,6 +634,74 @@ export default function UserManagement() {
             )}
           </div>
         </div>
+
+        {/* Password Reset Modal */}
+        {resetPasswordModal.show && (
+          <div className="modal-overlay" onClick={handleCloseResetPassword}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="modal-title">Reset Password</h2>
+                <p className="modal-subtitle">
+                  Resetting password for: <strong>{resetPasswordModal.username}</strong>
+                </p>
+              </div>
+
+              <form onSubmit={handleResetPassword}>
+                <div className="modal-body">
+                  <div className="form-group">
+                    <label htmlFor="newPassword" className="form-label">New Password *</label>
+                    <input
+                      type="password"
+                      id="newPassword"
+                      className="form-input"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                      placeholder="Enter new password"
+                      disabled={saving}
+                    />
+                    <p className="password-hint">
+                      Must be at least 10 characters with uppercase, lowercase, digit, and special character
+                    </p>
+                  </div>
+
+                  {error && (
+                    <div className="alert alert-error" style={{ marginTop: '15px' }}>
+                      {error}
+                    </div>
+                  )}
+
+                  <div className="alert" style={{
+                    background: '#fff3cd',
+                    border: '1px solid #ffeaa7',
+                    color: '#856404',
+                    marginTop: '15px'
+                  }}>
+                    User will be required to change this password on their next login.
+                  </div>
+                </div>
+
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={handleCloseResetPassword}
+                    disabled={saving}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={saving}
+                  >
+                    {saving ? 'Resetting...' : 'Reset Password'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   );

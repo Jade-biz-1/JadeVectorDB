@@ -17,6 +17,7 @@ struct User {
     std::string salt;
     bool is_active = true;
     bool is_system_admin = false;
+    bool must_change_password = false;  // Force password change on next login
     int64_t created_at = 0;
     int64_t updated_at = 0;
     int64_t last_login = 0;

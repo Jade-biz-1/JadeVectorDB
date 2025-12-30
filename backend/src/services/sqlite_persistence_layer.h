@@ -37,10 +37,11 @@ public:
     Result<void> close();
     
     // === User Management ===
-    Result<std::string> create_user(const std::string& username, 
+    Result<std::string> create_user(const std::string& username,
                                      const std::string& email,
                                      const std::string& password_hash,
-                                     const std::string& salt);
+                                     const std::string& salt,
+                                     bool must_change_password = false);
     Result<User> get_user(const std::string& user_id);
     Result<User> get_user_by_username(const std::string& username);
     Result<User> get_user_by_email(const std::string& email);

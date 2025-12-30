@@ -286,6 +286,8 @@ public:
     crow::response handle_update_user_request(const crow::request& req, const std::string& user_id);
     crow::response handle_delete_user_request(const crow::request& req, const std::string& user_id);
     crow::response handle_user_status_request(const crow::request& req, const std::string& user_id, bool activate);
+    crow::response handle_change_user_password_request(const crow::request& req, const std::string& user_id);
+    crow::response handle_admin_reset_user_password_request(const crow::request& req, const std::string& user_id);
 
     crow::response handle_list_api_keys_request(const crow::request& req);
     crow::response handle_create_api_key_request(const crow::request& req);
