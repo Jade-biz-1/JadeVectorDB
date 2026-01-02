@@ -1014,7 +1014,7 @@ Complete documentation is available in the `docs/` directory:
 - [Quickstart Guide](docs/quickstart.md) - Getting started with JadeVectorDB
 - [Architecture Documentation](docs/architecture.md) - System architecture and design decisions
 - [API Documentation](docs/api_documentation.md) - Complete API reference
-- [Developer Guide](docs/BOOTSTRAP.md) - Information for contributors
+- [Developer Guide](BOOTSTRAP.md) - Information for contributors
 - [Build Documentation](BUILD.md) - Complete build system documentation with troubleshooting
 - [Known Issues](docs/KNOWN_ISSUES.md) - Current issues and limitations
 - [Troubleshooting Guide](docs/TROUBLESHOOTING_GUIDE.md) - How to diagnose and resolve common issues

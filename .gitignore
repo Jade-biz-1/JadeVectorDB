@@ -129,3 +129,6 @@ backend/build_coverage/
 backend/_deps/
 backend/build/
 backend/src/lib/expected.hpp
+# SQLite temporary files
+*.db-shm
+*.db-wal
