@@ -771,6 +771,157 @@ Helpful? Rate this answer: rag-query --rate <query-id> [1-5]
 | SQLite database | Metadata + indexes | ~120 MB |
 | **TOTAL** | | **~1.4 GB** |
 
+### Understanding Vector Embeddings and Storage
+
+**Critical Concept: Embeddings are Fixed-Size**
+
+A common question about the storage calculation is: "Do we need to multiply the vector storage by the number of tokens in each chunk?"
+
+**Answer: NO! Here's why:**
+
+#### How Embeddings Work
+
+Embedding models convert **variable-length text** into **fixed-size vectors**. This is a fundamental concept in RAG systems.
+
+```python
+from sentence_transformers import SentenceTransformer
+
+model = SentenceTransformer('intfloat/e5-small-v2')
+
+# Short text (5 tokens)
+text1 = "Reset the device"
+embedding1 = model.encode(text1)
+print(embedding1.shape)  # Output: (384,)
+
+# Long text (512 tokens)
+text2 = """To reset the XYZ-100 device after a power failure,
+follow these detailed steps: First, ensure all connections
+are secure. Second, disconnect the power supply for at least
+30 seconds... [continues for 512 tokens total]"""
+embedding2 = model.encode(text2)
+print(embedding2.shape)  # Output: (384,)
+
+# BOTH embeddings are EXACTLY 384 dimensions!
+```
+
+**Key Point:** Regardless of input length (1 token or 512 tokens), the output is **always 384 dimensions** for E5-Small-v2.
+
+#### Storage Calculation Breakdown
+
+**For 50,000 chunks:**
+
+**1. Vector Embeddings (Semantic Representation):**
+```
+Each chunk → 384 float32 values → 384 × 4 bytes = 1,536 bytes
+50,000 chunks → 50,000 × 1,536 bytes = 76,800,000 bytes ≈ 77 MB
+```
+
+**Important:** This is ONLY the numerical embeddings (the 384 numbers), NOT the original text.
+
+**2. Original Text (Stored in Metadata):**
+```
+Each chunk → ~512 characters → ~512 bytes
+50,000 chunks → 50,000 × 512 bytes = 25,600,000 bytes ≈ 26 MB
+```
+
+**3. Other Metadata (Document info):**
+```json
+{
+  "doc_name": "XYZ-100 Manual",        // ~50 bytes
+  "doc_id": "doc_123",                 // ~20 bytes
+  "page_numbers": [23, 24],            // ~20 bytes
+  "section": "Chapter 3",              // ~50 bytes
+  "device_type": "XYZ-100",            // ~20 bytes
+  "chunk_id": 45,                      // ~8 bytes
+  // + database overhead              // ~200 bytes
+  // Total: ~370 bytes per chunk
+}
+```
+
+```
+50,000 chunks → 50,000 × 370 bytes = 18,500,000 bytes ≈ 19 MB
+```
+
+#### Complete Storage Picture
+
+| Component | What It Stores | Calculation | Size |
+|-----------|----------------|-------------|------|
+| **Vector Embeddings** | Semantic meaning as 384 numbers | 50,000 × 384 × 4 bytes | **77 MB** |
+| **Chunk Text** | Original text content | 50,000 × 512 bytes | **26 MB** |
+| **Other Metadata** | Doc name, pages, section, etc. | 50,000 × 370 bytes | **19 MB** |
+| **HNSW Index** | Graph structure for fast search | ~15% overhead | **12 MB** |
+| **SQLite Overhead** | Database indexes, headers | Variable | **20 MB** |
+| **TOTAL** | | | **~154 MB** |
+
+#### Why Token Count Doesn't Affect Vector Storage
+
+**The 512 tokens/chunk specification affects:**
+
+1. ✅ **Input limit** for the embedding model (E5-Small can handle up to 512 tokens)
+2. ✅ **Text storage** in metadata (~512 bytes for 512 characters)
+
+**The 512 tokens/chunk does NOT affect:**
+
+1. ❌ **Embedding dimensions** (always 384, regardless of input length)
+2. ❌ **Vector storage size** (always 384 × 4 = 1,536 bytes per chunk)
+
+#### How Embedding Models Compress Information
+
+Think of embedding models as **semantic compressors**:
+
+```
+┌─────────────────────────────────────────────────────┐
+│ INPUT: Variable-Length Text                         │
+│ "To reset the XYZ-100 device, follow these         │
+│  steps: 1) Turn off power... [512 tokens]"         │
+│                                                     │
+│                      ↓                              │
+│                                                     │
+│            Neural Network Processing                │
+│         (E5-Small: 118M parameters,                │
+│          12 layers, 12 attention heads)            │
+│                                                     │
+│                      ↓                              │
+│                                                     │
+│ OUTPUT: Fixed-Size Semantic Vector                 │
+│ [0.234, -0.123, 0.567, ..., 0.891]                │
+│          (exactly 384 numbers)                      │
+│                                                     │
+│ Storage: 384 × 4 bytes = 1,536 bytes              │
+└─────────────────────────────────────────────────────┘
+```
+
+The embedding is a **compressed semantic fingerprint** of the text, not a token-by-token encoding. This is what makes vector search efficient - all vectors are the same size, making similarity calculations uniform and fast.
+
+#### Example: Storage for Different Scenarios
+
+**Scenario 1: Short Chunks (256 tokens average)**
+- Vector storage: 50,000 × 384 × 4 = **77 MB** (same!)
+- Text storage: 50,000 × 256 = **13 MB** (half)
+- Total: ~109 MB
+
+**Scenario 2: Long Chunks (512 tokens average)**
+- Vector storage: 50,000 × 384 × 4 = **77 MB** (same!)
+- Text storage: 50,000 × 512 = **26 MB** (double)
+- Total: ~122 MB
+
+**Scenario 3: Using Different Embedding Model (1024 dimensions)**
+- Vector storage: 50,000 × 1,024 × 4 = **205 MB** (dimensions changed!)
+- Text storage: 50,000 × 512 = **26 MB** (same)
+- Total: ~250 MB
+
+**Notice:** Vector storage only changes with embedding dimensions, NOT with chunk length!
+
+#### Why This Matters for RAG Systems
+
+1. **Predictable Storage:** You can calculate exact storage needs based on number of chunks and embedding dimensions
+
+2. **Consistent Performance:** All vectors are same size, so search time is consistent regardless of chunk length
+
+3. **Efficient Scaling:** Doubling the number of documents doubles storage linearly, not exponentially
+
+4. **Memory Planning:** For 50,000 chunks with 384-dim embeddings, you need ~77 MB for vectors + ~50 MB for metadata = **~130 MB total** (very manageable!)
+
 ### Accuracy Metrics
 
 **Expected Retrieval Quality:**
