@@ -255,6 +255,7 @@ set(CORE_SOURCES
     src/services/sqlite_persistence_layer.cpp
     src/services/search_benchmark.cpp
     src/services/search_utils.cpp
+    src/services/search/bm25_scorer.cpp
     src/services/index/pq_index.cpp
     src/services/index/opq_index.cpp
     src/services/index/sq_index.cpp
@@ -426,6 +427,17 @@ if(BUILD_TESTS)
     )
     
     add_test(NAME Sprint23Tests COMMAND sprint23_tests)
+
+    # Phase 16: BM25 Scorer Tests
+    add_executable(bm25_tests
+        unittesting/test_bm25_scorer.cpp
+    )
+
+    target_link_libraries(bm25_tests PRIVATE
+        jadevectordb_core
+    )
+
+    add_test(NAME BM25Tests COMMAND bm25_tests)
 endif()
 
 #############################################################################
