@@ -258,6 +258,7 @@ set(CORE_SOURCES
     src/services/search/bm25_scorer.cpp
     src/services/search/inverted_index.cpp
     src/services/search/bm25_index_persistence.cpp
+    src/services/search/score_fusion.cpp
     src/services/index/pq_index.cpp
     src/services/index/opq_index.cpp
     src/services/index/sq_index.cpp
@@ -463,6 +464,17 @@ if(BUILD_TESTS)
     )
 
     add_test(NAME BM25PersistenceTests COMMAND bm25_persistence_tests)
+
+    # Phase 16: Score Fusion Tests
+    add_executable(score_fusion_tests
+        unittesting/test_score_fusion.cpp
+    )
+
+    target_link_libraries(score_fusion_tests PRIVATE
+        jadevectordb_core
+    )
+
+    add_test(NAME ScoreFusionTests COMMAND score_fusion_tests)
 endif()
 
 #############################################################################
