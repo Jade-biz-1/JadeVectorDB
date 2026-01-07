@@ -1,8 +1,8 @@
 # Manual Testing Guide - Persistent Vector Storage
 
-**Date:** December 26, 2025
+**Date:** December 29, 2025
 **Sprint:** 2.3 - Advanced Persistence Features (COMPLETE)
-**Latest Feature:** Admin Shutdown Endpoint
+**Latest Features:** Admin Shutdown Endpoint + Vector Listing Endpoint
 **Status:** Ready for Comprehensive Manual Testing
 
 ---
@@ -309,6 +309,11 @@ tail -f /home/deepak/Public/JadeVectorDB/backend/build/logs/*.log
 - **Persistence Statistics**: Thread-safe operation tracking
 - **Data Integrity Verifier**: Index validation and repair functionality
 - **Database Listing**: Enables background compaction automation
+
+**Recent Enhancements** (December 26-29, 2025):
+- **Admin Shutdown Endpoint**: Graceful server shutdown via authenticated API
+- **Vector Listing Endpoint**: Enhanced vector management with listing capabilities
+- **Frontend Improvements**: Better vector management UI with enhanced display
 
 ---
 
@@ -735,6 +740,7 @@ watch -n 2 'ps aux | grep jadevectordb | grep -v grep'
 - [ ] Test 13: Integrity verifier detects issues
 - [ ] Test 14: Free list reuses space efficiently
 - [ ] Test 15: **Admin shutdown endpoint** (NEW - December 26, 2025)
+- [ ] Test 16: **Vector listing endpoint** (NEW - December 29, 2025)
 
 ### Should Pass:
 - [ ] Test 6: Can handle 1,000+ vectors
@@ -847,6 +853,88 @@ grep -i shutdown /tmp/jadedb.log
 
 ---
 
+### Test 16: Vector Listing Endpoint (NEW - December 29, 2025)
+**Goal:** Verify the vector listing endpoint works correctly with pagination and filtering
+
+**Steps:**
+1. Create database: `list_test` (dimension: 128)
+2. Store 25 vectors with varied metadata:
+   ```bash
+   # Example metadata variations:
+   # vec_001-010: {"category": "A", "type": "test"}
+   # vec_011-020: {"category": "B", "type": "test"}
+   # vec_021-025: {"category": "A", "type": "prod"}
+   ```
+3. Test listing via UI:
+   - Navigate to database detail page
+   - Verify vector list displays all 25 vectors
+   - Check pagination if more than default page size
+   - Test sorting by ID, timestamp, etc.
+4. Test listing via API:
+   ```bash
+   # Get admin token
+   TOKEN=$(curl -s -X POST http://localhost:8080/v1/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"username":"admin","password":"admin123"}' | jq -r '.token')
+
+   # List all vectors
+   curl -X GET "http://localhost:8080/v1/databases/list_test/vectors" \
+     -H "Authorization: Bearer $TOKEN"
+
+   # List with pagination (if supported)
+   curl -X GET "http://localhost:8080/v1/databases/list_test/vectors?limit=10&offset=0" \
+     -H "Authorization: Bearer $TOKEN"
+
+   # List with filters (if supported)
+   curl -X GET "http://localhost:8080/v1/databases/list_test/vectors?category=A" \
+     -H "Authorization: Bearer $TOKEN"
+   ```
+
+**Expected Results:**
+- ✅ UI displays all vectors in database
+- ✅ Vector IDs, metadata, and timestamps visible
+- ✅ Pagination works correctly (if implemented)
+- ✅ API returns complete vector list
+- ✅ Response includes total count
+- ✅ Filtering by metadata works (if implemented)
+- ✅ Performance: listing 1,000 vectors completes in <1 second
+
+**Frontend Enhancement Test:**
+1. Navigate to database detail page
+2. Verify enhanced vector management UI:
+   - Vector list with proper formatting
+   - Search/filter capabilities
+   - Bulk operations (if available)
+   - Vector details view
+3. Test responsive design (resize browser window)
+4. Verify no UI errors in console (F12)
+
+**API Response Format:**
+```json
+{
+  "database_id": "list_test",
+  "total_count": 25,
+  "vectors": [
+    {
+      "vector_id": "vec_001",
+      "metadata": {"category": "A", "type": "test"},
+      "timestamp": "2025-12-29T10:30:00Z"
+    },
+    ...
+  ]
+}
+```
+
+**Verification:**
+```bash
+# Verify count matches stored vectors
+curl -s -X GET "http://localhost:8080/v1/databases/list_test/vectors" \
+  -H "Authorization: Bearer $TOKEN" | jq '.total_count'
+# Expected: 25
+```
+
+---
+
 ## After Testing
 
 ### If Tests Pass:
@@ -855,11 +943,16 @@ grep -i shutdown /tmp/jadedb.log
 3. Update deployment readiness status
 4. Plan next sprint or production deployment
 5. All sprints (2.1, 2.2, 2.3) are 100% complete with 26/26 automated tests passing
+   - Sprint 2.2: 8/8 tests passing ✅
+   - Sprint 2.3: 18/18 tests passing ✅
 
 ### If Tests Fail:
 1. Document specific failures with screenshots/logs
 2. Check backend logs for error messages
-3. Compare with automated test results (18/18 Sprint 2.3 tests passing)
+3. Compare with automated test results:
+   - Sprint 2.2: 8/8 tests passing
+   - Sprint 2.3: 18/18 tests passing
+   - Total: 26/26 tests passing
 4. Review persistence implementation code
 5. Create bug report with reproduction steps
 6. Debug with gdb or add more logging
@@ -1077,7 +1170,15 @@ This will test:
 - Import/Export functionality
 
 **Expected Results:**
-- 22+ tests should pass
+- 36/36 tests should pass (as of December 29, 2025)
+  - Python CLI: 7 tests (health, status, databases, vectors)
+  - Shell CLI: 5 tests (health, status, databases)
+  - Persistence: 3 tests (user and database persistence)
+  - RBAC: 5 tests (role-based access control)
+  - User Management (Python): 6 tests
+  - Import/Export (Python): 2 tests
+  - User Management (Shell): 6 tests
+  - Import/Export (Shell): 2 tests
 - Core functionality: Database creation, vector storage, search, user management
 - All user management commands should work correctly
 
