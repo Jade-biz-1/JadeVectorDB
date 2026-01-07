@@ -259,6 +259,7 @@ set(CORE_SOURCES
     src/services/search/inverted_index.cpp
     src/services/search/bm25_index_persistence.cpp
     src/services/search/score_fusion.cpp
+    src/services/search/hybrid_search_engine.cpp
     src/services/index/pq_index.cpp
     src/services/index/opq_index.cpp
     src/services/index/sq_index.cpp
@@ -475,6 +476,18 @@ if(BUILD_TESTS)
     )
 
     add_test(NAME ScoreFusionTests COMMAND score_fusion_tests)
+
+    # Phase 16: Hybrid Search Engine Tests
+    add_executable(hybrid_search_engine_tests
+        unittesting/test_hybrid_search_engine.cpp
+    )
+
+    target_link_libraries(hybrid_search_engine_tests PRIVATE
+        jadevectordb_core
+        SQLite::SQLite3
+    )
+
+    add_test(NAME HybridSearchEngineTests COMMAND hybrid_search_engine_tests)
 endif()
 
 #############################################################################
