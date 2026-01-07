@@ -257,6 +257,7 @@ set(CORE_SOURCES
     src/services/search_utils.cpp
     src/services/search/bm25_scorer.cpp
     src/services/search/inverted_index.cpp
+    src/services/search/bm25_index_persistence.cpp
     src/services/index/pq_index.cpp
     src/services/index/opq_index.cpp
     src/services/index/sq_index.cpp
@@ -450,6 +451,18 @@ if(BUILD_TESTS)
     )
 
     add_test(NAME InvertedIndexTests COMMAND inverted_index_tests)
+
+    # Phase 16: BM25 Persistence Tests
+    add_executable(bm25_persistence_tests
+        unittesting/test_bm25_persistence.cpp
+    )
+
+    target_link_libraries(bm25_persistence_tests PRIVATE
+        jadevectordb_core
+        SQLite::SQLite3
+    )
+
+    add_test(NAME BM25PersistenceTests COMMAND bm25_persistence_tests)
 endif()
 
 #############################################################################
