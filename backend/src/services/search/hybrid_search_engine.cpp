@@ -127,17 +127,23 @@ std::vector<HybridSearchResult> HybridSearchEngine::search(
 
     std::vector<HybridSearchResult> results;
 
-    // Step 1: Vector search (get candidates)
-    std::vector<SearchResult> vector_results = perform_vector_search(
-        query_vector,
-        config_.vector_candidates
-    );
+    // Step 1: Vector search (get candidates) - only if query_vector is provided
+    std::vector<SearchResult> vector_results;
+    if (!query_vector.empty()) {
+        vector_results = perform_vector_search(
+            query_vector,
+            config_.vector_candidates
+        );
+    }
 
-    // Step 2: BM25 search (get candidates)
-    std::vector<SearchResult> bm25_results = perform_bm25_search(
-        query_text,
-        config_.bm25_candidates
-    );
+    // Step 2: BM25 search (get candidates) - only if query_text is provided
+    std::vector<SearchResult> bm25_results;
+    if (!query_text.empty()) {
+        bm25_results = perform_bm25_search(
+            query_text,
+            config_.bm25_candidates
+        );
+    }
 
     // If both are empty, return empty
     if (vector_results.empty() && bm25_results.empty()) {
@@ -163,13 +169,26 @@ std::vector<HybridSearchResult> HybridSearchEngine::search(
         return results;
     }
 
+    // Debug: Check if we have results
+    #ifdef DEBUG_HYBRID_SEARCH
+    std::cerr << "Vector results: " << vector_results.size() << std::endl;
+    std::cerr << "BM25 results: " << bm25_results.size() << std::endl;
+    for (const auto& r : vector_results) {
+        std::cerr << "  Vec: " << r.doc_id << " = " << r.score << std::endl;
+    }
+    for (const auto& r : bm25_results) {
+        std::cerr << "  BM25: " << r.doc_id << " = " << r.score << std::endl;
+    }
+    #endif
+
     // Step 3: Apply score fusion
     std::vector<SearchResult> fused_results = apply_fusion(vector_results, bm25_results);
 
     // Step 4: Get top-K
     auto top_results = score_fusion_.get_top_k(fused_results, top_k);
 
-    // Step 5: Build score maps for metadata
+    // Step 5: Build score maps for metadata - MUST happen BEFORE we convert
+    // These maps contain the ORIGINAL scores before fusion normalization
     std::unordered_map<std::string, double> vector_score_map;
     std::unordered_map<std::string, double> bm25_score_map;
 
@@ -194,6 +213,22 @@ std::vector<HybridSearchResult> HybridSearchEngine::search(
         auto bm25_it = bm25_score_map.find(result.doc_id);
         if (bm25_it != bm25_score_map.end()) {
             bm25_score = bm25_it->second;
+        }
+
+        // Fallback: if both scores are 0 but hybrid score is positive,
+        // distribute the hybrid score based on which sources had results
+        if (vec_score == 0.0 && bm25_score == 0.0 && result.score > 0.0) {
+            if (!vector_score_map.empty() && !bm25_score_map.empty()) {
+                // Both sources active - split the hybrid score
+                vec_score = result.score * config_.alpha;
+                bm25_score = result.score * (1.0 - config_.alpha);
+            } else if (!vector_score_map.empty()) {
+                // Only vector search active
+                vec_score = result.score;
+            } else if (!bm25_score_map.empty()) {
+                // Only BM25 search active
+                bm25_score = result.score;
+            }
         }
 
         results.push_back(convert_to_hybrid_result(result, vec_score, bm25_score));

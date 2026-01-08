@@ -34,6 +34,7 @@ X-API-Key: YOUR_API_KEY
 
 - `POST /databases/{databaseId}/search` - Perform similarity search
 - `POST /databases/{databaseId}/search/advanced` - Perform advanced search with filters
+- `POST /databases/{databaseId}/search/hybrid` - Perform hybrid search (vector + keyword/BM25)
 
 ### Index Management
 
