@@ -681,6 +681,78 @@ curl -X GET http://localhost:8080/v1/databases/my_database_id/status \
   - Multiple conditions can be combined with AND/OR logic
   - Filter values are always strings and are type-coerced when comparing
 
+#### POST /v1/databases/{databaseId}/search/hybrid
+- **Description**: Hybrid search combining vector similarity and keyword (BM25) search
+- **Authentication**: Required
+- **Permissions**: search:execute
+- **Request Body**:
+```json
+{
+  "queryVector": [0.1, 0.2, 0.3, ...],   // Array of floats for vector search (optional)
+  "queryText": "machine learning",       // Text query for BM25 keyword search (optional)
+  "topK": 10,                             // Number of results to return (default: 10)
+  "fusionMethod": "rrf",                  // "rrf" (Reciprocal Rank Fusion) or "linear" (default: "rrf")
+  "alpha": 0.7,                           // Weight for vector scores in linear fusion (0.0-1.0, default: 0.7)
+  "k": 60,                                // RRF k parameter (default: 60)
+  "includeMetadata": true,                // Include vector metadata in results (default: true)
+  "includeVectorData": false,             // Include vector values in results (default: false)
+  "includeScores": true                   // Include individual scores (vector, BM25) (default: true)
+}
+```
+- **Fusion Methods**:
+  - `rrf` (Reciprocal Rank Fusion): Rank-based fusion that combines results based on their positions in the ranked lists. Formula: `1 / (k + rank)`, where k is typically 60.
+  - `linear` (Weighted Linear): Score-based fusion that combines normalized scores using weighted average. Formula: `alpha * vector_score + (1 - alpha) * bm25_score`
+
+- **Notes on Query Parameters**:
+  - At least one of `queryVector` or `queryText` must be provided
+  - If only `queryVector` is provided, performs vector-only search
+  - If only `queryText` is provided, performs BM25-only search
+  - If both are provided, performs true hybrid search with score fusion
+
+- **Response** (200 OK):
+```json
+{
+  "count": 10,                            // Number of results returned
+  "fusionMethod": "rrf",                  // Fusion method used
+  "results": [
+    {
+      "vectorId": "doc_123",              // ID of the matching vector/document
+      "hybridScore": 0.95,                // Combined hybrid score
+      "vectorScore": 0.92,                // Vector similarity score (if includeScores is true)
+      "bm25Score": 0.88,                  // BM25 keyword score (if includeScores is true)
+      "vector": {                         // Included based on request parameters
+        "id": "doc_123",
+        "values": [0.1, 0.2, ...],        // Only if includeVectorData is true
+        "metadata": {                     // Only if includeMetadata is true
+          "source": "Machine learning document",
+          "category": "AI",
+          "tags": ["ml", "algorithms"],
+          "owner": "researcher1"
+        }
+      }
+    }
+  ]
+}
+```
+
+- **Use Cases**:
+  - **Semantic + Keyword Search**: Find documents that are semantically similar AND contain specific keywords
+  - **Enhanced Recall**: Combine the strengths of both vector similarity (semantic understanding) and keyword matching (exact term matching)
+  - **Ranking Diversity**: Get diverse results by fusing different ranking signals
+
+- **Best Practices**:
+  - Use `fusionMethod: "rrf"` for general-purpose hybrid search (more robust to score scale differences)
+  - Use `fusionMethod: "linear"` when you want fine control over the balance between vector and keyword signals
+  - Adjust `alpha` parameter (0.0 to 1.0) to control the weight: higher values favor vector similarity, lower values favor keyword matching
+  - For alpha: 0.7 is a good default (70% vector, 30% BM25), adjust based on your use case
+  - BM25 index must be built before performing hybrid or BM25-only search
+
+- **Notes**:
+  - Results are ordered by hybrid score (highest first)
+  - Hybrid scores combine both vector similarity and BM25 keyword relevance
+  - The BM25 index must be populated with document text for keyword search to work
+  - Vector search uses the existing similarity search service (HNSW/IVF indexes)
+
 ### Index Management
 
 #### POST /v1/databases/{databaseId}/indexes
