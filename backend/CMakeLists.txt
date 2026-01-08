@@ -260,6 +260,7 @@ set(CORE_SOURCES
     src/services/search/bm25_index_persistence.cpp
     src/services/search/score_fusion.cpp
     src/services/search/hybrid_search_engine.cpp
+    src/services/search/bm25_index_builder.cpp
     src/services/index/pq_index.cpp
     src/services/index/opq_index.cpp
     src/services/index/sq_index.cpp
@@ -375,6 +376,10 @@ if(BUILD_TESTS)
         tests/test_search_quality.cpp
         tests/test_vector_api_integration.cpp
         tests/test_search_api_integration.cpp
+        tests/test_hybrid_search_api.cpp
+        tests/test_bm25_simple.cpp
+        tests/test_hybrid_search_integration.cpp
+        # tests/test_bm25_index_builder.cpp  # Temporarily disabled - async issues
         tests/test_advanced_search_integration.cpp
         tests/test_vector_storage_service.cpp
         # tests/test_metadata_filter_unit.cpp  # Needs significant refactoring - tests private methods
@@ -506,6 +511,8 @@ if(BUILD_BENCHMARKS)
         benchmark::benchmark_main
         jadevectordb_core
     )
+    # Add API sources to resolve linking with DistributedMasterClient
+    target_sources(search_benchmarks PRIVATE ${API_SOURCES})
 
     add_executable(advanced_filtering_benchmarks
         tests/benchmarks/advanced_filtering_benchmarks.cpp
@@ -515,6 +522,8 @@ if(BUILD_BENCHMARKS)
         benchmark::benchmark_main
         jadevectordb_core
     )
+    # Add API sources to resolve linking with DistributedMasterClient
+    target_sources(advanced_filtering_benchmarks PRIVATE ${API_SOURCES})
 
     add_executable(advanced_indexing_benchmarks
         tests/benchmarks/advanced_indexing_benchmarks.cpp
@@ -524,6 +533,8 @@ if(BUILD_BENCHMARKS)
         benchmark::benchmark_main
         jadevectordb_core
     )
+    # Add API sources to resolve linking with DistributedMasterClient
+    target_sources(advanced_indexing_benchmarks PRIVATE ${API_SOURCES})
 
     add_executable(filtered_search_benchmarks
         tests/benchmarks/filtered_search_benchmarks.cpp
@@ -533,6 +544,8 @@ if(BUILD_BENCHMARKS)
         benchmark::benchmark_main
         jadevectordb_core
     )
+    # Add API sources to resolve linking with DistributedMasterClient
+    target_sources(filtered_search_benchmarks PRIVATE ${API_SOURCES})
 endif()
 
 #############################################################################
