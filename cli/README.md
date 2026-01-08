@@ -62,6 +62,7 @@ python cli/distributed/cluster_cli.py --host localhost --port 8080 status
 **Features:**
 - ✅ Full API coverage
 - ✅ Python client library included
+- ✅ Hybrid search support (vector + BM25 keyword search)
 - ✅ cURL command generation
 - ✅ Rich error messages
 - ✅ Batch operations support
@@ -184,6 +185,7 @@ python cli/distributed/cluster_cli.py --host localhost --port 8080 status
 | **Database Operations** | ✅ | ✅ | ✅ | ❌ |
 | **Vector Operations** | ✅ | ✅ | ✅ | ❌ |
 | **Search Operations** | ✅ | ✅ | ✅ | ❌ |
+| **Hybrid Search** | ✅ | ❌ | ❌ | ❌ |
 | **Cluster Management** | ❌ | ❌ | ❌ | ✅ |
 | **cURL Generation** | ✅ | ✅ | ❌ | ❌ |
 | **Installation Required** | Yes (pip) | No | Yes (npm) | Yes (pip) |
@@ -234,6 +236,75 @@ bash jade-db.sh --url http://localhost:8080 --database-id db1 store vec1 '[0.1, 
 
 # JavaScript
 node bin/jade-db.js --url http://localhost:8080 vector store --database-id db1 --vector-id vec1 --values "[0.1, 0.2, 0.3]"
+```
+
+### Hybrid Search Operations
+
+JadeVectorDB supports hybrid search combining vector similarity with BM25 keyword search for improved search quality.
+
+#### Perform Hybrid Search
+
+```bash
+# Python - Keyword search only
+jade-db --url http://localhost:8080 hybrid-search \
+  --database-id my-db \
+  --query-text "machine learning algorithms" \
+  --top-k 10
+
+# Python - Vector search only
+jade-db --url http://localhost:8080 hybrid-search \
+  --database-id my-db \
+  --query-vector "[0.1, 0.2, 0.3]" \
+  --top-k 10
+
+# Python - Combined hybrid search with RRF fusion
+jade-db --url http://localhost:8080 hybrid-search \
+  --database-id my-db \
+  --query-text "machine learning" \
+  --query-vector "[0.1, 0.2, 0.3]" \
+  --fusion-method rrf \
+  --top-k 10
+
+# Python - Combined hybrid search with weighted linear fusion
+jade-db --url http://localhost:8080 hybrid-search \
+  --database-id my-db \
+  --query-text "deep learning" \
+  --query-vector "[0.1, 0.2, 0.3]" \
+  --fusion-method weighted_linear \
+  --alpha 0.7 \
+  --top-k 10
+```
+
+#### Build BM25 Index
+
+```bash
+# Python - Build BM25 index from existing vectors
+jade-db --url http://localhost:8080 hybrid-build \
+  --database-id my-db \
+  --text-field text
+
+# Python - Incremental index build
+jade-db --url http://localhost:8080 hybrid-build \
+  --database-id my-db \
+  --text-field text \
+  --incremental
+```
+
+#### Check Index Status
+
+```bash
+# Python - Get BM25 index build status
+jade-db --url http://localhost:8080 hybrid-status \
+  --database-id my-db
+```
+
+#### Rebuild Index
+
+```bash
+# Python - Rebuild BM25 index from scratch
+jade-db --url http://localhost:8080 hybrid-rebuild \
+  --database-id my-db \
+  --text-field text
 ```
 
 ### Cluster Management
@@ -296,20 +367,33 @@ node bin/jade-db.js database list
 # 1. Create a database
 jade-db --url http://localhost:8080 create-db --name documents --dimension 768
 
-# 2. Store vectors
+# 2. Store vectors with text metadata
 jade-db --url http://localhost:8080 store \
   --database-id documents \
   --vector-id doc1 \
   --values "[0.1, 0.2, 0.3]" \
-  --metadata '{"title":"Example"}'
+  --metadata '{"title":"Example","text":"Machine learning algorithms for classification"}'
 
-# 3. Search for similar vectors
-jade-db --url http://localhost:8080 search \
+jade-db --url http://localhost:8080 store \
   --database-id documents \
+  --vector-id doc2 \
+  --values "[0.2, 0.3, 0.4]" \
+  --metadata '{"title":"Deep Learning","text":"Neural networks and deep learning techniques"}'
+
+# 3. Build BM25 index for hybrid search
+jade-db --url http://localhost:8080 hybrid-build \
+  --database-id documents \
+  --text-field text
+
+# 4. Perform hybrid search
+jade-db --url http://localhost:8080 hybrid-search \
+  --database-id documents \
+  --query-text "machine learning" \
   --query-vector "[0.15, 0.25, 0.35]" \
+  --fusion-method rrf \
   --top-k 5
 
-# 4. Check system health
+# 5. Check system health
 jade-db --url http://localhost:8080 health
 ```
 

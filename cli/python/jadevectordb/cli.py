@@ -483,6 +483,99 @@ def export_vectors(args: argparse.Namespace):
         print(f"Database error: {e}")
         sys.exit(1)
 
+# Hybrid Search Commands
+
+def hybrid_search_query(args: argparse.Namespace):
+    """Perform hybrid search combining vector and keyword search"""
+    client = JadeVectorDB(args.url, args.api_key)
+    try:
+        # Parse query vector if provided
+        query_vector = None
+        if hasattr(args, 'query_vector') and args.query_vector:
+            if args.query_vector.startswith('[') and args.query_vector.endswith(']'):
+                query_vector = json.loads(args.query_vector)
+            else:
+                query_vector = [float(x) for x in args.query_vector.split(',')]
+
+        # Parse query text if provided
+        query_text = args.query_text if hasattr(args, 'query_text') and args.query_text else None
+
+        # Validate that at least one query is provided
+        if not query_text and not query_vector:
+            print("Error: At least one of --query-text or --query-vector must be provided")
+            sys.exit(1)
+
+        # Parse filters if provided
+        filters = None
+        if hasattr(args, 'filters') and args.filters:
+            filters = json.loads(args.filters)
+
+        results = client.hybrid_search(
+            database_id=args.database_id,
+            query_text=query_text,
+            query_vector=query_vector,
+            top_k=args.top_k if hasattr(args, 'top_k') else 10,
+            fusion_method=args.fusion_method if hasattr(args, 'fusion_method') else 'rrf',
+            alpha=args.alpha if hasattr(args, 'alpha') else 0.7,
+            filters=filters
+        )
+
+        print(json.dumps(results, indent=2))
+    except JadeVectorDBError as e:
+        print(f"Error performing hybrid search: {e}")
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print(f"Error parsing JSON: {e}")
+        sys.exit(1)
+
+def hybrid_search_build(args: argparse.Namespace):
+    """Build BM25 index for hybrid search"""
+    client = JadeVectorDB(args.url, args.api_key)
+    try:
+        text_field = args.text_field if hasattr(args, 'text_field') and args.text_field else 'text'
+        incremental = args.incremental if hasattr(args, 'incremental') else False
+
+        result = client.build_bm25_index(
+            database_id=args.database_id,
+            text_field=text_field,
+            incremental=incremental
+        )
+
+        print(f"BM25 index build initiated:")
+        print(json.dumps(result, indent=2))
+    except JadeVectorDBError as e:
+        print(f"Error building BM25 index: {e}")
+        sys.exit(1)
+
+def hybrid_search_status(args: argparse.Namespace):
+    """Get BM25 index build status"""
+    client = JadeVectorDB(args.url, args.api_key)
+    try:
+        status = client.get_bm25_index_status(database_id=args.database_id)
+
+        print("BM25 Index Status:")
+        print(json.dumps(status, indent=2))
+    except JadeVectorDBError as e:
+        print(f"Error getting BM25 index status: {e}")
+        sys.exit(1)
+
+def hybrid_search_rebuild(args: argparse.Namespace):
+    """Rebuild BM25 index from scratch"""
+    client = JadeVectorDB(args.url, args.api_key)
+    try:
+        text_field = args.text_field if hasattr(args, 'text_field') and args.text_field else 'text'
+
+        result = client.rebuild_bm25_index(
+            database_id=args.database_id,
+            text_field=text_field
+        )
+
+        print(f"BM25 index rebuild initiated:")
+        print(json.dumps(result, indent=2))
+    except JadeVectorDBError as e:
+        print(f"Error rebuilding BM25 index: {e}")
+        sys.exit(1)
+
 def setup_parser():
     """Set up the argument parser"""
     parser = argparse.ArgumentParser(description="JadeVectorDB CLI")
@@ -605,6 +698,32 @@ def setup_parser():
     export_parser.add_argument("--format", choices=['json', 'csv'], help="File format (auto-detected if not specified)")
     export_parser.add_argument("--vector-ids", help="Comma-separated list or JSON array of vector IDs to export")
     export_parser.set_defaults(func=export_vectors)
+
+    # Hybrid Search subcommands
+    hybrid_search_query_parser = subparsers.add_parser("hybrid-search", help="Perform hybrid search combining vector and keyword search")
+    hybrid_search_query_parser.add_argument("--database-id", required=True, help="Database ID")
+    hybrid_search_query_parser.add_argument("--query-text", help="Query text for BM25 keyword search")
+    hybrid_search_query_parser.add_argument("--query-vector", help="Query vector as JSON array or comma-separated string")
+    hybrid_search_query_parser.add_argument("--top-k", type=int, default=10, help="Number of results to return (default: 10)")
+    hybrid_search_query_parser.add_argument("--fusion-method", choices=['rrf', 'weighted_linear'], default='rrf', help="Score fusion method (default: rrf)")
+    hybrid_search_query_parser.add_argument("--alpha", type=float, default=0.7, help="Weight for weighted linear fusion (default: 0.7)")
+    hybrid_search_query_parser.add_argument("--filters", help="Metadata filters as JSON string")
+    hybrid_search_query_parser.set_defaults(func=hybrid_search_query)
+
+    hybrid_build_parser = subparsers.add_parser("hybrid-build", help="Build BM25 index for hybrid search")
+    hybrid_build_parser.add_argument("--database-id", required=True, help="Database ID")
+    hybrid_build_parser.add_argument("--text-field", default="text", help="Metadata field to index (default: text)")
+    hybrid_build_parser.add_argument("--incremental", action="store_true", help="Perform incremental indexing")
+    hybrid_build_parser.set_defaults(func=hybrid_search_build)
+
+    hybrid_status_parser = subparsers.add_parser("hybrid-status", help="Get BM25 index build status")
+    hybrid_status_parser.add_argument("--database-id", required=True, help="Database ID")
+    hybrid_status_parser.set_defaults(func=hybrid_search_status)
+
+    hybrid_rebuild_parser = subparsers.add_parser("hybrid-rebuild", help="Rebuild BM25 index from scratch")
+    hybrid_rebuild_parser.add_argument("--database-id", required=True, help="Database ID")
+    hybrid_rebuild_parser.add_argument("--text-field", default="text", help="Metadata field to index (default: text)")
+    hybrid_rebuild_parser.set_defaults(func=hybrid_search_rebuild)
 
     return parser
 
