@@ -160,6 +160,20 @@ public:
      */
     void set_stop_words(const std::vector<std::string>& words);
 
+    /**
+     * @brief Restore indexed document state (for persistence loading)
+     * @param doc_id Document ID
+     * @param doc Document to restore
+     */
+    void restore_document(const std::string& doc_id, const BM25Document& doc);
+
+    /**
+     * @brief Set statistics for persistence restoration
+     * @param avg_length Average document length
+     * @param total Total number of documents
+     */
+    void set_statistics(double avg_length, size_t total);
+
 private:
     BM25Config config_;
 

@@ -41,6 +41,14 @@ namespace jadevectordb {
     struct SecurityEvent;
 }
 
+// Forward declarations for hybrid search
+namespace jadedb {
+namespace search {
+    class HybridSearchEngine;
+    class BM25IndexBuilder;
+}
+}
+
 // For now, we'll define a basic interface structure
 // The actual implementation would use a web framework like Crow, Pistache, or similar
 namespace jadevectordb {
@@ -130,6 +138,12 @@ private:
     std::unique_ptr<AuthenticationService> authentication_service_;
     std::shared_ptr<SecurityAuditLogger> security_audit_logger_;
     AuthenticationConfig authentication_config_;
+
+    // Hybrid search engine (per-database instances stored in map)
+    std::unordered_map<std::string, std::shared_ptr<jadedb::search::HybridSearchEngine>> hybrid_search_engines_;
+
+    // BM25 index builders (per-database instances)
+    std::unordered_map<std::string, std::shared_ptr<jadedb::search::BM25IndexBuilder>> bm25_index_builders_;
     
     // Distributed services (shared from DistributedServiceManager)
     std::shared_ptr<DistributedServiceManager> distributed_service_manager_;
@@ -221,7 +235,14 @@ public:
     
     crow::response handle_similarity_search_request(const crow::request& req, const std::string& database_id);
     crow::response handle_advanced_search_request(const crow::request& req, const std::string& database_id);
-    
+    crow::response handle_hybrid_search_request(const crow::request& req, const std::string& database_id);
+
+    // BM25 index building request handlers
+    crow::response handle_build_bm25_index_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_get_bm25_build_status_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_rebuild_bm25_index_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_add_bm25_documents_request(const crow::request& req, const std::string& database_id);
+
     crow::response handle_create_index_request(const crow::request& req, const std::string& database_id);
     crow::response handle_list_indexes_request(const crow::request& req, const std::string& database_id);
     crow::response handle_update_index_request(const crow::request& req, const std::string& database_id, const std::string& index_id);
@@ -329,6 +350,12 @@ public:
     void setup_authentication();
     void setup_request_validation();
     void setup_response_serialization();
+
+    // Hybrid search helper
+    std::shared_ptr<jadedb::search::HybridSearchEngine> get_or_create_hybrid_search_engine(const std::string& database_id);
+
+    // BM25 index builder helper
+    std::shared_ptr<jadedb::search::BM25IndexBuilder> get_or_create_bm25_index_builder(const std::string& database_id);
     
     // Authentication helper
     Result<bool> authenticate_request(const std::string& api_key) const;

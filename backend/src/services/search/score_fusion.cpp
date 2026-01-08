@@ -102,17 +102,19 @@ void ScoreFusion::normalize_min_max(std::vector<SearchResult>& results) const {
         max_score = std::max(max_score, result.score);
     }
 
-    // Normalize to [0, 1]
+    // Normalize to [0.01, 1] to avoid zero scores
+    // This ensures all documents have some positive contribution
     double range = max_score - min_score;
 
     if (range < 1e-9) {
-        // All scores are the same, set to 1.0
+        // All scores are the same, set to 0.5 (middle value)
         for (auto& result : results) {
-            result.score = 1.0;
+            result.score = 0.5;
         }
     } else {
         for (auto& result : results) {
-            result.score = (result.score - min_score) / range;
+            // Normalize to [0.01, 1] instead of [0, 1]
+            result.score = 0.01 + 0.99 * (result.score - min_score) / range;
         }
     }
 }
