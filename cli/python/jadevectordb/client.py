@@ -462,3 +462,145 @@ class JadeVectorDB:
         :return: Updated user information
         """
         return self.update_user(user_id, is_active=False)
+
+    # Hybrid Search Methods
+
+    def hybrid_search(
+        self,
+        database_id: str,
+        query_text: Optional[str] = None,
+        query_vector: Optional[List[float]] = None,
+        top_k: int = 10,
+        fusion_method: str = "rrf",
+        alpha: float = 0.7,
+        filters: Optional[Dict] = None
+    ) -> List[Dict]:
+        """
+        Perform hybrid search combining vector similarity and BM25 keyword search
+
+        :param database_id: ID of the database to search in
+        :param query_text: Query text for BM25 search (optional if query_vector provided)
+        :param query_vector: Query vector for similarity search (optional if query_text provided)
+        :param top_k: Number of results to return
+        :param fusion_method: Fusion method ("rrf" or "weighted_linear")
+        :param alpha: Weight for weighted linear fusion (0.0-1.0, default 0.7)
+        :param filters: Optional metadata filters
+        :return: List of hybrid search results with scores
+        """
+        url = f"{self.base_url}/v1/databases/{database_id}/search/hybrid"
+
+        payload = {
+            "topK": top_k,
+            "fusionMethod": fusion_method,
+            "alpha": alpha
+        }
+
+        if query_text:
+            payload["queryText"] = query_text
+
+        if query_vector:
+            payload["queryVector"] = query_vector
+
+        if filters:
+            payload["filters"] = filters
+
+        response = self.session.post(url, json=payload)
+
+        if response.status_code == 200:
+            return response.json().get('results', [])
+        else:
+            raise JadeVectorDBError(f"Failed to perform hybrid search: {response.text}")
+
+    def build_bm25_index(
+        self,
+        database_id: str,
+        text_field: str = "text",
+        incremental: bool = False
+    ) -> Dict:
+        """
+        Build BM25 index for a database
+
+        :param database_id: ID of the database
+        :param text_field: Metadata field to index (default: "text")
+        :param incremental: Whether to perform incremental indexing
+        :return: Build status information
+        """
+        url = f"{self.base_url}/v1/databases/{database_id}/bm25-index/build"
+
+        payload = {
+            "textField": text_field,
+            "incremental": incremental
+        }
+
+        response = self.session.post(url, json=payload)
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise JadeVectorDBError(f"Failed to build BM25 index: {response.text}")
+
+    def get_bm25_index_status(self, database_id: str) -> Dict:
+        """
+        Get BM25 index build status
+
+        :param database_id: ID of the database
+        :return: Index status information
+        """
+        url = f"{self.base_url}/v1/databases/{database_id}/bm25-index/status"
+
+        response = self.session.get(url)
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise JadeVectorDBError(f"Failed to get BM25 index status: {response.text}")
+
+    def rebuild_bm25_index(
+        self,
+        database_id: str,
+        text_field: str = "text"
+    ) -> Dict:
+        """
+        Rebuild BM25 index from scratch
+
+        :param database_id: ID of the database
+        :param text_field: Metadata field to index (default: "text")
+        :return: Rebuild status information
+        """
+        url = f"{self.base_url}/v1/databases/{database_id}/bm25-index/rebuild"
+
+        payload = {
+            "textField": text_field
+        }
+
+        response = self.session.post(url, json=payload)
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise JadeVectorDBError(f"Failed to rebuild BM25 index: {response.text}")
+
+    def add_bm25_documents(
+        self,
+        database_id: str,
+        documents: List[Dict[str, str]]
+    ) -> Dict:
+        """
+        Add documents to BM25 index
+
+        :param database_id: ID of the database
+        :param documents: List of documents with 'doc_id' and 'text' fields
+        :return: Addition status information
+        """
+        url = f"{self.base_url}/v1/databases/{database_id}/bm25-index/documents"
+
+        payload = {
+            "documents": documents
+        }
+
+        response = self.session.post(url, json=payload)
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise JadeVectorDBError(f"Failed to add BM25 documents: {response.text}")
