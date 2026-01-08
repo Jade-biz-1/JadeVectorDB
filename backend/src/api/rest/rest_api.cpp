@@ -17,6 +17,8 @@
 #include "services/replication_service.h"
 #include "services/query_router.h"
 #include "services/distributed_service_manager.h"
+#include "services/search/hybrid_search_engine.h"
+#include "services/search/bm25_index_builder.h"
 #include <chrono>
 #include <thread>
 #include <random>
@@ -344,7 +346,53 @@ void RestApiImpl::register_routes() {
             }
             return crow::response(405, "Method not allowed");
         });
-    
+
+    // POST /v1/databases/<id>/search/hybrid - Hybrid search (vector + BM25)
+    app_->route_dynamic("/v1/databases/<string>/search/hybrid")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_hybrid_search_request(req, database_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    // BM25 Index Building endpoints
+    // POST /v1/databases/<id>/bm25-index/build - Build BM25 index
+    app_->route_dynamic("/v1/databases/<string>/bm25-index/build")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_build_bm25_index_request(req, database_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    // GET /v1/databases/<id>/bm25-index/status - Get build status
+    app_->route_dynamic("/v1/databases/<string>/bm25-index/status")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method == crow::HTTPMethod::GET) {
+                return handle_get_bm25_build_status_request(req, database_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    // POST /v1/databases/<id>/bm25-index/rebuild - Rebuild BM25 index
+    app_->route_dynamic("/v1/databases/<string>/bm25-index/rebuild")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_rebuild_bm25_index_request(req, database_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    // POST /v1/databases/<id>/bm25-index/documents - Add documents to index
+    app_->route_dynamic("/v1/databases/<string>/bm25-index/documents")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_add_bm25_documents_request(req, database_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
     // Index management endpoints
     app_->route_dynamic("/v1/databases/<string>/indexes")
         ([this](const crow::request& req, std::string database_id) {
@@ -1680,6 +1728,647 @@ crow::response RestApiImpl::handle_advanced_search_request(const crow::request& 
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in advanced search: " << e.what());
         return crow::response(500, "{\"error\":\"Internal server error\"}");
+    }
+}
+
+// Helper method to get or create HybridSearchEngine for a database
+std::shared_ptr<jadedb::search::HybridSearchEngine> RestApiImpl::get_or_create_hybrid_search_engine(const std::string& database_id) {
+    // Check if engine already exists
+    auto it = hybrid_search_engines_.find(database_id);
+    if (it != hybrid_search_engines_.end()) {
+        return it->second;
+    }
+
+    // Create new hybrid search engine with default config
+    jadedb::search::HybridSearchConfig config;
+    config.fusion_method = jadedb::search::FusionMethod::RRF;
+    config.rrf_k = 60;
+    config.alpha = 0.7;
+    config.vector_candidates = 100;
+    config.bm25_candidates = 100;
+
+    auto engine = std::make_shared<jadedb::search::HybridSearchEngine>(database_id, config);
+
+    // Set vector search provider to use SimilaritySearchService
+    engine->set_vector_search_provider(
+        [this, database_id](const std::vector<float>& query_vector, size_t top_k) -> std::vector<jadedb::search::SearchResult> {
+            // Create Vector object for similarity search
+            Vector vec;
+            vec.values = query_vector;
+
+            // Create search params
+            SearchParams params;
+            params.top_k = top_k;
+            params.threshold = 0.0;
+            params.include_metadata = true;
+            params.include_vector_data = false;
+
+            // Perform similarity search
+            auto result = similarity_search_service_->similarity_search(database_id, vec, params);
+
+            // Convert to SearchResult format
+            std::vector<jadedb::search::SearchResult> search_results;
+            if (result.has_value()) {
+                for (const auto& sr : result.value()) {
+                    jadedb::search::SearchResult res;
+                    res.doc_id = sr.vector_id;
+                    res.score = sr.similarity_score;
+                    search_results.push_back(res);
+                }
+            }
+
+            return search_results;
+        }
+    );
+
+    // Store and return
+    hybrid_search_engines_[database_id] = engine;
+    return engine;
+}
+
+crow::response RestApiImpl::handle_hybrid_search_request(const crow::request& req, const std::string& database_id) {
+    try {
+        LOG_DEBUG(logger_, "Hybrid search request received for database: " + database_id);
+
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 7) == "ApiKey ") {
+                api_key = auth_header.substr(7);
+            }
+        }
+
+        LOG_DEBUG(logger_, "Authenticating request...");
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+
+        LOG_DEBUG(logger_, "Checking database exists...");
+        // Validate database exists
+        auto db_exists_result = db_service_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+
+        LOG_DEBUG(logger_, "Parsing request body...");
+        // Parse request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        // Parse query vector
+        std::vector<float> query_vector;
+        if (body_json.has("queryVector")) {
+            if (body_json["queryVector"].t() != crow::json::type::List) {
+                return crow::response(400, "{\"error\":\"'queryVector' must be an array\"}");
+            }
+            auto query_array = body_json["queryVector"];
+            for (size_t i = 0; i < query_array.size(); i++) {
+                query_vector.push_back(static_cast<float>(query_array[i].d()));
+            }
+            LOG_DEBUG(logger_, "Query vector parsed, dimension: " + std::to_string(query_vector.size()));
+        }
+
+        // Parse query text (required for BM25)
+        std::string query_text;
+        if (body_json.has("queryText")) {
+            query_text = body_json["queryText"].s();
+            LOG_DEBUG(logger_, "Query text: " + query_text);
+        }
+
+        // Validate that at least one query type is provided
+        if (query_vector.empty() && query_text.empty()) {
+            return crow::response(400, "{\"error\":\"At least one of 'queryVector' or 'queryText' must be provided\"}");
+        }
+
+        // Parse search parameters
+        size_t top_k = 10;
+        if (body_json.has("topK")) {
+            top_k = body_json["topK"].i();
+        }
+
+        bool include_metadata = true;
+        if (body_json.has("includeMetadata")) {
+            include_metadata = body_json["includeMetadata"].b();
+        }
+
+        bool include_vector_data = false;
+        if (body_json.has("includeVectorData")) {
+            include_vector_data = body_json["includeVectorData"].b();
+        }
+
+        bool include_scores = true;
+        if (body_json.has("includeScores")) {
+            include_scores = body_json["includeScores"].b();
+        }
+
+        // Get or create hybrid search engine
+        auto engine = get_or_create_hybrid_search_engine(database_id);
+
+        // Update config based on request
+        jadedb::search::HybridSearchConfig config = engine->get_config();
+
+        // Parse fusion method
+        if (body_json.has("fusionMethod")) {
+            std::string fusion_method = body_json["fusionMethod"].s();
+            if (fusion_method == "rrf") {
+                config.fusion_method = jadedb::search::FusionMethod::RRF;
+            } else if (fusion_method == "linear" || fusion_method == "weighted") {
+                config.fusion_method = jadedb::search::FusionMethod::LINEAR;
+            } else {
+                return crow::response(400, "{\"error\":\"Invalid fusion method. Use 'rrf' or 'linear'\"}");
+            }
+        }
+
+        // Parse RRF k parameter
+        if (body_json.has("k")) {
+            config.rrf_k = body_json["k"].i();
+        }
+
+        // Parse alpha (weight for vector scores)
+        if (body_json.has("alpha")) {
+            config.alpha = body_json["alpha"].d();
+            if (config.alpha < 0.0 || config.alpha > 1.0) {
+                return crow::response(400, "{\"error\":\"Alpha must be between 0.0 and 1.0\"}");
+            }
+        }
+
+        // Update engine config
+        engine->set_config(config);
+
+        LOG_DEBUG(logger_, "Performing hybrid search...");
+
+        // Perform hybrid search
+        std::vector<jadedb::search::HybridSearchResult> results;
+
+        if (!query_text.empty() && !query_vector.empty()) {
+            // Full hybrid search
+            results = engine->search(query_text, query_vector, top_k);
+        } else if (!query_text.empty()) {
+            // BM25 only
+            results = engine->search_bm25_only(query_text, top_k);
+        } else {
+            // Vector only - use similarity search service directly
+            Vector vec;
+            vec.values = query_vector;
+            SearchParams params;
+            params.top_k = top_k;
+            params.threshold = 0.0;
+            params.include_metadata = include_metadata;
+            params.include_vector_data = include_vector_data;
+
+            auto search_result = similarity_search_service_->similarity_search(database_id, vec, params);
+            if (!search_result.has_value()) {
+                return crow::response(400, "{\"error\":\"Vector search failed\"}");
+            }
+
+            // Convert to hybrid results format
+            for (const auto& sr : search_result.value()) {
+                jadedb::search::HybridSearchResult hr;
+                hr.doc_id = sr.vector_id;
+                hr.vector_score = sr.similarity_score;
+                hr.bm25_score = 0.0;
+                hr.hybrid_score = sr.similarity_score;
+                results.push_back(hr);
+            }
+        }
+
+        LOG_DEBUG(logger_, "Building response with " + std::to_string(results.size()) + " results");
+
+        // Build response
+        crow::json::wvalue response;
+        response["count"] = static_cast<int>(results.size());
+
+        // Include fusion method in response
+        if (config.fusion_method == jadedb::search::FusionMethod::RRF) {
+            response["fusionMethod"] = "rrf";
+        } else {
+            response["fusionMethod"] = "linear";
+        }
+
+        int idx = 0;
+        for (const auto& result : results) {
+            crow::json::wvalue result_obj;
+            result_obj["vectorId"] = result.doc_id;
+            result_obj["hybridScore"] = result.hybrid_score;
+
+            if (include_scores) {
+                result_obj["vectorScore"] = result.vector_score;
+                result_obj["bm25Score"] = result.bm25_score;
+            }
+
+            // Fetch vector details if requested
+            if (include_metadata || include_vector_data) {
+                auto vector_result = vector_storage_service_->retrieve_vector(database_id, result.doc_id);
+                if (vector_result.has_value()) {
+                    crow::json::wvalue vector_obj;
+                    const auto& vec_data = vector_result.value();
+                    vector_obj["id"] = vec_data.id;
+
+                    if (include_vector_data) {
+                        crow::json::wvalue values_array;
+                        int val_idx = 0;
+                        for (auto val : vec_data.values) {
+                            values_array[val_idx++] = val;
+                        }
+                        vector_obj["values"] = std::move(values_array);
+                    }
+
+                    if (include_metadata) {
+                        crow::json::wvalue metadata_obj;
+                        const auto& metadata = vec_data.metadata;
+                        metadata_obj["source"] = metadata.source;
+                        metadata_obj["owner"] = metadata.owner;
+                        metadata_obj["category"] = metadata.category;
+                        metadata_obj["status"] = metadata.status;
+                        metadata_obj["createdAt"] = metadata.created_at;
+                        metadata_obj["updatedAt"] = metadata.updated_at;
+                        metadata_obj["score"] = metadata.score;
+
+                        if (!metadata.tags.empty()) {
+                            crow::json::wvalue tags_array;
+                            int tag_idx = 0;
+                            for (const auto& tag : metadata.tags) {
+                                tags_array[tag_idx++] = tag;
+                            }
+                            metadata_obj["tags"] = std::move(tags_array);
+                        }
+
+                        if (!metadata.permissions.empty()) {
+                            crow::json::wvalue permissions_array;
+                            int perm_idx = 0;
+                            for (const auto& permission : metadata.permissions) {
+                                permissions_array[perm_idx++] = permission;
+                            }
+                            metadata_obj["permissions"] = std::move(permissions_array);
+                        }
+
+                        if (!metadata.custom.empty()) {
+                            crow::json::wvalue custom_obj;
+                            for (const auto& [key, value] : metadata.custom) {
+                                auto parsed_value = crow::json::load(value.dump());
+                                if (parsed_value) {
+                                    custom_obj[key] = parsed_value;
+                                } else {
+                                    custom_obj[key] = value.dump();
+                                }
+                            }
+                            metadata_obj["custom"] = std::move(custom_obj);
+                        }
+
+                        vector_obj["metadata"] = std::move(metadata_obj);
+                    }
+
+                    result_obj["vector"] = std::move(vector_obj);
+                }
+            }
+
+            response["results"][idx++] = std::move(result_obj);
+        }
+
+        crow::response resp(200, response);
+        resp.set_header("Content-Type", "application/json");
+
+        LOG_DEBUG(logger_, "Hybrid search completed: found " << results.size() << " results in database: " << database_id);
+        return resp;
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in hybrid search: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error: " + std::string(e.what()) + "\"}");
+    }
+}
+
+// ============================================================================
+// BM25 INDEX BUILDING HANDLERS
+// ============================================================================
+
+// Helper method to get or create BM25IndexBuilder for a database
+std::shared_ptr<jadedb::search::BM25IndexBuilder> RestApiImpl::get_or_create_bm25_index_builder(const std::string& database_id) {
+    // Check if builder already exists
+    auto it = bm25_index_builders_.find(database_id);
+    if (it != bm25_index_builders_.end()) {
+        return it->second;
+    }
+
+    // Create new BM25 index builder
+    jadedb::search::BuildConfig config;
+    config.batch_size = 1000;
+    config.persist_on_completion = true;
+    config.persistence_path = "./data/bm25_" + database_id + ".db";
+
+    auto builder = std::make_shared<jadedb::search::BM25IndexBuilder>(database_id, config);
+
+    // Store and return
+    bm25_index_builders_[database_id] = builder;
+    return builder;
+}
+
+crow::response RestApiImpl::handle_build_bm25_index_request(const crow::request& req, const std::string& database_id) {
+    try {
+        LOG_DEBUG(logger_, "Build BM25 index request received for database: " + database_id);
+
+        // Authentication
+        auto auth_result = authenticate_request(extract_api_key(req));
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"Unauthorized\"}");
+        }
+
+        // Validate database exists
+        auto db_exists_result = db_service_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+
+        // Parse request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        // Parse documents from request
+        std::vector<jadedb::search::BM25Document> documents;
+
+        if (!body_json.has("documents") || body_json["documents"].t() != crow::json::type::List) {
+            return crow::response(400, "{\"error\":\"'documents' array is required\"}");
+        }
+
+        auto docs_array = body_json["documents"];
+        for (size_t i = 0; i < docs_array.size(); i++) {
+            auto doc_json = docs_array[i];
+
+            if (!doc_json.has("doc_id") || !doc_json.has("text")) {
+                return crow::response(400, "{\"error\":\"Each document must have 'doc_id' and 'text'\"}");
+            }
+
+            jadedb::search::BM25Document doc;
+            doc.doc_id = doc_json["doc_id"].s();
+            doc.text = doc_json["text"].s();
+
+            documents.push_back(doc);
+        }
+
+        LOG_DEBUG(logger_, "Building BM25 index with " << documents.size() << " documents");
+
+        // Get or create BM25 index builder
+        auto builder = get_or_create_bm25_index_builder(database_id);
+
+        // Start build
+        bool started = builder->build_from_documents(documents);
+
+        if (!started) {
+            return crow::response(400, "{\"error\":\"Failed to start index build. Build may already be in progress.\"}");
+        }
+
+        // Return response
+        crow::json::wvalue response;
+        response["status"] = "building";
+        response["message"] = "BM25 index build started";
+        response["documentCount"] = static_cast<int>(documents.size());
+
+        crow::response resp(202, response);  // 202 Accepted
+        resp.set_header("Content-Type", "application/json");
+
+        LOG_INFO(logger_, "BM25 index build started for database: " << database_id);
+        return resp;
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception building BM25 index: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error: " + std::string(e.what()) + "\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_get_bm25_build_status_request(const crow::request& req, const std::string& database_id) {
+    try {
+        LOG_DEBUG(logger_, "Get BM25 build status request for database: " + database_id);
+
+        // Authentication
+        auto auth_result = authenticate_request(extract_api_key(req));
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"Unauthorized\"}");
+        }
+
+        // Check if builder exists
+        auto it = bm25_index_builders_.find(database_id);
+        if (it == bm25_index_builders_.end()) {
+            return crow::response(404, "{\"error\":\"No BM25 index found for this database\"}");
+        }
+
+        auto builder = it->second;
+        auto progress = builder->get_progress();
+
+        // Build response
+        crow::json::wvalue response;
+
+        // Status
+        std::string status_str;
+        switch (progress.status) {
+            case jadedb::search::BuildStatus::IDLE:
+                status_str = "idle";
+                break;
+            case jadedb::search::BuildStatus::IN_PROGRESS:
+                status_str = "building";
+                break;
+            case jadedb::search::BuildStatus::COMPLETED:
+                status_str = "completed";
+                break;
+            case jadedb::search::BuildStatus::FAILED:
+                status_str = "failed";
+                break;
+        }
+        response["status"] = status_str;
+
+        // Progress details
+        response["totalDocuments"] = static_cast<int>(progress.total_documents);
+        response["processedDocuments"] = static_cast<int>(progress.processed_documents);
+        response["indexedTerms"] = static_cast<int>(progress.indexed_terms);
+        response["progressPercentage"] = progress.progress_percentage;
+
+        if (!progress.error_message.empty()) {
+            response["error"] = progress.error_message;
+        }
+
+        if (progress.duration_ms > 0) {
+            response["durationMs"] = static_cast<int64_t>(progress.duration_ms);
+        }
+
+        // Index stats if ready
+        if (builder->is_index_ready()) {
+            size_t total_docs, total_terms;
+            double avg_doc_length;
+            builder->get_index_stats(total_docs, total_terms, avg_doc_length);
+
+            crow::json::wvalue stats;
+            stats["totalDocuments"] = static_cast<int>(total_docs);
+            stats["totalTerms"] = static_cast<int>(total_terms);
+            stats["averageDocumentLength"] = avg_doc_length;
+            response["indexStats"] = std::move(stats);
+        }
+
+        crow::response resp(200, response);
+        resp.set_header("Content-Type", "application/json");
+
+        return resp;
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception getting BM25 build status: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error: " + std::string(e.what()) + "\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_rebuild_bm25_index_request(const crow::request& req, const std::string& database_id) {
+    try {
+        LOG_DEBUG(logger_, "Rebuild BM25 index request received for database: " + database_id);
+
+        // Authentication
+        auto auth_result = authenticate_request(extract_api_key(req));
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"Unauthorized\"}");
+        }
+
+        // Validate database exists
+        auto db_exists_result = db_service_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+
+        // Parse request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        // Parse documents
+        std::vector<jadedb::search::BM25Document> documents;
+
+        if (!body_json.has("documents") || body_json["documents"].t() != crow::json::type::List) {
+            return crow::response(400, "{\"error\":\"'documents' array is required\"}");
+        }
+
+        auto docs_array = body_json["documents"];
+        for (size_t i = 0; i < docs_array.size(); i++) {
+            auto doc_json = docs_array[i];
+
+            if (!doc_json.has("doc_id") || !doc_json.has("text")) {
+                return crow::response(400, "{\"error\":\"Each document must have 'doc_id' and 'text'\"}");
+            }
+
+            jadedb::search::BM25Document doc;
+            doc.doc_id = doc_json["doc_id"].s();
+            doc.text = doc_json["text"].s();
+
+            documents.push_back(doc);
+        }
+
+        // Get or create builder
+        auto builder = get_or_create_bm25_index_builder(database_id);
+
+        // Rebuild index
+        bool started = builder->rebuild_index(documents);
+
+        if (!started) {
+            return crow::response(400, "{\"error\":\"Failed to start index rebuild\"}");
+        }
+
+        // Return response
+        crow::json::wvalue response;
+        response["status"] = "rebuilding";
+        response["message"] = "BM25 index rebuild started";
+        response["documentCount"] = static_cast<int>(documents.size());
+
+        crow::response resp(202, response);
+        resp.set_header("Content-Type", "application/json");
+
+        LOG_INFO(logger_, "BM25 index rebuild started for database: " << database_id);
+        return resp;
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception rebuilding BM25 index: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error: " + std::string(e.what()) + "\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_add_bm25_documents_request(const crow::request& req, const std::string& database_id) {
+    try {
+        LOG_DEBUG(logger_, "Add BM25 documents request received for database: " + database_id);
+
+        // Authentication
+        auto auth_result = authenticate_request(extract_api_key(req));
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"Unauthorized\"}");
+        }
+
+        // Validate database exists
+        auto db_exists_result = db_service_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+
+        // Parse request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        // Parse documents
+        std::vector<jadedb::search::BM25Document> documents;
+
+        if (!body_json.has("documents") || body_json["documents"].t() != crow::json::type::List) {
+            return crow::response(400, "{\"error\":\"'documents' array is required\"}");
+        }
+
+        auto docs_array = body_json["documents"];
+        for (size_t i = 0; i < docs_array.size(); i++) {
+            auto doc_json = docs_array[i];
+
+            if (!doc_json.has("doc_id") || !doc_json.has("text")) {
+                return crow::response(400, "{\"error\":\"Each document must have 'doc_id' and 'text'\"}");
+            }
+
+            jadedb::search::BM25Document doc;
+            doc.doc_id = doc_json["doc_id"].s();
+            doc.text = doc_json["text"].s();
+
+            documents.push_back(doc);
+        }
+
+        // Get or create builder
+        auto builder = get_or_create_bm25_index_builder(database_id);
+
+        // Add documents
+        bool success = builder->add_documents(documents);
+
+        if (!success) {
+            return crow::response(400, "{\"error\":\"Failed to add documents to index\"}");
+        }
+
+        // Get updated stats
+        size_t total_docs, total_terms;
+        double avg_doc_length;
+        builder->get_index_stats(total_docs, total_terms, avg_doc_length);
+
+        // Return response
+        crow::json::wvalue response;
+        response["status"] = "success";
+        response["message"] = "Documents added successfully";
+        response["addedCount"] = static_cast<int>(documents.size());
+        response["totalDocuments"] = static_cast<int>(total_docs);
+        response["totalTerms"] = static_cast<int>(total_terms);
+
+        crow::response resp(200, response);
+        resp.set_header("Content-Type", "application/json");
+
+        LOG_INFO(logger_, "Added " << documents.size() << " documents to BM25 index for database: " << database_id);
+        return resp;
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception adding BM25 documents: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error: " + std::string(e.what()) + "\"}");
     }
 }
 
