@@ -255,6 +255,11 @@ set(CORE_SOURCES
     src/services/sqlite_persistence_layer.cpp
     src/services/search_benchmark.cpp
     src/services/search_utils.cpp
+    src/services/search/bm25_scorer.cpp
+    src/services/search/inverted_index.cpp
+    src/services/search/bm25_index_persistence.cpp
+    src/services/search/score_fusion.cpp
+    src/services/search/hybrid_search_engine.cpp
     src/services/index/pq_index.cpp
     src/services/index/opq_index.cpp
     src/services/index/sq_index.cpp
@@ -426,6 +431,63 @@ if(BUILD_TESTS)
     )
     
     add_test(NAME Sprint23Tests COMMAND sprint23_tests)
+
+    # Phase 16: BM25 Scorer Tests
+    add_executable(bm25_tests
+        unittesting/test_bm25_scorer.cpp
+    )
+
+    target_link_libraries(bm25_tests PRIVATE
+        jadevectordb_core
+    )
+
+    add_test(NAME BM25Tests COMMAND bm25_tests)
+
+    # Phase 16: Inverted Index Tests
+    add_executable(inverted_index_tests
+        unittesting/test_inverted_index.cpp
+    )
+
+    target_link_libraries(inverted_index_tests PRIVATE
+        jadevectordb_core
+    )
+
+    add_test(NAME InvertedIndexTests COMMAND inverted_index_tests)
+
+    # Phase 16: BM25 Persistence Tests
+    add_executable(bm25_persistence_tests
+        unittesting/test_bm25_persistence.cpp
+    )
+
+    target_link_libraries(bm25_persistence_tests PRIVATE
+        jadevectordb_core
+        SQLite::SQLite3
+    )
+
+    add_test(NAME BM25PersistenceTests COMMAND bm25_persistence_tests)
+
+    # Phase 16: Score Fusion Tests
+    add_executable(score_fusion_tests
+        unittesting/test_score_fusion.cpp
+    )
+
+    target_link_libraries(score_fusion_tests PRIVATE
+        jadevectordb_core
+    )
+
+    add_test(NAME ScoreFusionTests COMMAND score_fusion_tests)
+
+    # Phase 16: Hybrid Search Engine Tests
+    add_executable(hybrid_search_engine_tests
+        unittesting/test_hybrid_search_engine.cpp
+    )
+
+    target_link_libraries(hybrid_search_engine_tests PRIVATE
+        jadevectordb_core
+        SQLite::SQLite3
+    )
+
+    add_test(NAME HybridSearchEngineTests COMMAND hybrid_search_engine_tests)
 endif()
 
 #############################################################################
