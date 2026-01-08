@@ -238,5 +238,19 @@ void BM25Scorer::set_stop_words(const std::vector<std::string>& words) {
     stop_words_.insert(words.begin(), words.end());
 }
 
+void BM25Scorer::restore_document(const std::string& doc_id, const BM25Document& doc) {
+    indexed_docs_[doc_id] = doc;
+
+    // Update document frequencies
+    for (const auto& [term, freq] : doc.term_frequencies) {
+        doc_frequencies_[term]++;
+    }
+}
+
+void BM25Scorer::set_statistics(double avg_length, size_t total) {
+    avg_doc_length_ = avg_length;
+    total_docs_ = total;
+}
+
 } // namespace search
 } // namespace jadedb

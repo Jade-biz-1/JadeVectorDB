@@ -305,17 +305,38 @@ bool BM25IndexPersistence::load_index(BM25Scorer& scorer, InvertedIndex& index) 
     scorer.clear();
     index.clear();
 
+    // Load config (avg_doc_length, total_docs)
+    std::string config_sql = "SELECT avg_doc_length, total_docs FROM bm25_config WHERE database_id = ?";
+    sqlite3_stmt* config_stmt;
+    int rc = sqlite3_prepare_v2(db_, config_sql.c_str(), -1, &config_stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        return false;
+    }
+
+    sqlite3_bind_text(config_stmt, 1, database_id_.c_str(), -1, SQLITE_TRANSIENT);
+
+    double avg_doc_length = 0.0;
+    size_t total_docs = 0;
+
+    if (sqlite3_step(config_stmt) == SQLITE_ROW) {
+        avg_doc_length = sqlite3_column_double(config_stmt, 0);
+        total_docs = static_cast<size_t>(sqlite3_column_int(config_stmt, 1));
+    }
+
+    sqlite3_finalize(config_stmt);
+
     // Load inverted index
     std::string select_sql = "SELECT term, postings_blob FROM bm25_index WHERE database_id = ?";
     sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db_, select_sql.c_str(), -1, &stmt, nullptr);
+    rc = sqlite3_prepare_v2(db_, select_sql.c_str(), -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         return false;
     }
 
     sqlite3_bind_text(stmt, 1, database_id_.c_str(), -1, SQLITE_TRANSIENT);
 
-    std::vector<BM25Document> documents;
+    // Track documents and their term frequencies
+    std::unordered_map<std::string, std::unordered_map<std::string, int>> doc_term_freqs;
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         std::string term = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
@@ -327,13 +348,29 @@ bool BM25IndexPersistence::load_index(BM25Scorer& scorer, InvertedIndex& index) 
         // Add postings to inverted index
         for (const auto& posting : postings.postings) {
             index.add_document_with_frequencies(posting.doc_id, {{term, posting.term_frequency}});
+
+            // Track for BM25Scorer restoration
+            doc_term_freqs[posting.doc_id][term] = posting.term_frequency;
         }
     }
 
     sqlite3_finalize(stmt);
 
-    // Rebuild BM25 scorer from inverted index data
-    // (In a real implementation, you'd also save/load the BM25Document objects)
+    // Restore BM25Scorer state
+    scorer.set_statistics(avg_doc_length, total_docs);
+
+    // Restore documents to BM25Scorer
+    for (const auto& [doc_id, term_freqs] : doc_term_freqs) {
+        BM25Document doc;
+        doc.doc_id = doc_id;
+        doc.term_frequencies = term_freqs;
+        // Calculate doc_length from term frequencies
+        doc.doc_length = 0;
+        for (const auto& [term, freq] : term_freqs) {
+            doc.doc_length += freq;
+        }
+        scorer.restore_document(doc_id, doc);
+    }
 
     return true;
 }
