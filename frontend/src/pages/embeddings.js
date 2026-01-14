@@ -65,18 +65,7 @@ export default function EmbeddingGeneration() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Head>
-        <title>Embedding Generation - JadeVectorDB</title>
-        <meta name="description" content="Generate embeddings in JadeVectorDB" />
-      </Head>
-
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold text-gray-900">Embedding Generation</h1>
-        </div>
-      </header>
-
+    <Layout title="Embedding Generation - JadeVectorDB">
       <main>
         <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
           {/* Embedding Generation Form */}
@@ -272,7 +261,7 @@ export default function EmbeddingGeneration() {
             </div>
           )}
         </div>
-      </div>
+      </main>
     </Layout>
   );
 }
