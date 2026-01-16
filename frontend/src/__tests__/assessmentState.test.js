@@ -1,5 +1,6 @@
 /**
  * Unit tests for assessmentState.js
+ * Updated to match the actual AssessmentStateManager API
  */
 
 import assessmentState from '../lib/assessmentState';
@@ -20,6 +21,8 @@ global.localStorage = localStorageMock;
 describe('assessmentState', () => {
   beforeEach(() => {
     localStorage.clear();
+    // Reset the current session
+    assessmentState.currentSession = null;
   });
 
   describe('initAssessment', () => {
@@ -35,47 +38,73 @@ describe('assessmentState', () => {
       const session = assessmentState.initAssessment('module1', quizData);
 
       expect(session.moduleId).toBe('module1');
-      expect(session.quizData).toEqual(quizData);
+      expect(session.moduleName).toBe('Test Module');
       expect(session.answers).toEqual({});
       expect(session.startTime).toBeDefined();
-      expect(session.completed).toBe(false);
+      expect(session.isComplete).toBe(false);
+      expect(session.totalQuestions).toBe(1);
     });
 
-    it('should generate unique session ID', () => {
-      const quizData = { moduleId: 'module1', questions: [] };
+    it('should reset previous session when starting new one', () => {
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }] };
       const session1 = assessmentState.initAssessment('module1', quizData);
-      const session2 = assessmentState.initAssessment('module1', quizData);
+      const session2 = assessmentState.initAssessment('module2', quizData);
 
-      expect(session1.sessionId).not.toBe(session2.sessionId);
+      expect(session2.moduleId).toBe('module2');
+      expect(assessmentState.getCurrentAssessment().moduleId).toBe('module2');
     });
   });
 
   describe('saveAnswer', () => {
     it('should save an answer to current session', () => {
-      const quizData = { moduleId: 'module1', questions: [] };
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }] };
       assessmentState.initAssessment('module1', quizData);
 
       assessmentState.saveAnswer('q1', 0);
-      const session = assessmentState.getCurrentSession();
+      const session = assessmentState.getCurrentAssessment();
 
-      expect(session.answers.q1).toBe(0);
+      expect(session.answers.q1.answer).toBe(0);
+      expect(session.answers.q1.timestamp).toBeDefined();
     });
 
     it('should update existing answer', () => {
-      const quizData = { moduleId: 'module1', questions: [] };
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }] };
       assessmentState.initAssessment('module1', quizData);
 
       assessmentState.saveAnswer('q1', 0);
       assessmentState.saveAnswer('q1', 2);
-      const session = assessmentState.getCurrentSession();
+      const session = assessmentState.getCurrentAssessment();
 
-      expect(session.answers.q1).toBe(2);
+      expect(session.answers.q1.answer).toBe(2);
+    });
+
+    it('should throw error when no active session', () => {
+      expect(() => assessmentState.saveAnswer('q1', 0)).toThrow('No active assessment session');
+    });
+  });
+
+  describe('getAnswer', () => {
+    it('should return answer for a question', () => {
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }] };
+      assessmentState.initAssessment('module1', quizData);
+      assessmentState.saveAnswer('q1', 2);
+
+      const answer = assessmentState.getAnswer('q1');
+      expect(answer).toBe(2);
+    });
+
+    it('should return null for unanswered question', () => {
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }] };
+      assessmentState.initAssessment('module1', quizData);
+
+      const answer = assessmentState.getAnswer('q1');
+      expect(answer).toBeNull();
     });
   });
 
   describe('completeAssessment', () => {
     it('should mark assessment as complete', () => {
-      const quizData = { moduleId: 'module1', questions: [] };
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }] };
       assessmentState.initAssessment('module1', quizData);
 
       const result = {
@@ -85,16 +114,17 @@ describe('assessmentState', () => {
         earnedPoints: 85
       };
 
-      assessmentState.completeAssessment(result);
-      const session = assessmentState.getCurrentSession();
+      const completedSession = assessmentState.completeAssessment(result);
 
-      expect(session.completed).toBe(true);
-      expect(session.result).toEqual(result);
-      expect(session.endTime).toBeDefined();
+      expect(completedSession.isComplete).toBe(true);
+      expect(completedSession.result).toEqual(result);
+      expect(completedSession.endTime).toBeDefined();
+      expect(completedSession.score).toBe(85);
+      expect(completedSession.passed).toBe(true);
     });
 
     it('should add to assessment history', () => {
-      const quizData = { moduleId: 'module1', questions: [] };
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }] };
       assessmentState.initAssessment('module1', quizData);
 
       const result = { score: 85, passed: true };
@@ -102,7 +132,11 @@ describe('assessmentState', () => {
 
       const history = assessmentState.getModuleHistory('module1');
       expect(history.length).toBe(1);
-      expect(history[0].result.score).toBe(85);
+      expect(history[0].score).toBe(85);
+    });
+
+    it('should throw error when no active session', () => {
+      expect(() => assessmentState.completeAssessment({ score: 80 })).toThrow('No active assessment session');
     });
   });
 
@@ -113,7 +147,7 @@ describe('assessmentState', () => {
     });
 
     it('should return all attempts for a module', () => {
-      const quizData = { moduleId: 'module1', questions: [] };
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }] };
 
       // First attempt
       assessmentState.initAssessment('module1', quizData);
@@ -125,19 +159,19 @@ describe('assessmentState', () => {
 
       const history = assessmentState.getModuleHistory('module1');
       expect(history.length).toBe(2);
-      expect(history[0].result.score).toBe(60);
-      expect(history[1].result.score).toBe(80);
+      expect(history[0].score).toBe(60);
+      expect(history[1].score).toBe(80);
     });
   });
 
   describe('getBestScore', () => {
-    it('should return 0 for module with no attempts', () => {
+    it('should return null for module with no attempts', () => {
       const bestScore = assessmentState.getBestScore('module99');
-      expect(bestScore).toBe(0);
+      expect(bestScore).toBeNull();
     });
 
     it('should return highest score from multiple attempts', () => {
-      const quizData = { moduleId: 'module1', questions: [] };
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }] };
 
       assessmentState.initAssessment('module1', quizData);
       assessmentState.completeAssessment({ score: 60, passed: false });
@@ -159,7 +193,7 @@ describe('assessmentState', () => {
     });
 
     it('should return false if all attempts failed', () => {
-      const quizData = { moduleId: 'module1', questions: [] };
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }] };
 
       assessmentState.initAssessment('module1', quizData);
       assessmentState.completeAssessment({ score: 60, passed: false });
@@ -168,7 +202,7 @@ describe('assessmentState', () => {
     });
 
     it('should return true if at least one attempt passed', () => {
-      const quizData = { moduleId: 'module1', questions: [] };
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }] };
 
       assessmentState.initAssessment('module1', quizData);
       assessmentState.completeAssessment({ score: 60, passed: false });
@@ -182,8 +216,8 @@ describe('assessmentState', () => {
 
   describe('getOverallProgress', () => {
     it('should calculate correct progress stats', () => {
-      const quizData1 = { moduleId: 'module1', questions: [] };
-      const quizData2 = { moduleId: 'module2', questions: [] };
+      const quizData1 = { moduleName: 'Module 1', questions: [{ id: 'q1' }] };
+      const quizData2 = { moduleName: 'Module 2', questions: [{ id: 'q1' }] };
 
       // Complete module1
       assessmentState.initAssessment('module1', quizData1);
@@ -195,10 +229,11 @@ describe('assessmentState', () => {
 
       const progress = assessmentState.getOverallProgress();
 
-      expect(progress.totalModules).toBeGreaterThan(0);
+      expect(progress.totalModules).toBe(6); // Fixed set of modules
       expect(progress.completedModules).toBe(2);
-      expect(progress.moduleScores.module1).toBe(80);
-      expect(progress.moduleScores.module2).toBe(90);
+      expect(progress.passedModules).toBe(2);
+      expect(progress.bestScores.module1).toBe(80);
+      expect(progress.bestScores.module2).toBe(90);
       expect(progress.averageScore).toBe(85);
     });
 
@@ -212,7 +247,7 @@ describe('assessmentState', () => {
 
   describe('clearHistory', () => {
     it('should clear all assessment history', () => {
-      const quizData = { moduleId: 'module1', questions: [] };
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }] };
       assessmentState.initAssessment('module1', quizData);
       assessmentState.completeAssessment({ score: 80, passed: true });
 
@@ -221,23 +256,108 @@ describe('assessmentState', () => {
       const history = assessmentState.getModuleHistory('module1');
       expect(history).toEqual([]);
     });
+
+    it('should also clear current session', () => {
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }] };
+      assessmentState.initAssessment('module1', quizData);
+
+      assessmentState.clearHistory();
+
+      expect(assessmentState.getCurrentAssessment()).toBeNull();
+    });
   });
 
-  describe('clearModuleHistory', () => {
-    it('should clear history for specific module only', () => {
-      const quizData1 = { moduleId: 'module1', questions: [] };
-      const quizData2 = { moduleId: 'module2', questions: [] };
+  describe('getModuleStatistics', () => {
+    it('should return empty stats for module with no attempts', () => {
+      const stats = assessmentState.getModuleStatistics('module99');
 
-      assessmentState.initAssessment('module1', quizData1);
+      expect(stats.attempts).toBe(0);
+      expect(stats.passed).toBe(false);
+      expect(stats.bestScore).toBeNull();
+    });
+
+    it('should calculate correct statistics for module', () => {
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }] };
+
+      assessmentState.initAssessment('module1', quizData);
+      assessmentState.completeAssessment({ score: 60, passed: false });
+
+      assessmentState.initAssessment('module1', quizData);
       assessmentState.completeAssessment({ score: 80, passed: true });
 
-      assessmentState.initAssessment('module2', quizData2);
-      assessmentState.completeAssessment({ score: 90, passed: true });
+      const stats = assessmentState.getModuleStatistics('module1');
 
-      assessmentState.clearModuleHistory('module1');
+      expect(stats.attempts).toBe(2);
+      expect(stats.passed).toBe(true);
+      expect(stats.bestScore).toBe(80);
+      expect(stats.averageScore).toBe(70);
+    });
+  });
 
-      expect(assessmentState.getModuleHistory('module1')).toEqual([]);
-      expect(assessmentState.getModuleHistory('module2').length).toBe(1);
+  describe('navigation', () => {
+    it('should move to next question', () => {
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }, { id: 'q2' }] };
+      assessmentState.initAssessment('module1', quizData);
+
+      const newIndex = assessmentState.nextQuestion();
+      expect(newIndex).toBe(1);
+    });
+
+    it('should move to previous question', () => {
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }, { id: 'q2' }] };
+      assessmentState.initAssessment('module1', quizData);
+      assessmentState.nextQuestion();
+
+      const newIndex = assessmentState.previousQuestion();
+      expect(newIndex).toBe(0);
+    });
+
+    it('should go to specific question', () => {
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }, { id: 'q2' }, { id: 'q3' }] };
+      assessmentState.initAssessment('module1', quizData);
+
+      const newIndex = assessmentState.goToQuestion(2);
+      expect(newIndex).toBe(2);
+    });
+  });
+
+  describe('retryAssessment', () => {
+    it('should clear current session for retry', () => {
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }] };
+      assessmentState.initAssessment('module1', quizData);
+
+      const retryInfo = assessmentState.retryAssessment('module1');
+
+      expect(retryInfo.moduleId).toBe('module1');
+      expect(retryInfo.retry).toBe(true);
+      expect(assessmentState.getCurrentAssessment()).toBeNull();
+    });
+  });
+
+  describe('exportData and importData', () => {
+    it('should export assessment data as JSON', () => {
+      const quizData = { moduleName: 'Test', questions: [{ id: 'q1' }] };
+      assessmentState.initAssessment('module1', quizData);
+      assessmentState.completeAssessment({ score: 85, passed: true });
+
+      const exported = assessmentState.exportData();
+      const parsed = JSON.parse(exported);
+
+      expect(parsed.module1).toBeDefined();
+      expect(parsed.module1.length).toBe(1);
+    });
+
+    it('should import assessment data from JSON', () => {
+      const importData = JSON.stringify({
+        module1: [{ score: 90, passed: true, attemptNumber: 1 }]
+      });
+
+      const result = assessmentState.importData(importData);
+      expect(result).toBe(true);
+
+      const history = assessmentState.getModuleHistory('module1');
+      expect(history.length).toBe(1);
+      expect(history[0].score).toBe(90);
     });
   });
 });
