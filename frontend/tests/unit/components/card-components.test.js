@@ -1,13 +1,13 @@
 // frontend/tests/unit/components/card-components.test.js
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { 
-  Card, 
-  CardHeader, 
-  CardFooter, 
-  CardTitle, 
-  CardDescription, 
-  CardContent 
+import {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardDescription,
+  CardContent
 } from '@/components/ui/card';
 
 describe('Card Components Suite', () => {
@@ -29,14 +29,16 @@ describe('Card Components Suite', () => {
 
     const card = screen.getByTestId('test-card');
     expect(card).toBeInTheDocument();
-    expect(card).toHaveClass('bg-white');
-    expect(card).toHaveClass('shadow');
+    // Updated to match actual Card component classes
     expect(card).toHaveClass('rounded-lg');
+    expect(card).toHaveClass('border');
+    expect(card).toHaveClass('bg-card');
+    expect(card).toHaveClass('shadow-sm');
   });
 
   test('renders CardTitle with correct styling', () => {
     render(<CardTitle>My Card Title</CardTitle>);
-    
+
     const title = screen.getByText('My Card Title');
     expect(title).toBeInTheDocument();
     expect(title.tagName).toBe('H3');
@@ -46,7 +48,7 @@ describe('Card Components Suite', () => {
 
   test('renders CardDescription with correct styling', () => {
     render(<CardDescription>This is a description</CardDescription>);
-    
+
     const description = screen.getByText('This is a description');
     expect(description).toBeInTheDocument();
     expect(description.tagName).toBe('P');
@@ -60,10 +62,11 @@ describe('Card Components Suite', () => {
         <p>Content inside card</p>
       </CardContent>
     );
-    
+
     const content = screen.getByText('Content inside card');
     expect(content).toBeInTheDocument();
     expect(content.parentElement).toHaveClass('p-6');
+    expect(content.parentElement).toHaveClass('pt-0');
   });
 
   test('renders CardHeader with proper structure', () => {
@@ -72,7 +75,7 @@ describe('Card Components Suite', () => {
         <CardTitle>Header Title</CardTitle>
       </CardHeader>
     );
-    
+
     const header = screen.getByRole('heading', { name: /header title/i });
     expect(header).toBeInTheDocument();
     expect(header.parentElement).toHaveClass('flex');
@@ -87,7 +90,7 @@ describe('Card Components Suite', () => {
         <button>Footer Button</button>
       </CardFooter>
     );
-    
+
     const button = screen.getByText('Footer Button');
     expect(button).toBeInTheDocument();
     expect(button.parentElement).toHaveClass('flex');
@@ -98,7 +101,7 @@ describe('Card Components Suite', () => {
 
   test('allows custom class names to be passed through', () => {
     render(
-      <Card className="custom-class another-class">
+      <Card className="custom-class another-class" data-testid="custom-card">
         <CardHeader>
           <CardTitle>Title</CardTitle>
         </CardHeader>
@@ -106,13 +109,15 @@ describe('Card Components Suite', () => {
       </Card>
     );
 
-    const card = screen.getByRole('group');
+    // Use data-testid instead of getByRole('group') since Card is a plain div
+    const card = screen.getByTestId('custom-card');
     expect(card).toHaveClass('custom-class');
     expect(card).toHaveClass('another-class');
-    // Also should have the default classes
-    expect(card).toHaveClass('bg-white');
-    expect(card).toHaveClass('shadow');
+    // Also should have the default classes (matching actual implementation)
     expect(card).toHaveClass('rounded-lg');
+    expect(card).toHaveClass('border');
+    expect(card).toHaveClass('bg-card');
+    expect(card).toHaveClass('shadow-sm');
   });
 
   test('handles nested elements correctly', () => {

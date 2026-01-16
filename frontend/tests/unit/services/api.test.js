@@ -4,18 +4,40 @@ import { databaseApi, searchApi, vectorApi, indexApi, monitoringApi, embeddingAp
 // Mock the fetch API for testing
 global.fetch = jest.fn();
 
-// Mock localStorage
+// Mock localStorage - the actual implementation uses 'jadevectordb_auth_token'
+const mockLocalStorage = {
+  getItem: jest.fn((key) => {
+    if (key === 'jadevectordb_auth_token') return 'test-auth-token';
+    return null;
+  }),
+  setItem: jest.fn(),
+  removeItem: jest.fn(),
+  clear: jest.fn(),
+};
+
 Object.defineProperty(window, 'localStorage', {
-  value: {
-    getItem: jest.fn(() => 'test-api-key'),
-  },
+  value: mockLocalStorage,
   writable: true,
+});
+
+// Suppress console.warn for "No auth token found" messages
+const originalWarn = console.warn;
+beforeAll(() => {
+  console.warn = jest.fn();
+});
+afterAll(() => {
+  console.warn = originalWarn;
 });
 
 describe('API Service Unit Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     global.fetch.mockClear();
+    // Reset localStorage mock to return token
+    mockLocalStorage.getItem.mockImplementation((key) => {
+      if (key === 'jadevectordb_auth_token') return 'test-auth-token';
+      return null;
+    });
   });
 
   describe('handleResponse function', () => {
@@ -62,14 +84,15 @@ describe('API Service Unit Tests', () => {
 
       const response = await databaseApi.listDatabases(10, 20);
 
+      // Actual implementation uses /api/... URLs (proxied by Next.js)
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/v1/databases?limit=10&offset=20',
+        '/api/databases?limit=10&offset=20',
         expect.objectContaining({
           method: 'GET',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-API-Key': 'test-api-key'
-          }
+            'Authorization': 'Bearer test-auth-token'
+          })
         })
       );
       expect(response).toEqual(mockResponse);
@@ -86,13 +109,13 @@ describe('API Service Unit Tests', () => {
       const response = await databaseApi.createDatabase(newDatabase);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/v1/databases',
+        '/api/databases',
         expect.objectContaining({
           method: 'POST',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-API-Key': 'test-api-key'
-          },
+            'Authorization': 'Bearer test-auth-token'
+          }),
           body: JSON.stringify(newDatabase)
         })
       );
@@ -109,13 +132,13 @@ describe('API Service Unit Tests', () => {
       const response = await databaseApi.getDatabase('123');
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/v1/databases/123',
+        '/api/databases/123',
         expect.objectContaining({
           method: 'GET',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-API-Key': 'test-api-key'
-          }
+            'Authorization': 'Bearer test-auth-token'
+          })
         })
       );
       expect(response).toEqual(mockResponse);
@@ -134,13 +157,13 @@ describe('API Service Unit Tests', () => {
       const response = await vectorApi.storeVector('db123', vectorData);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/v1/databases/db123/vectors',
+        '/api/databases/db123/vectors',
         expect.objectContaining({
           method: 'POST',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-API-Key': 'test-api-key'
-          },
+            'Authorization': 'Bearer test-auth-token'
+          }),
           body: JSON.stringify(vectorData)
         })
       );
@@ -160,13 +183,13 @@ describe('API Service Unit Tests', () => {
       const response = await indexApi.createIndex('db123', indexData);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/v1/databases/db123/indexes',
+        '/api/databases/db123/indexes',
         expect.objectContaining({
           method: 'POST',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-API-Key': 'test-api-key'
-          },
+            'Authorization': 'Bearer test-auth-token'
+          }),
           body: JSON.stringify(indexData)
         })
       );
@@ -185,13 +208,13 @@ describe('API Service Unit Tests', () => {
       const response = await monitoringApi.healthCheck();
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/v1/health',
+        '/api/health',
         expect.objectContaining({
           method: 'GET',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-API-Key': 'test-api-key'
-          }
+            'Authorization': 'Bearer test-auth-token'
+          })
         })
       );
       expect(response).toEqual(mockResponse);
@@ -207,13 +230,13 @@ describe('API Service Unit Tests', () => {
       const response = await monitoringApi.systemStatus();
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/v1/status',
+        '/api/status',
         expect.objectContaining({
           method: 'GET',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-API-Key': 'test-api-key'
-          }
+            'Authorization': 'Bearer test-auth-token'
+          })
         })
       );
       expect(response).toEqual(mockResponse);
@@ -221,20 +244,7 @@ describe('API Service Unit Tests', () => {
   });
 
   describe('getAuthHeaders function', () => {
-    test('returns headers with API key when available', () => {
-      // This is covered implicitly in all the other tests
-      // that verify the X-API-Key header is included
-    });
-
-    test('returns default headers when no API key is available', async () => {
-      // Mock localStorage to return null
-      Object.defineProperty(window, 'localStorage', {
-        value: {
-          getItem: jest.fn(() => null),
-        },
-        writable: true,
-      });
-
+    test('returns headers with Authorization Bearer token when available', async () => {
       const mockResponse = { databases: [] };
       global.fetch.mockResolvedValue({
         ok: true,
@@ -246,9 +256,31 @@ describe('API Service Unit Tests', () => {
       expect(global.fetch).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
+          headers: expect.objectContaining({
+            'Authorization': 'Bearer test-auth-token'
+          })
+        })
+      );
+    });
+
+    test('returns default headers when no auth token is available', async () => {
+      // Mock localStorage to return null for auth token
+      mockLocalStorage.getItem.mockImplementation(() => null);
+
+      const mockResponse = { databases: [] };
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(mockResponse)
+      });
+
+      await databaseApi.listDatabases();
+
+      // When no token, should only have Content-Type header
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
           headers: {
             'Content-Type': 'application/json'
-            // No X-API-Key header should be present
           }
         })
       );
