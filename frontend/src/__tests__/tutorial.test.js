@@ -1,16 +1,13 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { vi } from 'vitest';
 
 // Mock the charting library since it's not available in test environment
-vi.mock('react-chartjs-2', async () => {
-  const actual = await vi.importActual('react-chartjs-2');
-  return {
-    ...actual,
-    Line: ({ data, options }) => <div data-testid="mock-chart">Mock Chart</div>
-  };
-});
+jest.mock('react-chartjs-2', () => ({
+  Line: ({ data, options }) => <div data-testid="mock-chart">Mock Chart</div>,
+  Bar: ({ data, options }) => <div data-testid="mock-bar-chart">Mock Bar Chart</div>,
+  Doughnut: ({ data, options }) => <div data-testid="mock-doughnut-chart">Mock Doughnut Chart</div>
+}));
 
 describe('Tutorial Components', () => {
   describe('InteractiveAPIDocs', () => {
