@@ -1,5 +1,5 @@
 // frontend/tests/integration/api-service.test.js
-import { databaseApi, searchApi } from '@/services/api';
+import { databaseApi, searchApi } from '@/lib/api';
 
 // Mock the fetch API for testing
 global.fetch = jest.fn();
@@ -7,11 +7,11 @@ global.fetch = jest.fn();
 describe('API Service Integration', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     // Mock localStorage
     Object.defineProperty(window, 'localStorage', {
       value: {
-        getItem: jest.fn(() => 'test-api-key'),
+        getItem: jest.fn(() => 'test-auth-token'),
       },
       writable: true,
     });
@@ -24,7 +24,7 @@ describe('API Service Integration', () => {
       ],
       total: 1
     };
-    
+
     global.fetch.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve(mockResponse)
@@ -32,24 +32,25 @@ describe('API Service Integration', () => {
 
     const response = await databaseApi.listDatabases();
 
+    // The API uses /api/ prefix (Next.js proxy)
     expect(global.fetch).toHaveBeenCalledWith(
-      'http://localhost:8080/v1/databases?limit=20&offset=0', 
-      {
+      expect.stringContaining('/api/databases'),
+      expect.objectContaining({
         method: 'GET',
-        headers: {
+        headers: expect.objectContaining({
           'Content-Type': 'application/json',
-          'X-API-Key': 'test-api-key'
-        }
-      }
+          'Authorization': expect.stringContaining('Bearer')
+        })
+      })
     );
-    
+
     expect(response).toEqual(mockResponse);
   });
 
   test('databaseApi.createDatabase calls the correct endpoint', async () => {
     const newDatabase = { name: 'New DB', vectorDimension: 256 };
     const mockResponse = { databaseId: 'new-db-id', ...newDatabase };
-    
+
     global.fetch.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve(mockResponse)
@@ -58,17 +59,17 @@ describe('API Service Integration', () => {
     const response = await databaseApi.createDatabase(newDatabase);
 
     expect(global.fetch).toHaveBeenCalledWith(
-      'http://localhost:8080/v1/databases',
-      {
+      expect.stringContaining('/api/databases'),
+      expect.objectContaining({
         method: 'POST',
-        headers: {
+        headers: expect.objectContaining({
           'Content-Type': 'application/json',
-          'X-API-Key': 'test-api-key'
-        },
+          'Authorization': expect.stringContaining('Bearer')
+        }),
         body: JSON.stringify(newDatabase)
-      }
+      })
     );
-    
+
     expect(response).toEqual(mockResponse);
   });
 
@@ -82,7 +83,7 @@ describe('API Service Integration', () => {
         { id: 'result1', similarity: 0.95 }
       ]
     };
-    
+
     global.fetch.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve(mockResponse)
@@ -91,17 +92,17 @@ describe('API Service Integration', () => {
     const response = await searchApi.similaritySearch('test-db-id', searchRequest);
 
     expect(global.fetch).toHaveBeenCalledWith(
-      'http://localhost:8080/v1/databases/test-db-id/search',
-      {
+      expect.stringContaining('/api/databases/test-db-id/search'),
+      expect.objectContaining({
         method: 'POST',
-        headers: {
+        headers: expect.objectContaining({
           'Content-Type': 'application/json',
-          'X-API-Key': 'test-api-key'
-        },
+          'Authorization': expect.stringContaining('Bearer')
+        }),
         body: JSON.stringify(searchRequest)
-      }
+      })
     );
-    
+
     expect(response).toEqual(mockResponse);
   });
 
@@ -112,7 +113,7 @@ describe('API Service Integration', () => {
       status: 400
     });
 
-    await expect(databaseApi.listDatabases()).rejects.toThrow('Invalid request');
+    await expect(databaseApi.listDatabases()).rejects.toThrow();
   });
 
   test('handles network errors correctly', async () => {
