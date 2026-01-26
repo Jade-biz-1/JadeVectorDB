@@ -63,6 +63,14 @@ JadeVectorDB has reached **100% completion** (338/338 tasks) with all core featu
 ✅ **Authentication System** - JWT-based authentication with API key management
 ✅ **Comprehensive Testing** - 217+ test cases covering backend and frontend authentication (100% coverage)
 
+### Phase 16: Advanced User Management & Bulk Operations ✅
+✅ **User Management** - Complete user lifecycle: add, list, show, activate, deactivate, delete users
+✅ **API Key Management** - Create, list, and revoke API keys with scopes and expiration
+✅ **Bulk Import/Export** - Import and export vectors in bulk with CSV/JSON support
+✅ **Audit Logging** - Comprehensive security audit trails for compliance
+✅ **Enhanced CLI Tools** - Full user management and bulk operations support in Python and Shell CLIs
+✅ **Security Enhancements** - Password validation, secure token management, and access control
+
 ### Distributed System (100% Complete - 12,259+ lines)
 ✅ **Master-Worker Protocol** - gRPC-based communication with connection pooling
 ✅ **Query Distribution** - Parallel query execution across shards with result merging
@@ -292,76 +300,21 @@ All project tasks are tracked in the **TasksTracking/** folder:
 - **TasksTracking/06-current-auth-api.md** - Current work on authentication and API
 - See [TasksTracking/README.md](TasksTracking/README.md) for complete details
 
-## Getting Started
+## ⚡ Quick Build & Test
 
-### Prerequisites
-
-- C++20 compatible compiler (GCC 11+, Clang 14+)
-- CMake 3.20+
-- Eigen, FlatBuffers, Apache Arrow, gRPC, Google Test
-
-## Default Users for Development and Testing
-
-JadeVectorDB automatically creates three default users when deployed in local, development, or test environments. **These users are for testing purposes only and are NOT created in production.**
-
-### Default Credentials
-
-| Username | Password | User ID | Roles | Permissions |
-|----------|----------|---------|-------|-------------|
-| `admin` | `admin123` | user_admin_default | admin, developer, user | Full administrative access |
-| `dev` | `dev123` | user_dev_default | developer, user | Development permissions |
-| `test` | `test123` | user_test_default | tester, user | Limited/test permissions |
-
-### Environment Configuration
-
-Control default user creation using the `JADEVECTORDB_ENV` environment variable:
-
-```bash
-# Development mode (creates default users) - DEFAULT
-export JADEVECTORDB_ENV=development
-./jadevectordb
-
-# Test mode (creates default users)
-export JADEVECTORDB_ENV=test
-./jadevectordb
-
-# Production mode (NO default users created)
-export JADEVECTORDB_ENV=production
-./jadevectordb
-```
-
-**Recognized environments:**
-- Creates users: `development`, `dev`, `test`, `testing`, `local`
-- Skips creation: `production`, `prod`, or any other value
-
-**Security Note:** Default users are **automatically removed** in production environments. If `JADEVECTORDB_ENV` is not set, it defaults to `development` mode and creates the default users.
-
-### Using Default Credentials
-
-After starting the server in development mode, you can immediately log in using the default credentials:
-
-```bash
-# Example: Login as admin
-curl -X POST http://localhost:8080/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "admin123"}'
-
-# Example: Login as dev user
-curl -X POST http://localhost:8080/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "dev", "password": "dev123"}'
-```
-
-You can also use these credentials with the web UI at `http://localhost:3000` (if frontend is running).
-
-### Building
-
+### Build (Correct Method)
 ```bash
 cd backend
-mkdir build
-cd build
-cmake ..
-make -j$(nproc)
+./build.sh --no-tests --no-benchmarks
+```
+
+### Test (37+ Comprehensive Tests)
+```bash
+# Start server first
+cd backend/build && ./jadevectordb &
+
+# Run all tests
+./tests/run_all_tests.sh
 ```
 
 ### Running Tests
@@ -477,10 +430,12 @@ cd backend/build
 
 # In a new terminal, run all CLI tests
 cd /path/to/JadeVectorDB
-python3 tests/run_cli_tests.py
 
-# Or use the shell wrapper
-./tests/run_tests.sh
+# Recommended: Use the master test runner (includes reranking test)
+./tests/run_all_tests.sh
+
+# Or run the test suite directly
+python3 tests/run_cli_tests.py
 ```
 
 ### Test Output
@@ -494,35 +449,26 @@ The test runner provides a clear table showing pass/fail status:
 1     Python CLI      Health Check                   ✓ PASS
 2     Python CLI      Status Check                   ✓ PASS
 3     Python CLI      Create Database                ✓ PASS
-4     Python CLI      Store Vector                   ✓ PASS
 ...
 ================================================================================
 
-Summary: 11/12 tests passed
-  Failed: 1
+Summary: 36/36 tests passed
 ```
 
-### Test Data Configuration
+### Test Coverage (37+ Tests)
 
-All test data is centralized in `tests/test_data.json`:
+The unified test suite covers:
+- **Python CLI Tests** (7 tests): Health, status, database CRUD, vector operations
+- **Shell CLI Tests** (6 tests): Health, status, database CRUD
+- **Persistence Tests** (3 tests): User and database persistence verification
+- **RBAC Tests** (5 tests): Role-based access control
+- **Phase 16 - Python User Management** (6 tests): Add, list, show, activate, deactivate, delete users
+- **Phase 16 - Python Import/Export** (2 tests): Bulk vector import and export
+- **Phase 16 - Shell User Management** (6 tests): Add, list, show, activate, deactivate, delete users
+- **Phase 16 - Shell Import/Export** (2 tests): Bulk vector import and export
+- **Python Re-ranking Server Test** (1 test): Re-ranking functionality validation
 
-- **Authentication**: Test user credentials
-- **Databases**: Test database configurations
-- **Vectors**: Test vector data with auto-generated values
-- **Search**: Search query configuration
-
-Update this file to modify test parameters. See `tests/README.md` for detailed information.
-
-### Troubleshooting Test Failures
-
-The test runner provides specific hints for each failure:
-
-```
-[Test #6] Python CLI - Store Vector:
-  • Ensure database was created successfully
-  • Verify vector dimensions match database configuration
-  • Check that vector ID is unique
-```
+**Note**: JavaScript CLI tests use Jest and are run separately: `cd cli/js && npm test`
 
 For more details, see:
 - **Testing Guide**: `tests/README.md`
@@ -986,11 +932,8 @@ This project includes several development tools to help maintain code quality an
 To measure test coverage:
 ```bash
 cd backend
-mkdir build
-cd build
-cmake -DCMAKE_BUILD_TYPE=Debug -DBUILD_COVERAGE=ON ..
-make
-make coverage
+./build.sh --type Debug --coverage --clean
+cmake --build build --target coverage
 ```
 The coverage report will be available in the `coverage_report` directory.
 

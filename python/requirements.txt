@@ -1,0 +1,15 @@
+# JadeVectorDB Re-ranking Server Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core ML library for cross-encoder models
+sentence-transformers>=2.2.0
+
+# Deep learning framework (CPU version by default)
+# For GPU support, install: pip install torch --index-url https://download.pytorch.org/whl/cu118
+torch>=2.0.0
+
+# Transformer models
+transformers>=4.30.0
+
+# Additional utilities
+numpy>=1.23.0

@@ -261,6 +261,8 @@ set(CORE_SOURCES
     src/services/search/score_fusion.cpp
     src/services/search/hybrid_search_engine.cpp
     src/services/search/bm25_index_builder.cpp
+    src/services/search/subprocess_manager.cpp
+    src/services/search/reranking_service.cpp
     src/services/index/pq_index.cpp
     src/services/index/opq_index.cpp
     src/services/index/sq_index.cpp
@@ -421,7 +423,26 @@ if(BUILD_TESTS)
     )
     
     add_test(NAME Sprint22Tests COMMAND sprint22_tests)
-    
+
+    # Phase 16: Reranking Integration Tests
+    add_executable(reranking_integration_tests
+        tests/integration/test_reranking_integration.cpp
+    )
+
+    # Add API sources to resolve linking with DistributedMasterClient
+    target_sources(reranking_integration_tests PRIVATE ${API_SOURCES})
+
+    target_link_libraries(reranking_integration_tests PRIVATE
+        GTest::gtest
+        GTest::gtest_main
+        jadevectordb_core
+        SQLite::SQLite3
+        OpenSSL::SSL
+        OpenSSL::Crypto
+    )
+
+    add_test(NAME RerankingIntegrationTests COMMAND reranking_integration_tests)
+
     # Sprint 2.3 Persistence Tests
     add_executable(sprint23_tests
         unittesting/test_sprint_2_3_persistence.cpp
@@ -493,6 +514,36 @@ if(BUILD_TESTS)
     )
 
     add_test(NAME HybridSearchEngineTests COMMAND hybrid_search_engine_tests)
+
+    # Phase 16: Subprocess Manager Tests
+    add_executable(subprocess_manager_tests
+        unittesting/test_subprocess_manager.cpp
+    )
+
+    target_link_libraries(subprocess_manager_tests PRIVATE
+        jadevectordb_core
+        SQLite::SQLite3
+        GTest::gtest
+        GTest::gtest_main
+        GTest::gmock
+    )
+
+    add_test(NAME SubprocessManagerTests COMMAND subprocess_manager_tests)
+
+    # Phase 16: Reranking Service Tests
+    add_executable(reranking_service_tests
+        unittesting/test_reranking_service.cpp
+    )
+
+    target_link_libraries(reranking_service_tests PRIVATE
+        jadevectordb_core
+        SQLite::SQLite3
+        GTest::gtest
+        GTest::gtest_main
+        GTest::gmock
+    )
+
+    add_test(NAME RerankingServiceTests COMMAND reranking_service_tests)
 endif()
 
 #############################################################################

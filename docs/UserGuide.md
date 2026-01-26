@@ -163,6 +163,331 @@ curl -X POST http://localhost:8080/v1/databases/product_embeddings/search \
   }'
 ```
 
+## Advanced Search Features
+
+### Hybrid Search
+
+Hybrid search combines vector similarity with keyword-based BM25 search for improved accuracy, especially for exact matches like product codes or model numbers.
+
+**Building BM25 Index**:
+```bash
+# First, build the BM25 index for your database
+curl -X POST http://localhost:8080/v1/databases/product_embeddings/search/bm25/build \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "text_field": "product_name",
+    "incremental": false
+  }'
+```
+
+**Hybrid Search Query**:
+```bash
+curl -X POST http://localhost:8080/v1/databases/product_embeddings/search/hybrid \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "query_text": "blue widget model BW-2024",
+    "query_vector": [0.15, 0.25, 0.35, ...],
+    "top_k": 10,
+    "fusion_method": "rrf",
+    "alpha": 0.7
+  }'
+```
+
+**Response**:
+```json
+{
+  "results": [
+    {
+      "id": "product_123",
+      "vector_score": 0.92,
+      "bm25_score": 0.85,
+      "hybrid_score": 0.89,
+      "metadata": {
+        "product_name": "Blue Widget Model BW-2024",
+        "category": "widgets"
+      }
+    }
+  ]
+}
+```
+
+**Fusion Methods**:
+- **`rrf`** (Reciprocal Rank Fusion): Rank-based fusion, balanced results
+- **`linear`**: Weighted combination, use `alpha` parameter (0-1) to control vector vs. keyword weight
+
+**Use Cases**:
+- Product search with exact model numbers
+- Technical documentation search
+- E-commerce search with product codes
+- RAG systems requiring keyword precision
+
+### Re-ranking with Cross-Encoders
+
+Re-ranking improves search precision by re-scoring top candidates using cross-encoder models. This typically improves precision@5 by 15-25% over hybrid search alone.
+
+#### How Re-ranking Works
+
+Re-ranking uses a **two-stage retrieval pattern**:
+
+1. **Stage 1: Fast Retrieval** - Retrieve many candidates (e.g., top 100) using hybrid search
+2. **Stage 2: Precise Re-ranking** - Re-score candidates using a cross-encoder model
+3. **Stage 3: Return Top-K** - Return the most relevant results (e.g., top 10)
+
+This approach balances speed and accuracy: fast retrieval for candidate generation, precise but slower cross-encoder for final ranking.
+
+#### Basic Re-ranking Example
+
+**Hybrid Search with Re-ranking**:
+```bash
+curl -X POST http://localhost:8080/v1/databases/documents/search/rerank \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "queryText": "How do I implement user authentication?",
+    "queryVector": [0.15, 0.25, 0.35, ...],
+    "topK": 10,
+    "enableReranking": true,
+    "rerankTopN": 100,
+    "fusionMethod": "rrf",
+    "alpha": 0.7
+  }'
+```
+
+**Response**:
+```json
+{
+  "results": [
+    {
+      "docId": "doc_045",
+      "vectorScore": 0.78,
+      "bm25Score": 0.65,
+      "hybridScore": 0.72,
+      "rerankScore": 0.94,
+      "combinedScore": 0.87,
+      "metadata": {
+        "title": "User Authentication Guide",
+        "source": "A comprehensive guide to implementing secure user authentication..."
+      }
+    }
+  ],
+  "timings": {
+    "retrievalMs": 15,
+    "rerankingMs": 185,
+    "totalMs": 200
+  }
+}
+```
+
+**Parameters Explained**:
+- **`queryText`**: The text query for BM25 keyword search
+- **`queryVector`**: The embedding vector for semantic search
+- **`topK`**: Number of final results to return (e.g., 10)
+- **`enableReranking`**: Set to `true` to enable cross-encoder re-ranking
+- **`rerankTopN`**: Number of candidates to retrieve and re-rank (e.g., 100)
+- **`fusionMethod`**: How to combine vector and BM25 scores (`rrf` or `linear`)
+
+#### Standalone Re-ranking
+
+Re-rank any list of documents without needing a database:
+
+```bash
+curl -X POST http://localhost:8080/v1/rerank \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "query": "What is vector search?",
+    "documents": [
+      {"id": "doc1", "text": "Vector search uses embeddings to find similar items"},
+      {"id": "doc2", "text": "Traditional keyword search matches exact terms"},
+      {"id": "doc3", "text": "Vector databases store and index embeddings"}
+    ],
+    "topK": 3
+  }'
+```
+
+**Response**:
+```json
+{
+  "results": [
+    {"id": "doc1", "score": 0.95, "rank": 1},
+    {"id": "doc3", "score": 0.82, "rank": 2},
+    {"id": "doc2", "score": 0.41, "rank": 3}
+  ],
+  "latencyMs": 145
+}
+```
+
+**Use Cases for Standalone Re-ranking**:
+- Re-ranking results from external search systems
+- A/B testing different re-ranking models
+- Post-processing search results from multiple databases
+- Research and experimentation
+
+#### Configuration Management
+
+**Get Current Configuration**:
+```bash
+curl -X GET http://localhost:8080/v1/databases/documents/reranking/config \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response**:
+```json
+{
+  "modelName": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+  "batchSize": 32,
+  "scoreThreshold": 0.0,
+  "combineScores": true,
+  "rerankWeight": 0.7,
+  "statistics": {
+    "totalRequests": 1523,
+    "failedRequests": 3,
+    "avgLatencyMs": 175.4,
+    "totalDocumentsReranked": 152300
+  }
+}
+```
+
+**Update Configuration**:
+```bash
+curl -X PUT http://localhost:8080/v1/databases/documents/reranking/config \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "modelName": "cross-encoder/ms-marco-MiniLM-L-12-v2",
+    "batchSize": 16,
+    "rerankWeight": 0.8
+  }'
+```
+
+**Configuration Parameters**:
+- **`modelName`**: Cross-encoder model to use
+- **`batchSize`**: Batch size for inference (lower for less memory, higher for throughput)
+- **`scoreThreshold`**: Minimum score to include in results (0.0 = no filtering)
+- **`combineScores`**: Whether to combine rerank score with original hybrid score
+- **`rerankWeight`**: Weight for rerank score vs. original (0.7 = 70% rerank, 30% hybrid)
+
+#### Available Re-ranking Models
+
+| Model | Speed | Quality | Use Case |
+|-------|-------|---------|----------|
+| `cross-encoder/ms-marco-MiniLM-L-6-v2` | Fast | Good | Default, production use |
+| `cross-encoder/ms-marco-MiniLM-L-12-v2` | Medium | Better | Higher precision needs |
+| `cross-encoder/ms-marco-TinyBERT-L-2-v2` | Very Fast | Basic | High-throughput applications |
+| Custom fine-tuned models | Varies | Domain-specific | Specialized domains |
+
+**Model Selection Guidance**:
+- Start with **L-6-v2** (default) for balanced speed/quality
+- Upgrade to **L-12-v2** if you need higher precision and can tolerate 2x latency
+- Use **TinyBERT-L-2-v2** for high-throughput scenarios (>100 requests/sec)
+- Fine-tune custom models for specialized domains (legal, medical, finance)
+
+#### Complete Workflow Example: RAG System
+
+Here's a complete example showing hybrid search with re-ranking for a RAG (Retrieval-Augmented Generation) system:
+
+```bash
+# Step 1: Build BM25 index (one-time setup)
+curl -X POST http://localhost:8080/v1/databases/knowledge_base/search/bm25/build \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "textField": "content",
+    "incremental": false
+  }'
+
+# Step 2: Configure re-ranking (one-time setup)
+curl -X PUT http://localhost:8080/v1/databases/knowledge_base/reranking/config \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "modelName": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "batchSize": 32,
+    "rerankWeight": 0.75
+  }'
+
+# Step 3: Perform search with re-ranking
+USER_QUERY="How do neural networks learn from data?"
+QUERY_EMBEDDING=$(generate_embedding "$USER_QUERY")  # Your embedding service
+
+curl -X POST http://localhost:8080/v1/databases/knowledge_base/search/rerank \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d "{
+    \"queryText\": \"$USER_QUERY\",
+    \"queryVector\": $QUERY_EMBEDDING,
+    \"topK\": 5,
+    \"enableReranking\": true,
+    \"rerankTopN\": 50,
+    \"fusionMethod\": \"rrf\"
+  }"
+
+# Step 4: Use top results as context for LLM
+# The top 5 results can now be used as context for your LLM prompt
+```
+
+#### When to Use Re-ranking
+
+**Ideal Use Cases**:
+- ✅ RAG (Retrieval-Augmented Generation) systems
+- ✅ Question answering over documents
+- ✅ High-precision semantic search
+- ✅ Document retrieval for legal/medical applications
+- ✅ Content recommendation with quality requirements
+
+**Not Recommended**:
+- ❌ Real-time search with <50ms latency requirements
+- ❌ Simple keyword matching (use BM25 alone)
+- ❌ Exact match queries (use SQL/NoSQL)
+- ❌ Very large result sets (>1000 documents to re-rank)
+
+#### Performance Considerations
+
+**Latency Breakdown**:
+- Hybrid search (retrieve 100 docs): ~15-30ms
+- Re-ranking 100 docs (CPU): ~150-250ms
+- Re-ranking 100 docs (GPU): ~50-100ms
+- **Total**: ~200-300ms on CPU, ~100-150ms on GPU
+
+**Optimization Tips**:
+1. **Adjust `rerankTopN`**: Start with 50-100 candidates, adjust based on quality metrics
+2. **Use GPU**: Deploy with CUDA support for 2-3x speedup
+3. **Batch efficiently**: Set `batchSize` to 32-64 for optimal throughput
+4. **Monitor statistics**: Check `/reranking/config` endpoint for performance metrics
+5. **Consider caching**: Cache re-ranking results for repeated queries
+
+**Scalability**:
+- Single instance: ~10-20 requests/sec (CPU), ~30-50 requests/sec (GPU)
+- For higher throughput: Use dedicated re-ranking service (see Architecture docs)
+- Kubernetes deployment: Scale re-ranking pods independently
+
+#### Best Practices
+
+1. **Two-Stage Retrieval**: Always retrieve more candidates than you need
+   - Example: Retrieve 100, return top 10
+   - Rule of thumb: `rerankTopN` = 5-10x `topK`
+
+2. **Combine with Hybrid Search**: Re-ranking works best with diverse candidate sets
+   - Use RRF fusion to get both semantic and keyword matches
+   - Re-ranking will elevate the truly relevant results
+
+3. **Monitor and Iterate**:
+   - Track re-ranking latency via `/config` endpoint
+   - Measure precision improvements (target: +15-25% precision@5)
+   - A/B test different models and weights
+
+4. **Handle Documents Without Text**:
+   - Ensure your vectors have text in metadata for re-ranking
+   - For documents without text, re-ranking will use document IDs (suboptimal)
+
+5. **Production Deployment**:
+   - Pre-download models during deployment (avoid first-request delays)
+   - Set appropriate timeouts (recommend 5-10 seconds)
+   - Monitor Python subprocess health via logs
+   - Consider dedicated re-ranking service for production scale
+
 ## User Management (Admin Only)
 
 ### ✅ Enhanced Access Control (Implemented)

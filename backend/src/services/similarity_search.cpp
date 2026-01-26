@@ -85,7 +85,9 @@ Result<void> SimilaritySearchService::initialize() {
 Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
     const std::string& database_id,
     const Vector& query_vector,
-    const SearchParams& params) const {
+    const SearchParams& params,
+    const std::string& query_text,
+    bool enable_reranking) const {
     
     // Validate parameters
     auto validation_result = validate_search_params(params);
@@ -190,19 +192,26 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
                 }
             }
         }
-        
+
         // Sort and limit results
         auto final_results = sort_and_limit_results(std::move(results), params);
-        
+
+        // Apply reranking if enabled and provider is set
+        if (enable_reranking && reranking_provider_ && !query_text.empty() && final_results.size() > 1) {
+            LOG_DEBUG(logger_, "Applying reranking to " << final_results.size() << " results");
+            final_results = reranking_provider_(query_text, final_results);
+            LOG_DEBUG(logger_, "Reranking complete, results count: " << final_results.size());
+        }
+
         if (search_results_counter_) {
             search_results_counter_->add(static_cast<double>(final_results.size()));
         }
-        
+
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
-        
+
         // Record query execution for optimizer learning
-        query_optimizer_->record_query_execution(database_id, query_plan, duration_ms, 
+        query_optimizer_->record_query_execution(database_id, query_plan, duration_ms,
                                                 vectors_scanned, final_results.size());
         
         if (active_searches_gauge_) {
@@ -228,7 +237,9 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
 Result<std::vector<SearchResult>> SimilaritySearchService::euclidean_search(
     const std::string& database_id,
     const Vector& query_vector,
-    const SearchParams& params) const {
+    const SearchParams& params,
+    const std::string& query_text,
+    bool enable_reranking) const {
     
     // Validate parameters
     auto validation_result = validate_search_params(params);
@@ -319,11 +330,18 @@ Result<std::vector<SearchResult>> SimilaritySearchService::euclidean_search(
         
         // Sort and limit results (after converting distance to similarity, higher is better)
         auto final_results = sort_and_limit_results(std::move(results), params);
-        
+
+        // Apply reranking if enabled and provider is set
+        if (enable_reranking && reranking_provider_ && !query_text.empty() && final_results.size() > 1) {
+            LOG_DEBUG(logger_, "Applying reranking to " << final_results.size() << " results");
+            final_results = reranking_provider_(query_text, final_results);
+            LOG_DEBUG(logger_, "Reranking complete, results count: " << final_results.size());
+        }
+
         if (search_results_counter_) {
             search_results_counter_->add(static_cast<double>(final_results.size()));
         }
-        
+
         auto end_time = std::chrono::high_resolution_clock::now();
         if (active_searches_gauge_) {
             active_searches_gauge_->decrement();
@@ -332,9 +350,9 @@ Result<std::vector<SearchResult>> SimilaritySearchService::euclidean_search(
             auto duration = std::chrono::duration<double>(end_time - start_time).count();
             search_latency_histogram_->observe(duration);
         }
-        
+
         return std::move(final_results);
-        
+
     } catch (const std::exception& e) {
         if (active_searches_gauge_) {
             active_searches_gauge_->decrement();
@@ -348,7 +366,9 @@ Result<std::vector<SearchResult>> SimilaritySearchService::euclidean_search(
 Result<std::vector<SearchResult>> SimilaritySearchService::dot_product_search(
     const std::string& database_id,
     const Vector& query_vector,
-    const SearchParams& params) const {
+    const SearchParams& params,
+    const std::string& query_text,
+    bool enable_reranking) const {
     
     // Validate parameters
     auto validation_result = validate_search_params(params);
@@ -433,14 +453,21 @@ Result<std::vector<SearchResult>> SimilaritySearchService::dot_product_search(
                 }
             }
         }
-        
+
         // Sort and limit results
         auto final_results = sort_and_limit_results(std::move(results), params);
-        
+
+        // Apply reranking if enabled and provider is set
+        if (enable_reranking && reranking_provider_ && !query_text.empty() && final_results.size() > 1) {
+            LOG_DEBUG(logger_, "Applying reranking to " << final_results.size() << " results");
+            final_results = reranking_provider_(query_text, final_results);
+            LOG_DEBUG(logger_, "Reranking complete, results count: " << final_results.size());
+        }
+
         if (search_results_counter_) {
             search_results_counter_->add(static_cast<double>(final_results.size()));
         }
-        
+
         auto end_time = std::chrono::high_resolution_clock::now();
         if (active_searches_gauge_) {
             active_searches_gauge_->decrement();
@@ -449,9 +476,9 @@ Result<std::vector<SearchResult>> SimilaritySearchService::dot_product_search(
             auto duration = std::chrono::duration<double>(end_time - start_time).count();
             search_latency_histogram_->observe(duration);
         }
-        
+
         return std::move(final_results);
-        
+
     } catch (const std::exception& e) {
         if (active_searches_gauge_) {
             active_searches_gauge_->decrement();

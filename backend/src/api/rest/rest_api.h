@@ -46,6 +46,7 @@ namespace jadedb {
 namespace search {
     class HybridSearchEngine;
     class BM25IndexBuilder;
+    class RerankingService;
 }
 }
 
@@ -144,7 +145,10 @@ private:
 
     // BM25 index builders (per-database instances)
     std::unordered_map<std::string, std::shared_ptr<jadedb::search::BM25IndexBuilder>> bm25_index_builders_;
-    
+
+    // Reranking services (per-database instances)
+    std::unordered_map<std::string, std::shared_ptr<jadedb::search::RerankingService>> reranking_services_;
+
     // Distributed services (shared from DistributedServiceManager)
     std::shared_ptr<DistributedServiceManager> distributed_service_manager_;
     std::shared_ptr<ShardingService> sharding_service_;
@@ -242,6 +246,12 @@ public:
     crow::response handle_get_bm25_build_status_request(const crow::request& req, const std::string& database_id);
     crow::response handle_rebuild_bm25_index_request(const crow::request& req, const std::string& database_id);
     crow::response handle_add_bm25_documents_request(const crow::request& req, const std::string& database_id);
+
+    // Reranking request handlers
+    crow::response handle_rerank_search_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_standalone_rerank_request(const crow::request& req);
+    crow::response handle_get_reranking_config_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_update_reranking_config_request(const crow::request& req, const std::string& database_id);
 
     crow::response handle_create_index_request(const crow::request& req, const std::string& database_id);
     crow::response handle_list_indexes_request(const crow::request& req, const std::string& database_id);
@@ -356,6 +366,9 @@ public:
 
     // BM25 index builder helper
     std::shared_ptr<jadedb::search::BM25IndexBuilder> get_or_create_bm25_index_builder(const std::string& database_id);
+
+    // Reranking service helper
+    std::shared_ptr<jadedb::search::RerankingService> get_or_create_reranking_service(const std::string& database_id);
     
     // Authentication helper
     Result<bool> authenticate_request(const std::string& api_key) const;

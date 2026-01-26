@@ -19,6 +19,7 @@
 #include "services/distributed_service_manager.h"
 #include "services/search/hybrid_search_engine.h"
 #include "services/search/bm25_index_builder.h"
+#include "services/search/reranking_service.h"
 #include <chrono>
 #include <thread>
 #include <random>
@@ -389,6 +390,36 @@ void RestApiImpl::register_routes() {
         ([this](const crow::request& req, std::string database_id) {
             if (req.method == crow::HTTPMethod::POST) {
                 return handle_add_bm25_documents_request(req, database_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    // Reranking endpoints
+    // POST /v1/databases/<id>/search/rerank - Extended hybrid search with reranking
+    app_->route_dynamic("/v1/databases/<string>/search/rerank")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_rerank_search_request(req, database_id);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    // POST /v1/rerank - Standalone reranking (no database required)
+    app_->route_dynamic("/v1/rerank")
+        ([this](const crow::request& req) {
+            if (req.method == crow::HTTPMethod::POST) {
+                return handle_standalone_rerank_request(req);
+            }
+            return crow::response(405, "Method not allowed");
+        });
+
+    // GET/PUT /v1/databases/<id>/reranking/config - Reranking configuration
+    app_->route_dynamic("/v1/databases/<string>/reranking/config")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method == crow::HTTPMethod::GET) {
+                return handle_get_reranking_config_request(req, database_id);
+            } else if (req.method == crow::HTTPMethod::PUT) {
+                return handle_update_reranking_config_request(req, database_id);
             }
             return crow::response(405, "Method not allowed");
         });
@@ -2368,6 +2399,465 @@ crow::response RestApiImpl::handle_add_bm25_documents_request(const crow::reques
 
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception adding BM25 documents: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error: " + std::string(e.what()) + "\"}");
+    }
+}
+
+// ============================================================================
+// RERANKING HANDLERS
+// ============================================================================
+
+// Helper method to get or create RerankingService for a database
+std::shared_ptr<jadedb::search::RerankingService> RestApiImpl::get_or_create_reranking_service(const std::string& database_id) {
+    // Check if service already exists
+    auto it = reranking_services_.find(database_id);
+    if (it != reranking_services_.end()) {
+        return it->second;
+    }
+
+    // Create new reranking service with default config
+    jadedb::search::RerankingConfig config;
+    config.model_name = "cross-encoder/ms-marco-MiniLM-L-6-v2";
+    config.batch_size = 32;
+    config.score_threshold = 0.0;
+    config.combine_scores = true;
+    config.rerank_weight = 0.7;
+
+    auto service = std::make_shared<jadedb::search::RerankingService>(database_id, config);
+
+    // Store and return
+    reranking_services_[database_id] = service;
+    return service;
+}
+
+crow::response RestApiImpl::handle_rerank_search_request(const crow::request& req, const std::string& database_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+
+        // Validate database exists
+        auto db_exists_result = db_service_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+
+        // Parse request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        // Parse query text (required for reranking)
+        std::string query_text;
+        if (body_json.has("queryText")) {
+            query_text = body_json["queryText"].s();
+        }
+        if (query_text.empty()) {
+            return crow::response(400, "{\"error\":\"'queryText' is required for reranking\"}");
+        }
+
+        // Parse query vector (optional)
+        std::vector<float> query_vector;
+        if (body_json.has("queryVector")) {
+            auto query_array = body_json["queryVector"];
+            if (query_array.t() != crow::json::type::List) {
+                return crow::response(400, "{\"error\":\"'queryVector' must be an array\"}");
+            }
+            for (size_t i = 0; i < query_array.size(); i++) {
+                query_vector.push_back(static_cast<float>(query_array[i].d()));
+            }
+        }
+
+        // Parse search parameters
+        size_t top_k = 10;
+        if (body_json.has("topK")) {
+            top_k = body_json["topK"].i();
+        }
+
+        bool enable_reranking = true;  // Default to true for this endpoint
+        if (body_json.has("enableReranking")) {
+            enable_reranking = body_json["enableReranking"].b();
+        }
+
+        size_t rerank_top_n = 100;
+        if (body_json.has("rerankTopN")) {
+            rerank_top_n = body_json["rerankTopN"].i();
+        }
+
+        // Get hybrid search engine
+        auto engine = get_or_create_hybrid_search_engine(database_id);
+
+        // Get or create reranking service
+        auto reranking_service = get_or_create_reranking_service(database_id);
+
+        // Initialize reranking service if not already initialized
+        if (!reranking_service->is_ready()) {
+            auto init_result = reranking_service->initialize();
+            if (!init_result.has_value()) {
+                return crow::response(500, "{\"error\":\"Failed to initialize reranking service: " +
+                    init_result.error().message + "\"}");
+            }
+        }
+
+        // Set reranking provider on hybrid search engine
+        if (enable_reranking) {
+            engine->set_reranking_provider(
+                [reranking_service, query_text, this, database_id](
+                    const std::string& query,
+                    const std::vector<jadedb::search::HybridSearchResult>& candidates
+                ) -> std::vector<jadedb::search::HybridSearchResult> {
+                    // Convert HybridSearchResult to SearchResult
+                    std::vector<jadedb::search::SearchResult> search_results;
+                    std::unordered_map<std::string, std::string> document_texts;
+
+                    for (const auto& candidate : candidates) {
+                        jadedb::search::SearchResult sr;
+                        sr.doc_id = candidate.doc_id;
+                        sr.score = candidate.hybrid_score;
+                        search_results.push_back(sr);
+
+                        // Try to get document text from metadata
+                        auto it = candidate.metadata.find("text");
+                        if (it != candidate.metadata.end()) {
+                            document_texts[candidate.doc_id] = it->second;
+                        } else {
+                            // Fallback: use doc_id as text
+                            document_texts[candidate.doc_id] = candidate.doc_id;
+                        }
+                    }
+
+                    // Call reranking service
+                    auto rerank_result = reranking_service->rerank(query, search_results, document_texts);
+                    if (!rerank_result.has_value()) {
+                        LOG_ERROR(logger_, "Reranking failed: " << rerank_result.error().message);
+                        return candidates;  // Return original on error
+                    }
+
+                    // Convert RerankingResult back to HybridSearchResult
+                    std::vector<jadedb::search::HybridSearchResult> reranked;
+                    for (const auto& rr : rerank_result.value()) {
+                        // Find original candidate
+                        for (const auto& candidate : candidates) {
+                            if (candidate.doc_id == rr.doc_id) {
+                                jadedb::search::HybridSearchResult hr = candidate;
+                                hr.rerank_score = rr.rerank_score;
+                                hr.combined_score = rr.combined_score;
+                                reranked.push_back(hr);
+                                break;
+                            }
+                        }
+                    }
+
+                    return reranked;
+                });
+        }
+
+        // Perform hybrid search with reranking
+        auto start_time = std::chrono::steady_clock::now();
+        auto results = engine->search(query_text, query_vector, top_k, enable_reranking, rerank_top_n);
+        auto end_time = std::chrono::steady_clock::now();
+        auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+
+        // Build response
+        crow::json::wvalue response;
+        response["count"] = static_cast<int>(results.size());
+
+        // Add timings
+        crow::json::wvalue timings;
+        timings["totalMs"] = static_cast<int>(total_ms);
+        response["timings"] = std::move(timings);
+
+        // Add results
+        int idx = 0;
+        for (const auto& result : results) {
+            crow::json::wvalue result_obj;
+            result_obj["docId"] = result.doc_id;
+            result_obj["vectorScore"] = result.vector_score;
+            result_obj["bm25Score"] = result.bm25_score;
+            result_obj["hybridScore"] = result.hybrid_score;
+
+            if (enable_reranking) {
+                result_obj["rerankScore"] = result.rerank_score;
+                result_obj["combinedScore"] = result.combined_score;
+            }
+
+            // Add metadata if available
+            if (!result.metadata.empty()) {
+                crow::json::wvalue metadata_obj;
+                for (const auto& [key, value] : result.metadata) {
+                    metadata_obj[key] = value;
+                }
+                result_obj["metadata"] = std::move(metadata_obj);
+            }
+
+            response["results"][idx++] = std::move(result_obj);
+        }
+
+        crow::response resp(200, response);
+        resp.set_header("Content-Type", "application/json");
+
+        LOG_DEBUG(logger_, "Rerank search completed: found " << results.size() <<
+                  " results in database: " << database_id);
+        return resp;
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in rerank search: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error: " + std::string(e.what()) + "\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_standalone_rerank_request(const crow::request& req) {
+    try {
+        // Parse request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        // Parse query
+        if (!body_json.has("query")) {
+            return crow::response(400, "{\"error\":\"'query' is required\"}");
+        }
+        std::string query = body_json["query"].s();
+
+        // Parse documents
+        if (!body_json.has("documents") || body_json["documents"].t() != crow::json::type::List) {
+            return crow::response(400, "{\"error\":\"'documents' array is required\"}");
+        }
+
+        auto docs_array = body_json["documents"];
+        std::vector<std::string> doc_ids;
+        std::vector<std::string> documents;
+
+        for (size_t i = 0; i < docs_array.size(); i++) {
+            auto doc = docs_array[i];
+            if (!doc.has("id") || !doc.has("text")) {
+                return crow::response(400, "{\"error\":\"Each document must have 'id' and 'text'\"}");
+            }
+            doc_ids.push_back(doc["id"].s());
+            documents.push_back(doc["text"].s());
+        }
+
+        // Parse topK
+        size_t top_k = documents.size();  // Default: all documents
+        if (body_json.has("topK")) {
+            top_k = body_json["topK"].i();
+        }
+
+        // Create standalone reranking service (use "standalone" as database_id)
+        auto service = get_or_create_reranking_service("standalone");
+
+        // Initialize if needed
+        if (!service->is_ready()) {
+            auto init_result = service->initialize();
+            if (!init_result.has_value()) {
+                return crow::response(500, "{\"error\":\"Failed to initialize reranking service: " +
+                    init_result.error().message + "\"}");
+            }
+        }
+
+        // Perform reranking
+        auto start_time = std::chrono::steady_clock::now();
+        auto rerank_result = service->rerank_batch(query, doc_ids, documents);
+        auto end_time = std::chrono::steady_clock::now();
+        auto latency_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            end_time - start_time
+        ).count();
+
+        if (!rerank_result.has_value()) {
+            return crow::response(500, "{\"error\":\"Reranking failed: " +
+                rerank_result.error().message + "\"}");
+        }
+
+        auto results = rerank_result.value();
+
+        // Limit to top_k
+        if (results.size() > top_k) {
+            results.resize(top_k);
+        }
+
+        // Build response
+        crow::json::wvalue response;
+        response["latencyMs"] = static_cast<int>(latency_ms);
+
+        int idx = 0;
+        for (const auto& result : results) {
+            crow::json::wvalue result_obj;
+            result_obj["id"] = result.doc_id;
+            result_obj["score"] = result.rerank_score;
+            result_obj["rank"] = idx + 1;
+            response["results"][idx++] = std::move(result_obj);
+        }
+
+        crow::response resp(200, response);
+        resp.set_header("Content-Type", "application/json");
+
+        LOG_DEBUG(logger_, "Standalone reranking completed: " << results.size() << " documents");
+        return resp;
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception in standalone reranking: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error: " + std::string(e.what()) + "\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_get_reranking_config_request(const crow::request& req, const std::string& database_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+
+        // Validate database exists
+        auto db_exists_result = db_service_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+
+        // Get or create service
+        auto service = get_or_create_reranking_service(database_id);
+        auto config = service->get_config();
+
+        // Build response
+        crow::json::wvalue response;
+        response["modelName"] = config.model_name;
+        response["batchSize"] = config.batch_size;
+        response["scoreThreshold"] = config.score_threshold;
+        response["combineScores"] = config.combine_scores;
+        response["rerankWeight"] = config.rerank_weight;
+
+        // Add status
+        response["status"] = service->is_ready() ? "ready" : "not_initialized";
+
+        // Add statistics if available
+        auto stats = service->get_statistics();
+        crow::json::wvalue stats_obj;
+        stats_obj["totalRequests"] = static_cast<int>(stats.total_requests);
+        stats_obj["failedRequests"] = static_cast<int>(stats.failed_requests);
+        stats_obj["avgLatencyMs"] = stats.avg_latency_ms;
+        stats_obj["totalDocumentsReranked"] = static_cast<int>(stats.total_documents_reranked);
+        response["statistics"] = std::move(stats_obj);
+
+        crow::response resp(200, response);
+        resp.set_header("Content-Type", "application/json");
+
+        return resp;
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception getting reranking config: " << e.what());
+        return crow::response(500, "{\"error\":\"Internal server error: " + std::string(e.what()) + "\"}");
+    }
+}
+
+crow::response RestApiImpl::handle_update_reranking_config_request(const crow::request& req, const std::string& database_id) {
+    try {
+        // Extract API key from header
+        std::string api_key;
+        auto auth_header = req.get_header_value("Authorization");
+        if (!auth_header.empty()) {
+            if (auth_header.substr(0, 7) == "Bearer ") {
+                api_key = auth_header.substr(7);
+            } else if (auth_header.substr(0, 5) == "ApiKey ") {
+                api_key = auth_header.substr(5);
+            }
+        }
+
+        // Authenticate request
+        auto auth_result = authenticate_request(api_key);
+        if (!auth_result.has_value()) {
+            return crow::response(401, "{\"error\":\"" + ErrorHandler::format_error(auth_result.error()) + "\"}");
+        }
+
+        // Validate database exists
+        auto db_exists_result = db_service_->database_exists(database_id);
+        if (!db_exists_result.has_value() || !db_exists_result.value()) {
+            return crow::response(404, "{\"error\":\"Database not found\"}");
+        }
+
+        // Parse request body
+        auto body_json = crow::json::load(req.body);
+        if (!body_json) {
+            return crow::response(400, "{\"error\":\"Invalid JSON in request body\"}");
+        }
+
+        // Get or create service
+        auto service = get_or_create_reranking_service(database_id);
+        auto config = service->get_config();
+
+        // Update config from request
+        if (body_json.has("modelName")) {
+            config.model_name = body_json["modelName"].s();
+        }
+
+        if (body_json.has("batchSize")) {
+            config.batch_size = body_json["batchSize"].i();
+            if (config.batch_size <= 0) {
+                return crow::response(400, "{\"error\":\"batchSize must be positive\"}");
+            }
+        }
+
+        if (body_json.has("scoreThreshold")) {
+            config.score_threshold = body_json["scoreThreshold"].d();
+        }
+
+        if (body_json.has("combineScores")) {
+            config.combine_scores = body_json["combineScores"].b();
+        }
+
+        if (body_json.has("rerankWeight")) {
+            config.rerank_weight = body_json["rerankWeight"].d();
+            if (config.rerank_weight < 0.0 || config.rerank_weight > 1.0) {
+                return crow::response(400, "{\"error\":\"rerankWeight must be between 0.0 and 1.0\"}");
+            }
+        }
+
+        // Update service config
+        service->set_config(config);
+
+        // Build response
+        crow::json::wvalue response;
+        response["status"] = "success";
+        response["message"] = "Configuration updated (requires reinitialization to take effect)";
+        response["modelName"] = config.model_name;
+        response["batchSize"] = config.batch_size;
+        response["scoreThreshold"] = config.score_threshold;
+        response["combineScores"] = config.combine_scores;
+        response["rerankWeight"] = config.rerank_weight;
+
+        crow::response resp(200, response);
+        resp.set_header("Content-Type", "application/json");
+
+        LOG_INFO(logger_, "Reranking config updated for database: " << database_id);
+        return resp;
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(logger_, "Exception updating reranking config: " << e.what());
         return crow::response(500, "{\"error\":\"Internal server error: " + std::string(e.what()) + "\"}");
     }
 }
