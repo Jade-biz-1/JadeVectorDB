@@ -312,6 +312,7 @@ set(API_SOURCES
     src/api/rest/rest_api_user_handlers.cpp
     src/api/rest/rest_api_apikey_handlers.cpp
     src/api/rest/rest_api_security_handlers.cpp
+    src/api/rest/rest_api_analytics_handlers.cpp
     src/api/grpc/grpc_service_stub.cpp
     src/api/grpc/distributed_worker_service.cpp
     src/api/grpc/distributed_master_client.cpp

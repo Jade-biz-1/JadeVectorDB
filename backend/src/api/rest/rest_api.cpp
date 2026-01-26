@@ -461,6 +461,7 @@ void RestApiImpl::register_routes() {
     handle_alert_routes();
     handle_cluster_routes();
     handle_performance_routes();
+    handle_analytics_routes();
 
     // Admin shutdown endpoint
     std::cout << "[DEBUG] Registering /v1/admin/shutdown endpoint..." << std::endl;
@@ -3768,6 +3769,75 @@ void RestApiImpl::handle_cluster_routes() {
 void RestApiImpl::handle_performance_routes() {
     LOG_DEBUG(logger_, "Registering performance routes");
     // Stub implementations - to be implemented
+}
+
+void RestApiImpl::handle_analytics_routes() {
+    LOG_DEBUG(logger_, "Registering analytics routes");
+
+    // GET /v1/databases/{id}/analytics/stats - Query statistics
+    app_->route_dynamic("/v1/databases/<string>/analytics/stats")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method != crow::HTTPMethod::GET) {
+                return crow::response(405, "Method not allowed");
+            }
+            return handle_analytics_stats_request(req, database_id);
+        });
+
+    // GET /v1/databases/{id}/analytics/queries - Recent queries
+    app_->route_dynamic("/v1/databases/<string>/analytics/queries")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method != crow::HTTPMethod::GET) {
+                return crow::response(405, "Method not allowed");
+            }
+            return handle_analytics_queries_request(req, database_id);
+        });
+
+    // GET /v1/databases/{id}/analytics/patterns - Query patterns
+    app_->route_dynamic("/v1/databases/<string>/analytics/patterns")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method != crow::HTTPMethod::GET) {
+                return crow::response(405, "Method not allowed");
+            }
+            return handle_analytics_patterns_request(req, database_id);
+        });
+
+    // GET /v1/databases/{id}/analytics/insights - Automated insights
+    app_->route_dynamic("/v1/databases/<string>/analytics/insights")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method != crow::HTTPMethod::GET) {
+                return crow::response(405, "Method not allowed");
+            }
+            return handle_analytics_insights_request(req, database_id);
+        });
+
+    // GET /v1/databases/{id}/analytics/trending - Trending queries
+    app_->route_dynamic("/v1/databases/<string>/analytics/trending")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method != crow::HTTPMethod::GET) {
+                return crow::response(405, "Method not allowed");
+            }
+            return handle_analytics_trending_request(req, database_id);
+        });
+
+    // POST /v1/databases/{id}/analytics/feedback - Submit user feedback
+    app_->route_dynamic("/v1/databases/<string>/analytics/feedback")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method != crow::HTTPMethod::POST) {
+                return crow::response(405, "Method not allowed");
+            }
+            return handle_analytics_feedback_request(req, database_id);
+        });
+
+    // GET /v1/databases/{id}/analytics/export - Export analytics data
+    app_->route_dynamic("/v1/databases/<string>/analytics/export")
+        ([this](const crow::request& req, std::string database_id) {
+            if (req.method != crow::HTTPMethod::GET) {
+                return crow::response(405, "Method not allowed");
+            }
+            return handle_analytics_export_request(req, database_id);
+        });
+
+    LOG_INFO(logger_, "Analytics routes registered successfully");
 }
 
 // ============================================================================
