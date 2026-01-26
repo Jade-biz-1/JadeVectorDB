@@ -52,13 +52,19 @@ struct HybridSearchResult {
     double vector_score;
     double bm25_score;
     double hybrid_score;
+    double rerank_score;        // Cross-encoder score (if reranking enabled)
+    double combined_score;      // Final score (hybrid or reranked)
     std::unordered_map<std::string, std::string> metadata;
 
     HybridSearchResult()
-        : vector_score(0.0), bm25_score(0.0), hybrid_score(0.0) {}
+        : vector_score(0.0), bm25_score(0.0), hybrid_score(0.0),
+          rerank_score(0.0), combined_score(0.0) {}
 
     bool operator<(const HybridSearchResult& other) const {
-        return hybrid_score > other.hybrid_score;  // Descending
+        // Sort by combined_score if available, otherwise hybrid_score
+        double this_score = (combined_score > 0.0) ? combined_score : hybrid_score;
+        double other_score = (other.combined_score > 0.0) ? other.combined_score : other.hybrid_score;
+        return this_score > other_score;  // Descending
     }
 };
 
@@ -115,19 +121,29 @@ public:
     bool save_bm25_index(const std::string& persistence_path);
 
     /**
-     * @brief Perform hybrid search
+     * @brief Perform hybrid search with optional reranking
      *
      * Combines vector similarity and BM25 keyword search.
+     * Optionally applies cross-encoder reranking as a final stage.
+     *
+     * Two-stage retrieval (when enable_reranking=true):
+     * 1. Retrieve rerank_top_n candidates via hybrid search
+     * 2. Rerank candidates with cross-encoder
+     * 3. Return top_k from reranked results
      *
      * @param query_text Text query for BM25
      * @param query_vector Vector query for similarity search
      * @param top_k Number of results to return
+     * @param enable_reranking Enable cross-encoder reranking stage
+     * @param rerank_top_n Number of candidates to rerank (default: 100)
      * @return Vector of hybrid search results
      */
     std::vector<HybridSearchResult> search(
         const std::string& query_text,
         const std::vector<float>& query_vector,
-        size_t top_k
+        size_t top_k,
+        bool enable_reranking = false,
+        size_t rerank_top_n = 100
     );
 
     /**
@@ -156,6 +172,26 @@ public:
 
     void set_vector_search_provider(VectorSearchProvider provider) {
         vector_search_provider_ = provider;
+    }
+
+    /**
+     * @brief Set reranking results provider
+     *
+     * This function allows injection of reranking functionality.
+     * The provider receives query text and hybrid search results,
+     * returns reranked results with combined scores.
+     *
+     * @param provider Function that performs reranking
+     */
+    using RerankingProvider = std::function<
+        std::vector<HybridSearchResult>(
+            const std::string&,                         // query_text
+            const std::vector<HybridSearchResult>&      // candidates
+        )
+    >;
+
+    void set_reranking_provider(RerankingProvider provider) {
+        reranking_provider_ = provider;
     }
 
     /**
@@ -206,6 +242,9 @@ private:
 
     // Vector search provider (injected)
     VectorSearchProvider vector_search_provider_;
+
+    // Reranking provider (injected)
+    RerankingProvider reranking_provider_;
 
     /**
      * @brief Perform vector similarity search

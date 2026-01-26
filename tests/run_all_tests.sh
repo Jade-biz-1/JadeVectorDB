@@ -1,6 +1,6 @@
 #!/bin/bash
 # JadeVectorDB - Master CLI Test Runner
-# Runs all CLI tests (Python CLI tests + Shell tests)
+# Runs all CLI tests (Python CLI tests + Shell tests + Python reranking tests)
 
 set -e
 
@@ -39,10 +39,28 @@ echo ""
 
 if python3 run_cli_tests.py; then
     echo ""
-    echo -e "${GREEN}✓ All tests completed${NC}"
-    exit 0
+    echo -e "${GREEN}✓ CLI tests completed${NC}"
 else
     echo ""
-    echo -e "${RED}✗ Some tests failed${NC}"
+    echo -e "${RED}✗ CLI tests failed${NC}"
     exit 1
 fi
+
+# Run Python reranking server test
+echo -e "${YELLOW}=== Running Python Re-ranking Server Test ===${NC}"
+echo ""
+
+cd ../python
+if python3 test_reranking_server.py; then
+    echo ""
+    echo -e "${GREEN}✓ Python reranking test completed${NC}"
+else
+    echo ""
+    echo -e "${RED}✗ Python reranking test failed${NC}"
+    exit 1
+fi
+
+cd ../tests
+echo ""
+echo -e "${GREEN}✓ All tests completed${NC}"
+exit 0

@@ -123,9 +123,14 @@ HybridSearchResult HybridSearchEngine::convert_to_hybrid_result(
 std::vector<HybridSearchResult> HybridSearchEngine::search(
     const std::string& query_text,
     const std::vector<float>& query_vector,
-    size_t top_k) {
+    size_t top_k,
+    bool enable_reranking,
+    size_t rerank_top_n) {
 
     std::vector<HybridSearchResult> results;
+
+    // For two-stage retrieval: retrieve more candidates if reranking is enabled
+    size_t candidate_count = enable_reranking ? rerank_top_n : top_k;
 
     // Step 1: Vector search (get candidates) - only if query_vector is provided
     std::vector<SearchResult> vector_results;
@@ -153,18 +158,34 @@ std::vector<HybridSearchResult> HybridSearchEngine::search(
     // If only one has results, use that
     if (vector_results.empty()) {
         // BM25 only
-        auto top_results = score_fusion_.get_top_k(bm25_results, top_k);
+        auto top_results = score_fusion_.get_top_k(bm25_results, candidate_count);
         for (const auto& result : top_results) {
             results.push_back(convert_to_hybrid_result(result, 0.0, result.score));
+        }
+        // Apply reranking if enabled
+        if (enable_reranking && reranking_provider_ && results.size() > 1) {
+            results = reranking_provider_(query_text, results);
+            // Limit to top_k after reranking
+            if (results.size() > top_k) {
+                results.resize(top_k);
+            }
         }
         return results;
     }
 
     if (bm25_results.empty()) {
         // Vector only
-        auto top_results = score_fusion_.get_top_k(vector_results, top_k);
+        auto top_results = score_fusion_.get_top_k(vector_results, candidate_count);
         for (const auto& result : top_results) {
             results.push_back(convert_to_hybrid_result(result, result.score, 0.0));
+        }
+        // Apply reranking if enabled
+        if (enable_reranking && reranking_provider_ && results.size() > 1) {
+            results = reranking_provider_(query_text, results);
+            // Limit to top_k after reranking
+            if (results.size() > top_k) {
+                results.resize(top_k);
+            }
         }
         return results;
     }
@@ -184,8 +205,8 @@ std::vector<HybridSearchResult> HybridSearchEngine::search(
     // Step 3: Apply score fusion
     std::vector<SearchResult> fused_results = apply_fusion(vector_results, bm25_results);
 
-    // Step 4: Get top-K
-    auto top_results = score_fusion_.get_top_k(fused_results, top_k);
+    // Step 4: Get top candidates (top_k or rerank_top_n)
+    auto top_results = score_fusion_.get_top_k(fused_results, candidate_count);
 
     // Step 5: Build score maps for metadata - MUST happen BEFORE we convert
     // These maps contain the ORIGINAL scores before fusion normalization
@@ -232,6 +253,20 @@ std::vector<HybridSearchResult> HybridSearchEngine::search(
         }
 
         results.push_back(convert_to_hybrid_result(result, vec_score, bm25_score));
+    }
+
+    // Step 7: Optional reranking stage (two-stage retrieval)
+    if (enable_reranking && reranking_provider_ && results.size() > 1) {
+        // Call reranking provider with query text and candidates
+        results = reranking_provider_(query_text, results);
+
+        // Limit to top_k after reranking
+        if (results.size() > top_k) {
+            results.resize(top_k);
+        }
+    } else if (results.size() > top_k) {
+        // No reranking: just limit to top_k
+        results.resize(top_k);
     }
 
     return results;

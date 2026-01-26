@@ -103,6 +103,20 @@ struct SearchParams {
 };
 
 class SimilaritySearchService {
+public:
+    /**
+     * @brief Reranking provider callback type
+     *
+     * Function that receives query text and search results,
+     * returns reranked results with updated scores.
+     */
+    using RerankingProvider = std::function<
+        std::vector<SearchResult>(
+            const std::string&,                    // query_text
+            const std::vector<SearchResult>&       // candidates
+        )
+    >;
+
 private:
     std::unique_ptr<VectorStorageService> vector_storage_;
     std::shared_ptr<logging::Logger> logger_;
@@ -127,9 +141,12 @@ private:
 
     // Metadata filter service
     std::unique_ptr<MetadataFilter> metadata_filter_;
-    
+
     // Query optimizer for cost-based optimization
     std::unique_ptr<QueryOptimizer> query_optimizer_;
+
+    // Reranking provider (injected)
+    RerankingProvider reranking_provider_;
 
 public:
     // Test accessor methods
@@ -144,19 +161,25 @@ public:
     Result<std::vector<SearchResult>> similarity_search(
         const std::string& database_id,
         const Vector& query_vector,
-        const SearchParams& params = SearchParams()) const;
+        const SearchParams& params = SearchParams(),
+        const std::string& query_text = "",
+        bool enable_reranking = false) const;
 
     // Perform similarity search using Euclidean distance
     Result<std::vector<SearchResult>> euclidean_search(
         const std::string& database_id,
         const Vector& query_vector,
-        const SearchParams& params = SearchParams()) const;
+        const SearchParams& params = SearchParams(),
+        const std::string& query_text = "",
+        bool enable_reranking = false) const;
 
     // Perform similarity search using dot product
     Result<std::vector<SearchResult>> dot_product_search(
         const std::string& database_id,
         const Vector& query_vector,
-        const SearchParams& params = SearchParams()) const;
+        const SearchParams& params = SearchParams(),
+        const std::string& query_text = "",
+        bool enable_reranking = false) const;
 
     // Get all available search algorithms
     std::vector<std::string> get_available_algorithms() const;
@@ -166,6 +189,26 @@ public:
     
     // Get query optimizer instance
     QueryOptimizer* get_query_optimizer() { return query_optimizer_.get(); }
+
+    /**
+     * @brief Set reranking results provider
+     *
+     * This function allows injection of reranking functionality.
+     * The provider receives query text and search results,
+     * returns reranked results with updated scores.
+     *
+     * @param provider Function that performs reranking
+     */
+    void set_reranking_provider(RerankingProvider provider) {
+        reranking_provider_ = provider;
+    }
+
+    /**
+     * @brief Check if reranking provider is set
+     */
+    bool has_reranking_provider() const {
+        return reranking_provider_ != nullptr;
+    }
 
 private:
     // Core similarity calculation methods
