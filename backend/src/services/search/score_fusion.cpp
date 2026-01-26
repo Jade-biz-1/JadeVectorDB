@@ -107,9 +107,9 @@ void ScoreFusion::normalize_min_max(std::vector<SearchResult>& results) const {
     double range = max_score - min_score;
 
     if (range < 1e-9) {
-        // All scores are the same, set to 0.5 (middle value)
+        // All scores are the same, set to 1.0 (treat all equally as maximum)
         for (auto& result : results) {
-            result.score = 0.5;
+            result.score = 1.0;
         }
     } else {
         for (auto& result : results) {
