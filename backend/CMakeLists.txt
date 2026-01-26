@@ -272,6 +272,7 @@ set(CORE_SOURCES
     src/services/index/ivf_index.cpp
     src/services/index/composite_index.cpp
     src/analytics/query_logger.cpp
+    src/analytics/query_analytics_manager.cpp
     src/lib/mmap_utils.cpp
     src/lib/simd_ops.cpp
     src/lib/serialization.cpp
@@ -560,6 +561,21 @@ if(BUILD_TESTS)
     )
 
     add_test(NAME QueryLoggerTests COMMAND query_logger_tests)
+
+    # Phase 16: Query Analytics Manager Tests
+    add_executable(query_analytics_manager_tests
+        unittesting/test_query_analytics_manager.cpp
+    )
+
+    target_link_libraries(query_analytics_manager_tests PRIVATE
+        jadevectordb_core
+        SQLite::SQLite3
+        GTest::gtest
+        GTest::gtest_main
+        GTest::gmock
+    )
+
+    add_test(NAME QueryAnalyticsManagerTests COMMAND query_analytics_manager_tests)
 endif()
 
 #############################################################################
