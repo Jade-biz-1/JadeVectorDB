@@ -73,16 +73,7 @@ export default function SimilaritySearchPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Head>
-        <title>Similarity Search - JadeVectorDB</title>
-        <meta name="description" content="Perform similarity search in JadeVectorDB" />
-      </Head>
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold text-gray-900">Similarity Search</h1>
-        </div>
-      </header>
+    <Layout title="Similarity Search - JadeVectorDB">
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           {/* Database Selection */}
@@ -232,7 +223,6 @@ export default function SimilaritySearchPage() {
                     )}
                   </div>
                 ))}
-              </div>
               </div>
             )}
           </div>

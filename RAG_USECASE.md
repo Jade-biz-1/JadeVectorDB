@@ -1294,6 +1294,1152 @@ Layer 6: User Interface
 └─ Option 3: FastAPI (REST API)
 ```
 
+---
+
+## Detailed Technology Specifications
+
+### 1. Embedding Models (Local/Offline)
+
+#### 1.1 E5-Small-v2 (**Recommended for Production**)
+
+**Model Information:**
+- **Full Name:** intfloat/e5-small-v2
+- **Parameters:** 118 million
+- **Embedding Dimensions:** 384
+- **Max Input Tokens:** 512 tokens
+- **Architecture:** 12 layers, 12 attention heads
+- **Model Size on Disk:** ~500 MB
+- **License:** MIT
+
+**Performance Metrics (2025-2026 Benchmarks):**
+- **MTEB Accuracy:** 100% Top-5 accuracy in RAG retrieval tasks
+- **Latency:** <30ms per embedding generation (CPU)
+- **Speed:** 50-100 embeddings/second on modern CPUs
+- **Quality:** Competitive with models 5× larger despite smallest size
+
+**Why E5-Small-v2 is Optimal:**
+- Best balance of accuracy and speed for production RAG systems
+- Small memory footprint suitable for laptop deployment (500MB)
+- 384 dimensions provide optimal balance between accuracy and storage efficiency
+- CPU-friendly for offline deployment
+- Despite smallest specifications (118M params), achieved best RAG benchmark results
+
+**Usage Requirements:**
+- **Query Prefix:** Must use `"query: "` prefix for search queries
+- **Document Prefix:** Use `"passage: "` prefix for document chunks (optional)
+- **Example:**
+  ```python
+  from sentence_transformers import SentenceTransformer
+
+  model = SentenceTransformer('intfloat/e5-small-v2')
+
+  # For queries
+  query_embedding = model.encode("query: How to reset XYZ-100?")
+
+  # For documents (prefix optional but recommended)
+  doc_embedding = model.encode("passage: To reset the XYZ-100...")
+  ```
+
+**JadeVectorDB Compatibility:** ✅ Perfect - 384 dimensions fully supported
+
+**Sources:**
+- [intfloat/e5-small-v2 on Hugging Face](https://huggingface.co/intfloat/e5-small-v2)
+- [Best Open Source Embedding Models Benchmarked (2025)](https://research.aimultiple.com/open-source-embedding-models/)
+
+---
+
+#### 1.2 Nomic-Embed-Text (via Ollama)
+
+**Model Information:**
+- **Model Name:** nomic-embed-text (via Ollama)
+- **Embedding Dimensions:**
+  - Standard: 1,024 dimensions
+  - Matryoshka support: 768, 512, 384, 256 dimensions
+- **Max Context Length:** 8,192 tokens
+- **Model Size:** 0.5 GB memory footprint
+- **Training Data:** >1.6 billion text pairs
+
+**Performance Metrics (2025-2026):**
+- **MTEB Retrieval Score:** 53.01 (2025), projected 64.68+ (2026)
+- **Accuracy:** Surpasses OpenAI text-embedding-ada-002 and text-embedding-3-small
+- **Speed Benchmarks:**
+  - RTX 4090 (24GB GPU): 12,450 tokens/sec (batch size 256)
+  - Apple M2 Max (96GB RAM): 9,340 tokens/sec (batch size 128)
+  - Intel i9-13900K (64GB RAM): 3,250 tokens/sec (batch size 32)
+
+**Advanced Features:**
+- **Multilingual:** Supports ~100 languages
+- **Long Context:** 8,192 tokens (vs 512 for E5-small)
+- **Matryoshka Embeddings:** Flexible dimension reduction (1024→768→512→384)
+- **MoE Variant:** Nomic-Embed-Text-v2-MoE (first general-purpose MoE text embedding)
+
+**2025-2026 Performance Roadmap:**
+- **Inference Speed:** 12,450 → 18,000 (Q4 2025) → 25,000 tok/sec (Q2 2026)
+- **Context Length:** 8,192 → 32,768 (Q4 2025) → 128,000 tokens (Q2 2026)
+- **MTEB Score:** 64.68 → 68.50 (Q4 2025) → 72.00 (Q2 2026)
+
+**Ollama Integration:**
+```bash
+# Pull model
+ollama pull nomic-embed-text
+
+# Python usage
+import ollama
+
+response = ollama.embeddings(
+    model='nomic-embed-text',
+    prompt='Your text here'
+)
+embedding = response['embedding']  # 1024-dim vector
+```
+
+**JadeVectorDB Compatibility:**
+- ⚠️ Default 1,024 dimensions requires database configuration
+- ✅ Can use 384 dimensions with Matryoshka truncation
+- **Recommendation:** Configure JadeVectorDB with 1,024 dimensions OR use E5-small for 384-dim deployments
+
+**Use Cases:**
+- Multilingual documentation (100+ languages)
+- Long context documents (>512 tokens per chunk)
+- Advanced RAG scenarios requiring higher accuracy
+
+**Sources:**
+- [nomic-embed-text on Ollama](https://ollama.com/library/nomic-embed-text)
+- [Ollama Embedded Models: Complete Guide for 2025](https://collabnix.com/ollama-embedded-models-the-complete-technical-guide-for-2025-enterprise-deployment/)
+
+---
+
+#### 1.3 Alternative Embedding Models
+
+**BGE Models (BAAI General Embedding) - Multilingual Alternative**
+
+**bge-small-en-v1.5:**
+- **Dimensions:** 384
+- **Languages:** English-focused
+- **Performance:** Competitive with E5-small
+- **Use Case:** Good alternative to E5-small for English-only deployments
+
+**BGE-M3 (Advanced Multi-functionality):**
+- **Dimensions:** 1,024
+- **Features:** Dense, multi-vector, and sparse retrieval
+- **Languages:** 100+ languages
+- **Granularity:** Short sentences to 8,192 token documents
+- **Use Case:** Advanced multilingual RAG with hybrid search
+
+**all-MiniLM-L6-v2 (NOT Recommended for 2025+):**
+- **Dimensions:** 384
+- **Parameters:** 22.7 million
+- **Performance:** 56% Top-5, 28% Top-1 accuracy (lowest in benchmarks)
+- **Speed:** Very fast (14.7ms per 1K tokens)
+- **Architecture:** 2019-era, outdated
+- **Verdict:** ❌ Do NOT use for new RAG systems - replaced by E5 and modern models
+
+**Recommendation:** Stick with E5-small-v2 for English, or BGE-M3 for multilingual needs. Avoid all-MiniLM-L6-v2.
+
+---
+
+#### 1.4 CPU vs GPU Performance for Embeddings
+
+**CPU Performance (Intel i9, AMD Ryzen 7, Apple M2):**
+- **E5-small-v2:** 30-50ms per embedding, 50-100 embeddings/sec
+- **Nomic-embed-text:** 60-100ms per embedding (due to larger model)
+- **Batch Processing:** Can process 50-100 embeddings/second
+- **Use Case:** Suitable for query-time embedding (1-2 queries/sec) and offline batch indexing
+
+**GPU Performance (RTX 4070/4090, Apple M2 GPU):**
+- **E5-small-v2:** 10-20× faster than CPU
+- **Batch Processing:** 500-1,000+ embeddings/second
+- **Use Case:** Very large-scale indexing (>100K documents)
+
+**Recommendation for RAG:**
+- **Query-time:** CPU is sufficient (<50ms acceptable)
+- **Indexing 50K chunks:** CPU is practical (1-2 minutes total)
+- **Indexing 500K+ chunks:** GPU accelerates significantly but not required
+
+**Verdict:** CPU-only deployment is practical and cost-effective for medium-scale RAG (50K-100K chunks).
+
+---
+
+### 2. LLM Models via Ollama
+
+#### 2.1 Llama 3.2 Models
+
+**Llama 3.2 1B - Ultra-Lightweight**
+
+**Specifications:**
+- **Parameters:** 1 billion
+- **Context Window:** 128,000 tokens
+- **Languages:** English, German, French, Italian, Portuguese, Hindi, Spanish, Thai
+- **Training Data:** Up to 9 trillion tokens (cutoff: December 2023)
+- **Architecture:** Optimized transformer, auto-regressive
+
+**Memory Requirements:**
+- **8K Context:** 1.8 GB GPU memory
+- **128K Context:** ~4-5 GB (with KV cache)
+- **Q4_K_M Quantized:** ~1.0 GB
+
+**Performance:**
+- **CPU (Intel i9):** 20-30 tokens/sec
+- **GPU (RTX 4090):** 100-150+ tokens/sec
+- **Response Time:** <1 second for 100-token answers
+
+**Quantization Options:**
+```bash
+ollama pull llama3.2:1b           # Full precision
+ollama pull llama3.2:1b-q4_K_M    # 4-bit (recommended)
+ollama pull llama3.2:1b-q8_0      # 8-bit
+```
+
+**Use Cases:**
+- Ultra-lightweight deployment on 4-8GB RAM devices
+- Edge computing and laptops with limited RAM
+- Quick testing and development
+- Simple Q&A tasks
+
+---
+
+**Llama 3.2 3B - Recommended for RAG**
+
+**Specifications:**
+- **Parameters:** 3 billion
+- **Context Window:** 128,000 tokens
+- **Languages:** Same 8 languages as 1B
+- **Training:** Includes distilled knowledge from Llama 3.1 8B and 70B models
+
+**Memory Requirements:**
+- **8K Context:** 3.4 GB GPU memory
+- **Full 128K Context:** ~8-10 GB (with KV cache)
+- **Q4_K_M Quantized:** ~1.5-2 GB
+
+**Performance:**
+- **CPU (Intel i9/Ryzen 7):** 40-50 tokens/sec
+- **GPU (RTX 4070):** 80-120 tokens/sec
+- **Response Time:** ~2-3 seconds for 100-150 token answers
+
+**Quantization Options:**
+```bash
+ollama pull llama3.2:3b           # Full precision (~2GB)
+ollama pull llama3.2:3b-q4_K_M    # 4-bit (~1.5GB) - RECOMMENDED
+ollama pull llama3.2:3b-q5_K_M    # 5-bit (~1.8GB)
+```
+
+**Why Llama 3.2 3B is BEST for RAG:**
+- ✅ **Optimal Balance:** Quality vs. speed vs. memory
+- ✅ **Fast CPU Performance:** 40-50 tokens/sec feels responsive
+- ✅ **Small Memory Footprint:** Runs comfortably on 8GB RAM systems
+- ✅ **128K Context:** Can handle extensive retrieved context
+- ✅ **Quality:** Distilled from larger models, excellent for technical Q&A
+- ✅ **Offline:** Works perfectly without internet
+
+**Recommended Configuration for RAG:**
+- **Model:** llama3.2:3b-q4_K_M
+- **Temperature:** 0.1 (low for factual accuracy)
+- **Max Tokens:** 1024 (sufficient for most answers)
+- **Context Budget:** 2000-3000 tokens for retrieved chunks
+
+**Sources:**
+- [Llama 3.2 Model Cards](https://www.llama.com/docs/model-cards-and-prompt-formats/llama3_2/)
+- [llama3.2 on Ollama](https://ollama.com/library/llama3.2)
+
+---
+
+#### 2.2 Llama 3.1 8B - High-Quality Alternative
+
+**Specifications:**
+- **Parameters:** 8 billion
+- **Context Window:** 128,000 tokens
+- **Languages:** 8 languages (same as Llama 3.2)
+- **Architecture:** Grouped-Query Attention (GQA) for efficient long-context processing
+- **Training Data:** High-quality instruction tuning
+
+**Memory Requirements:**
+- **Standard Operations:** 7.6 GB GPU memory
+- **Full 128K Context:** ~12 GB VRAM (with KV cache)
+- **Q4_K_M Quantized:** ~5 GB
+- **Q5_K_M Quantized:** ~5.5 GB
+
+**Performance:**
+- **CPU (Intel i9):** 10-15 tokens/sec
+- **GPU (RTX 4070 12GB):** 40-60 tokens/sec
+- **Response Time:** 6-10 seconds for 100-token answers on CPU
+
+**Quantization Options:**
+```bash
+ollama pull llama3.1:8b           # Full precision (~4.7GB)
+ollama pull llama3.1:8b-q4_K_M    # 4-bit (~5GB) - RECOMMENDED
+ollama pull llama3.1:8b-q5_K_M    # 5-bit (~5.5GB) - Higher quality
+ollama pull llama3.1:8b-q8_0      # 8-bit (~8GB) - Max quality
+```
+
+**Use Cases:**
+- When you need higher quality responses than 3B models
+- Complex reasoning and multi-step procedures
+- Available RAM: 16GB+
+- Can tolerate 6-10 sec response times
+
+**Tradeoffs vs Llama 3.2 3B:**
+- ✅ **Better Quality:** More accurate, nuanced answers
+- ✅ **Better Reasoning:** Handles complex multi-step procedures
+- ❌ **Slower:** 10-15 tok/sec vs 40-50 tok/sec on CPU
+- ❌ **More Memory:** 5-8GB vs 2GB
+
+**Recommendation:** Use Llama 3.1 8B if you have 16GB+ RAM and can tolerate slightly longer response times for higher quality.
+
+**Sources:**
+- [llama3.1:8b on Ollama](https://ollama.com/library/llama3.1:8b)
+- [Llama 3.1 8B: GPU VRAM Requirements](https://apxml.com/models/llama-3-1-8b)
+
+---
+
+#### 2.3 Mistral 7B - Balanced Alternative
+
+**Specifications:**
+- **Parameters:** 7.3 billion
+- **Context Window:**
+  - v0.3: 32,768 tokens
+  - v0.2: 32,768 tokens
+  - v0.1: 4,096 tokens (use v0.2+ for RAG)
+- **License:** Apache 2.0
+- **Architecture:** Sliding window attention for efficient long-context
+
+**Memory Requirements:**
+- **Q4_K_M:** ~4 GB minimum
+- **Q5_K_M:** ~5-6 GB
+- **Full Precision:** ~14 GB
+
+**Quantization Performance:**
+
+| Quantization | File Size | Bits/Weight | Quality Retention | Speed (CPU) | Use Case |
+|--------------|-----------|-------------|-------------------|-------------|----------|
+| Q4_K_M | ~4 GB | 4.5 bpw | 90-95% | 45-55 tok/sec | **Recommended** - Best balance |
+| Q5_K_M | ~5.1 GB | 5.5 bpw | >95% | 35-45 tok/sec | Higher quality |
+| Q8_0 | ~7-8 GB | 8 bpw | >99% | 20-30 tok/sec | Maximum quality |
+
+**Performance:**
+- **CPU (Intel i5/i7, Ryzen 5/7):** 5-8 tokens/sec (Q4_K_M: 45-55 tok/sec reported)
+- **GPU (RTX 3060/4060):** 25-45 tokens/sec (Q4_K_M)
+- **Response Time:** ~2-4 seconds for 100-token answers (Q4_K_M on modern CPU)
+
+**Quantization Recommendations:**
+- **Q4_K_M:** Default choice - imperceptible quality loss, optimal speed
+- **Q5_K_M:** Use if you have 16-24GB RAM for 5% quality improvement
+- **Q8_0:** Only if memory permits and maximum quality needed
+
+**Ollama Commands:**
+```bash
+ollama pull mistral:7b-instruct-v0.3     # Latest version
+ollama pull mistral:7b-q4_K_M            # Quantized (recommended)
+ollama pull mistral:7b-q5_K_M            # Higher quality
+```
+
+**Why Mistral 7B:**
+- ✅ **Apache 2.0 License:** Fully open, no restrictions
+- ✅ **32K Context:** Large enough for extensive RAG context
+- ✅ **Efficient Architecture:** Sliding window attention
+- ✅ **Balanced:** Good quality/speed tradeoff
+
+**Tradeoffs:**
+- Slightly slower than Llama 3.2 3B on CPU
+- Better quality than Llama 3.2 3B
+- Requires more RAM than Llama 3.2 3B
+
+**Sources:**
+- [Mistral 7B Announcement](https://mistral.ai/news/announcing-mistral-7b)
+- [Better quantized models for Mistral-7B](https://github.com/ggml-org/llama.cpp/discussions/4364)
+
+---
+
+#### 2.4 Qwen 2.5 Models - Advanced Long-Context
+
+**Model Sizes:** 0.5B, 1.5B, 3B, 7B, 14B, 32B, 72B
+
+**Context Window:**
+- **Standard Models:** 128K tokens (up to 8K token generation)
+- **Qwen2.5-1M Series (January 2025):** 1 million tokens
+- **Qwen3 Series (2025 roadmap):** 256K-1M tokens
+
+**Qwen 2.5 3B:**
+- **Memory:** ~2-3 GB (Q4_K_M)
+- **Performance:** 35-45 tokens/sec on CPU
+- **Context:** 128K tokens
+- **Use Case:** Alternative to Llama 3.2 3B
+
+**Qwen 2.5 7B:**
+- **Memory:** ~4-5 GB (Q4_K_M)
+- **Performance:** 12-18 tokens/sec on CPU
+- **Context:** 128K tokens
+- **Use Case:** Alternative to Mistral 7B / Llama 3.1 8B
+
+**Qwen2.5-1M (Ultra Long Context):**
+- **Context Length:** Up to 1 million tokens
+- **Equivalent to:** ~1 million English words, 10 novels, 150 hours of speech, 30K lines of code
+- **Performance:** 100% accuracy on 1M Passkey Retrieval task, 93.1 RULER benchmark
+- **Use Case:** Processing entire document collections in one context (experimental for RAG)
+
+**Key Features:**
+- **Multilingual:** 29+ languages
+- **Strong Performance:** Knowledge, coding, mathematics
+- **Instruction Following:** Excellent for generating long texts (>8K tokens)
+- **Structured Output:** JSON generation, structured data
+
+**Ollama Commands:**
+```bash
+ollama pull qwen2.5:3b
+ollama pull qwen2.5:7b
+ollama pull qwen2.5:14b
+```
+
+**Use Cases for RAG:**
+- **Standard RAG:** Qwen 2.5 3B or 7B (128K context)
+- **Multilingual:** Best choice for 29+ languages
+- **Ultra-long Context:** Qwen2.5-1M for experimental full-document retrieval
+
+**Sources:**
+- [Qwen2.5 on Ollama](https://ollama.com/library/qwen2.5)
+- [Extending Context Length to 1M Tokens](https://qwenlm.github.io/blog/qwen2.5-turbo/)
+
+---
+
+#### 2.5 Quantization Impact Summary
+
+**Understanding Quantization:**
+Quantization reduces model precision from 16-bit (FP16) to 8-bit, 5-bit, or 4-bit integers, reducing memory and increasing speed with minimal quality loss.
+
+| Quantization | Bits/Weight | Quality Retention | File Size (7B) | Speed vs FP16 | RAM/VRAM Required | Best For |
+|--------------|-------------|-------------------|----------------|---------------|-------------------|----------|
+| **Full FP16** | 16 | 100% (baseline) | ~14 GB | 1× (baseline) | 14+ GB | Research, benchmarking |
+| **Q8_0** | 8 | 99%+ | ~7-8 GB | 1.2-1.5× | 8-10 GB | Maximum quality |
+| **Q5_K_M** | 5.5 | 95%+ | ~5.1 GB | 1.8-2× | 6-8 GB | Balanced quality |
+| **Q4_K_M** | 4.5 | 90-95% | ~4 GB | 2-2.5× | 4-6 GB | **Production default** |
+| **Q3_K_M** | 3.5 | 85-90% | ~3 GB | 3× | 3-5 GB | Low-memory devices |
+
+**Recommendations by Hardware:**
+- **8GB RAM Laptop:** Llama 3.2 3B Q4_K_M (~2GB model + 2GB context + 4GB OS/apps)
+- **16GB RAM Workstation:** Llama 3.1 8B Q5_K_M or Mistral 7B Q5_K_M
+- **24GB+ RAM/VRAM:** Llama 3.1 8B Q8_0 or full precision 14B+ models
+
+**Quality vs Speed Tradeoff:**
+- **Q4_K_M:** Imperceptible quality loss for RAG tasks, 2× faster
+- **Q5_K_M:** Slight quality improvement, 1.8× faster
+- **Q8_0:** Near-perfect quality, slower but still faster than FP16
+
+**Verdict:** Q4_K_M is the sweet spot for production RAG systems - excellent quality retention with 2× speed improvement.
+
+---
+
+#### 2.6 CPU Performance Summary (2025)
+
+**Tokens Per Second Benchmarks (CPU-only):**
+
+| Model | Size | Quantization | CPU Type | Tokens/Sec | Use Case |
+|-------|------|--------------|----------|------------|----------|
+| Llama 3.2 1B | 1B | Q4_K_M | Intel i9 | 20-30 | Testing, edge |
+| **Llama 3.2 3B** | 3B | Q4_K_M | Intel i9 | **40-50** | **Production RAG** |
+| Llama 3.1 8B | 8B | Q4_K_M | Intel i9 | 10-15 | High-quality RAG |
+| Mistral 7B | 7.3B | Q4_K_M | Intel i5/i7 | 5-8 | Alternative |
+| Qwen 2.5 3B | 3B | Q4_K_M | AMD Ryzen 7 | 35-45 | Multilingual RAG |
+| Qwen 2.5 7B | 7B | Q4_K_M | AMD Ryzen 7 | 12-18 | Advanced RAG |
+
+**Target for Interactive RAG:** >20 tokens/sec (feels responsive at 0.05s per token)
+
+**Response Time Estimates:**
+- **100-token answer:**
+  - Llama 3.2 3B: ~2-3 seconds ✅
+  - Llama 3.1 8B: ~6-8 seconds ⚠️
+- **200-token answer:**
+  - Llama 3.2 3B: ~4-5 seconds ✅
+  - Llama 3.1 8B: ~13-15 seconds ⚠️
+
+**Recommendation:** Llama 3.2 3B Q4_K_M provides the best CPU performance for interactive RAG applications.
+
+**GPU Performance (for comparison):**
+- **RTX 4090:** 100-200+ tokens/sec for 3-8B models
+- **RTX 4070 12GB:** 50-100 tokens/sec
+- **Apple M2 Max:** 40-80 tokens/sec
+
+---
+
+### 3. Ollama Integration
+
+#### 3.1 Latest Version and Features (2025-2026)
+
+**Current Version:** Ollama 0.12.11+ (actively developed, frequent releases)
+
+**Core Capabilities:**
+- **Local LLM Serving:** Run 100+ open-source models locally
+- **Embedding Generation:** Built-in embedding API
+- **Model Management:** Simple pull/push/list/remove commands
+- **REST API:** Full HTTP API for integration
+- **OpenAI Compatibility:** Drop-in replacement for OpenAI API
+
+**Embedding API:**
+```python
+import ollama
+
+# Generate embeddings
+response = ollama.embeddings(
+    model='nomic-embed-text',
+    prompt='Your text here'
+)
+embedding = response['embedding']  # Returns L2-normalized vector
+```
+
+**Chat API:**
+```python
+import ollama
+
+# Chat completion
+response = ollama.chat(
+    model='llama3.2:3b',
+    messages=[
+        {'role': 'system', 'content': 'You are a helpful assistant.'},
+        {'role': 'user', 'content': 'Your question'}
+    ],
+    options={
+        'temperature': 0.1,
+        'max_tokens': 1024
+    }
+)
+answer = response['message']['content']
+```
+
+**REST API Endpoints:**
+```bash
+# Generate embeddings
+curl http://localhost:11434/api/embed \
+  -d '{"model": "nomic-embed-text", "input": "text"}'
+
+# Chat completion
+curl http://localhost:11434/api/chat \
+  -d '{
+    "model": "llama3.2:3b",
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'
+
+# OpenAI-compatible endpoint
+curl http://localhost:11434/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{"model": "nomic-embed-text", "input": "text"}'
+```
+
+**Advanced Features (2025):**
+- **Log Probabilities:** Token likelihood scores for confidence estimation
+- **Vulkan Acceleration:** Support for AMD, Intel GPUs, and integrated GPUs
+- **OpenAI Compatibility:** `/v1/*` endpoints match OpenAI API exactly
+- **Model Library:** 100+ pre-configured models (Llama, Mistral, Qwen, Gemma, etc.)
+
+**Model Management:**
+```bash
+# Download model
+ollama pull llama3.2:3b
+
+# List installed models
+ollama list
+
+# Model information
+ollama show llama3.2:3b
+
+# Remove model
+ollama rm llama3.2:1b
+
+# Run model interactively
+ollama run llama3.2:3b
+```
+
+**2025-2026 Roadmap (projected):**
+- Inference speed improvements (target: 25,000 tokens/sec by Q2 2026)
+- Memory optimization (90% efficiency improvements)
+- Extended context support (128K-256K tokens standard)
+- More embedding models (multilingual, domain-specific)
+
+**Sources:**
+- [Ollama Library](https://ollama.com/library)
+- [Ollama Documentation](https://github.com/ollama/ollama)
+- [Embedding models · Ollama Blog](https://ollama.com/blog/embedding-models)
+
+---
+
+#### 3.2 Integration with JadeVectorDB
+
+**Full RAG Pipeline Example:**
+
+```python
+import ollama
+from jadevectordb import JadeVectorDBClient
+from sentence_transformers import SentenceTransformer
+
+# Initialize clients
+db_client = JadeVectorDBClient("http://localhost:8080")
+embedder = SentenceTransformer('intfloat/e5-small-v2')
+
+# --- INDEXING PHASE ---
+
+# 1. Generate embedding for document chunk
+chunk_text = "To reset the XYZ-100 device, follow these steps..."
+chunk_embedding = embedder.encode(f"passage: {chunk_text}")
+
+# 2. Store in JadeVectorDB
+db_client.store_vector(
+    database_id="maintenance_docs",
+    vector_id="chunk_001",
+    values=chunk_embedding.tolist(),
+    metadata={
+        "text": chunk_text,
+        "doc_name": "XYZ-100 Manual",
+        "page": 23,
+        "section": "Reset Procedures"
+    }
+)
+
+# --- QUERY PHASE ---
+
+# 1. Embed user question
+question = "How do I reset the XYZ-100 after a power failure?"
+query_embedding = embedder.encode(f"query: {question}")
+
+# 2. Search JadeVectorDB
+results = db_client.search(
+    database_id="maintenance_docs",
+    query_vector=query_embedding.tolist(),
+    top_k=5,
+    threshold=0.7
+)
+
+# 3. Build context from top results
+context = "\n\n".join([
+    f"Source: {r['metadata']['doc_name']}, Page {r['metadata']['page']}\n"
+    f"{r['metadata']['text']}"
+    for r in results
+])
+
+# 4. Generate answer with Ollama
+system_prompt = """You are a helpful maintenance assistant.
+Answer based ONLY on the provided documentation.
+Always cite sources with document name and page number."""
+
+response = ollama.chat(
+    model='llama3.2:3b',
+    messages=[
+        {'role': 'system', 'content': system_prompt},
+        {'role': 'user', 'content': f"Context:\n{context}\n\nQuestion: {question}"}
+    ],
+    options={'temperature': 0.1}
+)
+
+answer = response['message']['content']
+print(answer)
+```
+
+---
+
+### 4. Document Processing Libraries
+
+#### 4.1 PyMuPDF (fitz) - PDF Processing
+
+**Package Information:**
+- **Package Name:** PyMuPDF
+- **Import Name:** `pymupdf` (v1.24+) or `fitz` (legacy, still works)
+- **Latest Version:** 1.26.7 (as of 2025)
+- **License:** GNU AGPL / Commercial
+
+**Specifications:**
+- **Performance:** 15-20 pages/second extraction speed
+- **Memory:** Efficient handling of large multi-hundred-page PDFs
+- **Formats:** PDF, XPS, EPUB, MOBI, FB2, CBZ, SVG
+
+**Key Features:**
+- **Text Extraction:** Fast, accurate text extraction preserving layout
+- **OCR Support:** Built-in OCR for scanned PDFs (no external Tesseract needed)
+- **Table Detection:** Identify and extract tables
+- **Metadata:** Extract document properties, page count, etc.
+- **Images:** Extract embedded images
+- **Complex Layouts:** Handles multi-column layouts, headers/footers
+
+**Installation:**
+```bash
+pip install PyMuPDF==1.26.7
+```
+
+**Basic Usage:**
+```python
+import pymupdf  # or: import fitz
+
+# Open PDF
+doc = pymupdf.open("maintenance_manual.pdf")
+
+# Extract text from all pages
+full_text = ""
+for page in doc:
+    full_text += page.get_text()
+
+# Extract text with layout information
+for page in doc:
+    blocks = page.get_text("blocks")  # Returns text blocks with coordinates
+    for block in blocks:
+        print(f"Text: {block[4]}, Position: ({block[0]}, {block[1]})")
+
+# OCR for scanned PDFs
+scanned_page = doc[0]
+ocr_text = scanned_page.get_textpage_ocr()  # Built-in OCR
+
+doc.close()
+```
+
+**RAG Integration Example:**
+```python
+import pymupdf
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+def process_pdf_for_rag(pdf_path):
+    doc = pymupdf.open(pdf_path)
+    chunks = []
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=512,
+        chunk_overlap=50,
+        separators=["\n\n\n", "\n\n", "\n", ". ", " ", ""]
+    )
+
+    for page_num, page in enumerate(doc):
+        text = page.get_text()
+        page_chunks = splitter.split_text(text)
+
+        for chunk_id, chunk in enumerate(page_chunks):
+            chunks.append({
+                'text': chunk,
+                'metadata': {
+                    'source': pdf_path,
+                    'page': page_num + 1,
+                    'chunk_id': chunk_id,
+                    'doc_type': 'pdf'
+                }
+            })
+
+    doc.close()
+    return chunks
+```
+
+**Why PyMuPDF:**
+- ✅ **Fastest PDF parser** in Python ecosystem (2026 benchmarks)
+- ✅ **Built-in OCR** - no external dependencies
+- ✅ **Battle-tested** - used by major projects
+- ✅ **Comprehensive API** - advanced features available
+
+**Sources:**
+- [PyMuPDF Documentation](https://pymupdf.readthedocs.io/)
+- [Best Python PDF to Text Parser Libraries: 2026 Evaluation](https://unstract.com/blog/evaluating-python-pdf-to-text-libraries/)
+
+---
+
+#### 4.2 python-docx - DOCX Processing
+
+**Package Information:**
+- **Package Name:** python-docx
+- **Latest Version:** 1.2.0 (2025)
+- **License:** MIT (free and open-source)
+- **Python:** 3.6+
+
+**Specifications:**
+- **Formats:** Microsoft Word 2007+ (.docx only, NOT .doc)
+- **Features:** Read, create, modify .docx files
+
+**Capabilities:**
+- **Read:** Extract text, paragraphs, tables
+- **Create/Modify:** Add paragraphs, tables, images
+- **Formatting:** Access runs, styles, fonts
+- **Metadata:** Document properties (title, author, etc.)
+- **Tables:** Extract table content and structure
+- **Images:** Add images with aspect ratio control
+
+**Limitations:**
+- ❌ Only .docx (not .doc from Word 2003 and earlier)
+- ❌ Headers/footers manipulation not yet supported
+- ⚠️ Feature set still expanding (active development)
+
+**Installation:**
+```bash
+pip install python-docx==1.2.0
+```
+
+**Basic Usage:**
+```python
+from docx import Document
+
+# Open document
+doc = Document('manual.docx')
+
+# Extract all paragraphs
+paragraphs = [para.text for para in doc.paragraphs]
+full_text = '\n\n'.join(paragraphs)
+
+# Extract tables
+for table in doc.tables:
+    for row in table.rows:
+        row_data = [cell.text for cell in row.cells]
+        print(row_data)
+
+# Document properties
+print(f"Title: {doc.core_properties.title}")
+print(f"Author: {doc.core_properties.author}")
+```
+
+**RAG Integration Example:**
+```python
+from docx import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+def process_docx_for_rag(docx_path):
+    doc = Document(docx_path)
+
+    # Extract all paragraphs (filter empty ones)
+    paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
+    full_text = '\n\n'.join(paragraphs)
+
+    # Chunk the text
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=512,
+        chunk_overlap=50,
+        separators=["\n\n", "\n", ". ", " ", ""]
+    )
+
+    chunks = splitter.split_text(full_text)
+
+    return [
+        {
+            'text': chunk,
+            'metadata': {
+                'source': docx_path,
+                'chunk_id': i,
+                'doc_type': 'docx',
+                'title': doc.core_properties.title or 'Untitled'
+            }
+        }
+        for i, chunk in enumerate(chunks)
+    ]
+```
+
+**Sources:**
+- [python-docx on PyPI](https://pypi.org/project/python-docx/)
+- [python-docx Documentation](https://python-docx.readthedocs.io/)
+
+---
+
+#### 4.3 LangChain Text Splitters
+
+**Package Information:**
+- **Package:** langchain-text-splitters (or langchain core)
+- **Latest Version:** Actively maintained (2025-2026)
+- **License:** MIT
+
+**RecursiveCharacterTextSplitter (Recommended)**
+
+**How It Works:**
+Hierarchically splits text using a list of separators in order of preference:
+1. First tries `"\n\n\n"` (major section breaks)
+2. Then `"\n\n"` (paragraphs)
+3. Then `"\n"` (lines)
+4. Then `". "` (sentences)
+5. Finally `" "` (words) and `""` (characters)
+
+**Installation:**
+```bash
+pip install langchain-text-splitters
+# or
+pip install langchain
+```
+
+**Configuration for Maintenance Documentation:**
+```python
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=512,           # ~400 words maximum
+    chunk_overlap=50,         # 10% overlap for context preservation
+    length_function=len,      # Measure by characters
+    separators=[
+        "\n\n\n",            # Major sections (e.g., "Chapter 1", "Chapter 2")
+        "\n\n",              # Paragraphs / procedure steps
+        "\n",                # Individual lines
+        ". ",                # Sentences
+        " ",                 # Words
+        ""                   # Characters (last resort)
+    ],
+    is_separator_regex=False
+)
+
+# Split text
+chunks = splitter.split_text(document_text)
+
+# Split with metadata preservation
+from langchain.docstore.document import Document
+
+documents = [Document(page_content=text, metadata={"source": "manual.pdf"})]
+split_docs = splitter.split_documents(documents)
+```
+
+**Key Parameters:**
+
+| Parameter | Purpose | Recommended Value | Notes |
+|-----------|---------|-------------------|-------|
+| `chunk_size` | Maximum chunk size | 512 characters | ~400 words, balances context vs specificity |
+| `chunk_overlap` | Overlap between chunks | 50 characters | ~10% overlap prevents information loss |
+| `length_function` | How to measure length | `len` | Can use token counters for precise control |
+| `separators` | Hierarchical split points | See above | Preserves document structure |
+
+**Why RecursiveCharacterTextSplitter?**
+- ✅ **Default Recommendation:** Works well out-of-box for most documents
+- ✅ **Semantic Preservation:** Keeps paragraphs, sentences, procedures intact
+- ✅ **Flexible:** Customizable separators for domain-specific needs
+- ✅ **Context Retention:** Overlap prevents loss at boundaries
+
+**Alternative Splitters:**
+
+**CharacterTextSplitter:** Fixed-length splitting (simpler, less intelligent)
+**TokenTextSplitter:** Splits by token count (for strict token limits)
+**MarkdownTextSplitter:** Preserves Markdown structure
+**Language-Specific:**
+  - `PythonCodeTextSplitter`
+  - `JavaScriptTextSplitter`
+  - etc.
+
+**Best Practices for RAG (2025-2026):**
+- **Chunk Size:** Start with 512 characters, adjust based on retrieval quality
+- **Overlap:** 10-20% of chunk size (50-100 characters for 512-char chunks)
+- **Separators:** Customize for your document type (procedures, manuals, etc.)
+- **Tune Based on Metrics:** Monitor retrieval recall and adjust chunk size
+
+**Sources:**
+- [Text splitters - LangChain Docs](https://docs.langchain.com/oss/python/integrations/splitters)
+- [Understanding RecursiveCharacterTextSplitter](https://dev.to/eteimz/understanding-langchains-recursivecharactertextsplitter-2846)
+
+---
+
+### 5. Vector Database Configuration (JadeVectorDB)
+
+#### 5.1 Supported Embedding Dimensions
+
+**Optimal Dimension for RAG:** 384 dimensions
+- Perfect match for E5-small-v2
+- Balanced accuracy and storage efficiency
+- Proven in production RAG systems
+
+**Flexible Dimension Support:**
+JadeVectorDB supports arbitrary dimensions configured per database:
+
+```json
+{
+  "name": "maintenance_docs",
+  "vectorDimension": 384,     // Configurable: 128, 256, 384, 768, 1024, 1536, etc.
+  "indexType": "HNSW",
+  "distance_metric": "cosine"
+}
+```
+
+**Common Configurations:**
+
+| Dimensions | Embedding Model | Storage (50K vectors) | Use Case |
+|------------|-----------------|----------------------|----------|
+| 384 | E5-small-v2, all-MiniLM, bge-small | 77 MB | **Recommended for RAG** |
+| 768 | BERT, bge-base, sentence-t5 | 154 MB | Higher accuracy needs |
+| 1024 | nomic-embed-text, BGE-M3 | 205 MB | Multilingual, long context |
+| 1536 | OpenAI text-embedding-3-small | 308 MB | Cloud API fallback |
+
+**Storage Calculation:**
+```
+Storage (bytes) = num_vectors × dimensions × 4 bytes (float32)
+
+Examples:
+- 50,000 vectors × 384 dims × 4 bytes = 76,800,000 bytes = ~77 MB
+- 50,000 vectors × 1024 dims × 4 bytes = 204,800,000 bytes = ~205 MB
+```
+
+**Total Database Size Estimates (including metadata):**
+
+| Vectors | Dimensions | Vector Storage | Metadata (~2KB/vector) | HNSW Index | Total |
+|---------|------------|----------------|------------------------|------------|-------|
+| 10,000 | 384 | 15 MB | 20 MB | 2 MB | ~40-50 MB |
+| 50,000 | 384 | 77 MB | 100 MB | 12 MB | ~200-300 MB |
+| 100,000 | 384 | 154 MB | 200 MB | 23 MB | ~400-500 MB |
+| 1,000,000 | 384 | 1.5 GB | 2 GB | 230 MB | ~4-5 GB |
+
+**Recommendation:** Use 384 dimensions with E5-small-v2 for optimal balance of accuracy, speed, and storage efficiency in RAG applications.
+
+---
+
+#### 5.2 HNSW Index Parameters and Tuning
+
+**HNSW (Hierarchical Navigable Small World)** is JadeVectorDB's primary indexing algorithm for fast approximate nearest neighbor search.
+
+**Core Parameters:**
+
+**M (Maximum Connections per Layer):**
+- **Definition:** Number of bidirectional links each node maintains in graph layers
+- **Range:** 5-48
+- **Default:** 16 (recommended for most use cases)
+- **Impact:**
+  - Higher M (24-48): Better recall, larger index size, slower index build
+  - Lower M (5-12): Faster build, smaller index, may reduce recall
+- **Recommendation for RAG:** M=16
+
+**efConstruction (Construction-Time Candidate List Size):**
+- **Definition:** Number of nearest neighbors explored during index building
+- **Range:** 100-800 (should be ≥ 2×M)
+- **Default:** 200
+- **Impact:**
+  - Higher efConstruction (400+): Higher quality index, better recall, much slower build
+  - Lower efConstruction (100-200): Faster build time, may reduce index quality
+- **Recommendation for RAG:** efConstruction=200
+
+**efSearch (Query-Time Candidate List Size):**
+- **Definition:** Size of dynamic candidate list during search
+- **Range:** 50-500+ (must be ≥ top-k)
+- **Default:** 100
+- **Impact:**
+  - Higher efSearch (200-500): Better recall, slower queries
+  - Lower efSearch (50-100): Faster queries, may reduce recall
+- **Recommendation for RAG (top-k=5-10):** efSearch=100
+
+**JadeVectorDB Configuration Example:**
+
+```json
+{
+  "name": "maintenance_docs",
+  "vectorDimension": 384,
+  "indexType": "HNSW",
+  "distance_metric": "cosine",
+  "config": {
+    "hnsw_m": 16,
+    "hnsw_ef_construction": 200,
+    "hnsw_ef_search": 100
+  }
+}
+```
+
+**Preset Configurations:**
+
+**High-Recall Setup (Offline batch analytics):**
+```json
+{
+  "hnsw_m": 24,
+  "hnsw_ef_construction": 400,
+  "hnsw_ef_search": 200
+}
+```
+- Index Build: Slower (minutes for 50K vectors)
+- Index Size: Larger memory footprint
+- Search Quality: >95% recall@10
+- Search Speed: 20-30ms
+- **Use Case:** When accuracy is paramount, build time doesn't matter
+
+**Real-Time Applications (Interactive RAG):**
+```json
+{
+  "hnsw_m": 12,
+  "hnsw_ef_construction": 200,
+  "hnsw_ef_search": 80
+}
+```
+- Index Build: Fast
+- Index Size: Smaller
+- Search Quality: 90-95% recall@10
+- Search Speed: <10ms
+- **Use Case:** Sub-second query responses
+
+**Balanced (Recommended for RAG):**
+```json
+{
+  "hnsw_m": 16,
+  "hnsw_ef_construction": 200,
+  "hnsw_ef_search": 100
+}
+```
+- Index Build: Moderate (1-2 minutes for 50K vectors)
+- Search Speed: 10-20ms
+- Recall: >95% recall@10
+- Memory: Reasonable footprint
+- **Use Case:** Most RAG applications (2-4 sec total response time acceptable)
+
+**Performance Expectations (JadeVectorDB with HNSW):**
+
+| Dataset Size | M | efSearch | Search Latency | Recall@10 | Index Memory |
+|--------------|---|----------|----------------|-----------|--------------|
+| 50K vectors | 16 | 100 | <10ms | >95% | ~300 MB |
+| 100K vectors | 16 | 100 | 10-20ms | >95% | ~600 MB |
+| 1M vectors | 16 | 100 | <50ms | >95% | ~5 GB |
+
+**From JadeVectorDB Docs:** "Sub-50ms search for 1M vectors" ✅
+
+**Tuning Strategy:**
+1. **Start with defaults** (M=16, efConstruction=200, efSearch=100)
+2. **Monitor metrics:**
+   - Measure recall@10 on test queries (should be >90%)
+   - Measure search latency (target <20ms for 50K vectors)
+3. **If recall too low (<90%):**
+   - Increase efSearch (100 → 150 → 200)
+   - OR increase M (16 → 24) and rebuild index
+4. **If queries too slow (>30ms):**
+   - Decrease efSearch (100 → 80 → 60)
+   - Note: Only do this if recall remains acceptable
+5. **For index rebuild optimization:**
+   - Increase efConstruction (200 → 400) for better quality (slower build)
+   - Decrease efConstruction (200 → 100) for faster build (may reduce quality)
+
+**Recall vs Latency Tradeoff:**
+- efSearch=50: ~5ms, 85-90% recall (too low)
+- efSearch=100: ~10ms, 95%+ recall ✅ **Recommended**
+- efSearch=200: ~20ms, 98%+ recall (diminishing returns)
+- efSearch=500: ~40ms, 99%+ recall (overkill for RAG)
+
+**Recommendation:** Use the balanced configuration (M=16, efConstruction=200, efSearch=100) for RAG. This provides >95% recall with <20ms search latency for datasets up to 100K vectors.
+
+**Sources:**
+- [HNSW Indexes with Postgres and pgvector](https://www.crunchydata.com/blog/hnsw-indexes-with-postgres-and-pgvector)
+- [A practical guide to selecting HNSW hyperparameters (OpenSearch)](https://opensearch.org/blog/a-practical-guide-to-selecting-hnsw-hyperparameters/)
+
+---
+
+## Recommended Technology Stack Summary
+
+### For Medium-Scale RAG (50K-100K chunks, 1,000 documents)
+
+**Embedding:**
+- **Model:** E5-small-v2 (intfloat/e5-small-v2)
+- **Dimensions:** 384
+- **Latency:** <30ms per embedding
+- **Why:** Best accuracy/speed/memory balance
+
+**LLM:**
+- **8GB RAM Laptop:** Llama 3.2 3B Q4_K_M
+- **16GB RAM Workstation:** Llama 3.1 8B Q5_K_M or Mistral 7B Q5_K_M
+- **Multilingual Needs:** Qwen 2.5 7B
+- **Why:** Fast CPU inference (40-50 tok/sec), excellent quality, small memory footprint
+
+**Document Processing:**
+- **PDF:** PyMuPDF 1.26.7 (fastest, built-in OCR)
+- **DOCX:** python-docx 1.2.0
+- **Chunking:** LangChain RecursiveCharacterTextSplitter (512 chars, 50 overlap)
+
+**Vector Database:**
+- **JadeVectorDB Configuration:**
+  - Dimensions: 384
+  - Index: HNSW (M=16, efConstruction=200, efSearch=100)
+  - Distance: Cosine similarity
+- **Expected Performance:** <20ms search for 50K vectors, >95% recall@10
+
+**Infrastructure:**
+- **CPU-Only:** Fully viable (no GPU required)
+- **Memory:** 6-8 GB total (model + database + OS)
+- **Storage:** 200-500 MB for 50K-100K chunks
+- **Response Time:** 2-4 seconds end-to-end (embedding + search + LLM generation)
+
+**Deployment:**
+- **Operating System:** Linux, macOS, Windows 10+
+- **Python:** 3.9+
+- **Ollama:** Latest version (0.12.11+)
+- **Offline:** Complete offline operation (no internet required after setup)
+
+This stack provides production-ready, offline RAG capability on standard laptop/workstation hardware with excellent performance and quality
+
 ### Detailed Dependencies
 
 **Core Dependencies:**
