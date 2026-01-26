@@ -274,6 +274,7 @@ set(CORE_SOURCES
     src/analytics/query_logger.cpp
     src/analytics/query_analytics_manager.cpp
     src/analytics/analytics_engine.cpp
+    src/analytics/batch_processor.cpp
     src/lib/mmap_utils.cpp
     src/lib/simd_ops.cpp
     src/lib/serialization.cpp
@@ -592,6 +593,21 @@ if(BUILD_TESTS)
     )
 
     add_test(NAME AnalyticsEngineTests COMMAND analytics_engine_tests)
+
+    # Phase 16: Batch Processor Tests
+    add_executable(batch_processor_tests
+        unittesting/test_batch_processor.cpp
+    )
+
+    target_link_libraries(batch_processor_tests PRIVATE
+        jadevectordb_core
+        SQLite::SQLite3
+        GTest::gtest
+        GTest::gtest_main
+        GTest::gmock
+    )
+
+    add_test(NAME BatchProcessorTests COMMAND batch_processor_tests)
 endif()
 
 #############################################################################
