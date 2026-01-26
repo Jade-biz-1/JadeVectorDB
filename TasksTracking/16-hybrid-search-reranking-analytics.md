@@ -724,46 +724,70 @@ After evaluating three architecture options, we've chosen a **phased approach**:
 
 ---
 
-### T16.18: AnalyticsEngine ✅ Core Component
+### T16.18: AnalyticsEngine ✅ Core Component [COMPLETED]
+
+**Status**: ✅ **COMPLETED** (January 26, 2026)
 
 **Description**: Compute statistics and generate insights
 
 **Tasks**:
-- [ ] **T16.18.1**: Create AnalyticsEngine class
+- [x] **T16.18.1**: Create AnalyticsEngine class
   - File: `src/analytics/analytics_engine.h/cpp`
-  - Methods: compute_stats(), identify_patterns(), generate_insights()
+  - Methods: compute_statistics(), identify_patterns(), detect_slow_queries(), analyze_zero_results(), detect_trending(), generate_insights()
 
-- [ ] **T16.18.2**: Implement statistics computation
-  - Aggregate by time bucket (hourly, daily)
-  - Compute avg latency, P50/P95/P99
-  - Count successful/failed queries
-  - Unique users/sessions
+- [x] **T16.18.2**: Implement statistics computation
+  - Aggregate by time bucket (hourly, daily, weekly, monthly)
+  - Compute avg latency, P50/P95/P99 percentiles
+  - Count successful/failed queries, zero-result queries
+  - Track unique users/sessions
+  - Query type breakdown (vector/hybrid/bm25/reranked)
 
-- [ ] **T16.18.3**: Implement pattern identification
-  - Normalize query text (remove stop words, lowercase)
-  - Group similar queries
-  - Count frequency
+- [x] **T16.18.3**: Implement pattern identification
+  - Normalize query text (remove stop words, lowercase, punctuation)
+  - Group similar queries by normalized text
+  - Count frequency and track first/last seen
+  - Calculate average latency and results per pattern
 
-- [ ] **T16.18.4**: Implement slow query detection
-  - Queries exceeding latency threshold
-  - Group by pattern
+- [x] **T16.18.4**: Implement slow query detection
+  - Queries exceeding latency threshold (configurable, default 1000ms)
+  - Sorted by latency descending
+  - Includes query details and result counts
 
-- [ ] **T16.18.5**: Implement zero-result query analysis
-  - Queries returning no results
-  - Identify documentation gaps
+- [x] **T16.18.5**: Implement zero-result query analysis
+  - Identifies queries returning no results
+  - Groups by normalized text
+  - Tracks occurrence count for documentation gap analysis
 
-- [ ] **T16.18.6**: Implement trending query detection
-  - Compare current vs. previous period
-  - Calculate growth rate
+- [x] **T16.18.6**: Implement trending query detection
+  - Compares current vs. previous time period
+  - Calculates growth rate percentage
+  - Detects new queries (100% growth)
+  - Configurable minimum growth rate filter
 
 **Acceptance Criteria**:
-- Statistics are correct (validated manually)
-- Patterns make sense
-- Insights are actionable
+- ✅ Statistics are correct (validated via unit tests)
+- ✅ Patterns make sense (normalization removes stop words correctly)
+- ✅ Insights are actionable (comprehensive AnalyticsInsights structure)
+
+**Implementation Notes**:
+- Created comprehensive AnalyticsEngine with 6 main analysis methods
+- TimeBucket enum supports hourly/daily/weekly/monthly granularity
+- Query normalization removes 50+ stop words and punctuation
+- Percentile calculation uses interpolation for accuracy
+- Thread-safe with mutex protection
+- Generates comprehensive insights combining all analysis types
+- All 15 unit tests passing including:
+  - Statistics computation with different time buckets
+  - Pattern identification with min count filtering
+  - Slow query detection with threshold
+  - Zero-result query grouping
+  - Trending query detection with growth rates
+  - Concurrent access safety
+  - Latency percentile ordering verification
 
 **Dependencies**: T16.16 (Database Schema)
 
-**Estimate**: 4 days
+**Estimate**: 4 days (completed)
 
 ---
 
