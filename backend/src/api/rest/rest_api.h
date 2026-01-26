@@ -48,6 +48,11 @@ namespace search {
     class BM25IndexBuilder;
     class RerankingService;
 }
+namespace analytics {
+    class QueryAnalyticsManager;
+    class AnalyticsEngine;
+    class BatchProcessor;
+}
 }
 
 // For now, we'll define a basic interface structure
@@ -148,6 +153,11 @@ private:
 
     // Reranking services (per-database instances)
     std::unordered_map<std::string, std::shared_ptr<jadedb::search::RerankingService>> reranking_services_;
+
+    // Analytics services (per-database instances)
+    std::unordered_map<std::string, std::shared_ptr<jadedb::analytics::QueryAnalyticsManager>> analytics_managers_;
+    std::unordered_map<std::string, std::shared_ptr<jadedb::analytics::AnalyticsEngine>> analytics_engines_;
+    std::unordered_map<std::string, std::shared_ptr<jadedb::analytics::BatchProcessor>> batch_processors_;
 
     // Distributed services (shared from DistributedServiceManager)
     std::shared_ptr<DistributedServiceManager> distributed_service_manager_;
@@ -253,6 +263,15 @@ public:
     crow::response handle_get_reranking_config_request(const crow::request& req, const std::string& database_id);
     crow::response handle_update_reranking_config_request(const crow::request& req, const std::string& database_id);
 
+    // Analytics request handlers
+    crow::response handle_analytics_stats_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_analytics_queries_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_analytics_patterns_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_analytics_insights_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_analytics_trending_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_analytics_feedback_request(const crow::request& req, const std::string& database_id);
+    crow::response handle_analytics_export_request(const crow::request& req, const std::string& database_id);
+
     crow::response handle_create_index_request(const crow::request& req, const std::string& database_id);
     crow::response handle_list_indexes_request(const crow::request& req, const std::string& database_id);
     crow::response handle_update_index_request(const crow::request& req, const std::string& database_id, const std::string& index_id);
@@ -304,6 +323,7 @@ public:
     void handle_alert_routes();
     void handle_cluster_routes();
     void handle_performance_routes();
+    void handle_analytics_routes();
 
     crow::response handle_register_request(const crow::request& req);
     crow::response handle_login_request(const crow::request& req);
@@ -369,6 +389,11 @@ public:
 
     // Reranking service helper
     std::shared_ptr<jadedb::search::RerankingService> get_or_create_reranking_service(const std::string& database_id);
+
+    // Analytics service helpers
+    std::shared_ptr<jadedb::analytics::QueryAnalyticsManager> get_or_create_analytics_manager(const std::string& database_id);
+    std::shared_ptr<jadedb::analytics::AnalyticsEngine> get_or_create_analytics_engine(const std::string& database_id);
+    std::shared_ptr<jadedb::analytics::BatchProcessor> get_or_create_batch_processor(const std::string& database_id);
     
     // Authentication helper
     Result<bool> authenticate_request(const std::string& api_key) const;
