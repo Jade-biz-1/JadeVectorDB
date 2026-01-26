@@ -21,24 +21,26 @@ Implement three advanced vector database features to improve search quality and 
 
 ## Feature 1: Hybrid Search (Weeks 1-4)
 
-### T16.1: BM25 Scoring Engine ✅ Core Component
+### T16.1: BM25 Scoring Engine ✅ Core Component [COMPLETED]
 
 **Description**: Implement BM25 algorithm for keyword-based relevance scoring
 
+**Status**: ✅ **COMPLETED** (January 7, 2026)
+
 **Tasks**:
-- [ ] **T16.1.1**: Implement tokenization (lowercase, stop words removal)
+- [x] **T16.1.1**: Implement tokenization (lowercase, stop words removal)
   - Input: Raw text string
   - Output: List of tokens
   - Handle punctuation, numbers, special characters
   - Configurable stop words list (English)
 
-- [ ] **T16.1.2**: Implement BM25 scoring formula
+- [x] **T16.1.2**: Implement BM25 scoring formula
   - Algorithm: `BM25(q, d) = Σ IDF(qi) × (f(qi, d) × (k1 + 1)) / (f(qi, d) + k1 × (1 - b + b × |d| / avgdl))`
   - Parameters: k1=1.5, b=0.75 (configurable)
   - Compute IDF (Inverse Document Frequency)
   - Compute term frequency per document
 
-- [ ] **T16.1.3**: Create BM25Scorer class
+- [x] **T16.1.3**: Create BM25Scorer class
   - File: `src/search/bm25_scorer.h/cpp`
   - Methods: `index_documents()`, `score()`, `get_idf()`
   - Unit tests: `tests/test_bm25_scorer.cpp`
@@ -54,23 +56,25 @@ Implement three advanced vector database features to improve search quality and 
 
 ---
 
-### T16.2: Inverted Index ✅ Core Component
+### T16.2: Inverted Index ✅ Core Component [COMPLETED]
 
 **Description**: Build inverted index data structure for fast keyword lookup
 
+**Status**: ✅ **COMPLETED** (January 7, 2026)
+
 **Tasks**:
-- [ ] **T16.2.1**: Design in-memory inverted index structure
+- [x] **T16.2.1**: Design in-memory inverted index structure
   - Data structure: `std::unordered_map<std::string, PostingsList>`
   - Posting list: vector of (doc_id, term_frequency, positions)
   - Handle collisions and memory efficiency
 
-- [ ] **T16.2.2**: Implement document indexing
+- [x] **T16.2.2**: Implement document indexing
   - Add documents to inverted index
   - Update document frequencies
   - Track document lengths
   - Calculate average document length
 
-- [ ] **T16.2.3**: Implement index lookup
+- [x] **T16.2.3**: Implement index lookup
   - Fast term lookup
   - Posting list retrieval
   - Handle missing terms
@@ -86,28 +90,30 @@ Implement three advanced vector database features to improve search quality and 
 
 ---
 
-### T16.3: Index Persistence ✅ Data Layer
+### T16.3: Index Persistence ✅ Data Layer [COMPLETED]
 
 **Description**: Persist inverted index to SQLite for durability
 
+**Status**: ✅ **COMPLETED** (January 7, 2026)
+
 **Tasks**:
-- [ ] **T16.3.1**: Design SQLite schema
+- [x] **T16.3.1**: Design SQLite schema
   - Table: `bm25_index` (term, doc_frequency, postings_blob)
   - Table: `bm25_metadata` (doc_id, doc_length, indexed_at)
   - Table: `bm25_config` (database_id, k1, b, avg_doc_length, total_docs)
   - Indexes on term, doc_id
 
-- [ ] **T16.3.2**: Implement serialization
+- [x] **T16.3.2**: Implement serialization
   - Save inverted index to SQLite
   - Load inverted index on startup
   - Compress posting lists (variable-length encoding)
 
-- [ ] **T16.3.3**: Implement incremental updates
+- [x] **T16.3.3**: Implement incremental updates
   - Add new documents without full reindex
   - Update IDF values
   - Maintain consistency
 
-- [ ] **T16.3.4**: Implement index rebuild
+- [x] **T16.3.4**: Implement index rebuild
   - Full reindex command
   - Progress tracking
   - Atomic swap (build new index, replace old)
@@ -123,22 +129,24 @@ Implement three advanced vector database features to improve search quality and 
 
 ---
 
-### T16.4: Score Fusion ✅ Algorithm
+### T16.4: Score Fusion ✅ Algorithm [COMPLETED]
 
 **Description**: Combine vector and BM25 scores using fusion algorithms
 
+**Status**: ✅ **COMPLETED** (January 7, 2026)
+
 **Tasks**:
-- [ ] **T16.4.1**: Implement Reciprocal Rank Fusion (RRF)
+- [x] **T16.4.1**: Implement Reciprocal Rank Fusion (RRF)
   - Formula: `RRF(d) = Σ 1 / (k + rank_vector(d)) + 1 / (k + rank_bm25(d))`
   - k = 60 (standard constant)
   - Rank-based, no score normalization needed
 
-- [ ] **T16.4.2**: Implement weighted linear fusion
+- [x] **T16.4.2**: Implement weighted linear fusion
   - Formula: `hybrid_score = α × norm_vector + (1 - α) × norm_bm25`
   - Configurable α (default 0.7)
   - Min-max score normalization
 
-- [ ] **T16.4.3**: Implement score normalization
+- [x] **T16.4.3**: Implement score normalization
   - Min-max normalization
   - Z-score normalization (optional)
   - Handle edge cases (all scores same, single result)
@@ -154,28 +162,30 @@ Implement three advanced vector database features to improve search quality and 
 
 ---
 
-### T16.5: HybridSearchEngine ✅ Service Integration
+### T16.5: HybridSearchEngine ✅ Service Integration [COMPLETED]
 
 **Description**: Orchestrate vector search + BM25 + fusion
 
+**Status**: ✅ **COMPLETED** (January 7, 2026)
+
 **Tasks**:
-- [ ] **T16.5.1**: Create HybridSearchEngine class
+- [x] **T16.5.1**: Create HybridSearchEngine class
   - File: `src/search/hybrid_search.h/cpp`
   - Constructor: inject SimilaritySearchService, BM25Scorer
   - Configuration: HybridSearchConfig struct
 
-- [ ] **T16.5.2**: Implement main search() method
+- [x] **T16.5.2**: Implement main search() method
   - Step 1: Vector search (retrieve top-100 candidates)
   - Step 2: BM25 search (retrieve top-100 candidates)
   - Step 3: Merge and deduplicate results
   - Step 4: Apply score fusion
   - Step 5: Re-sort and return top-K
 
-- [ ] **T16.5.3**: Add metadata filtering support
+- [x] **T16.5.3**: Add metadata filtering support
   - Apply filters to both vector and BM25 results
   - Combine filtered results
 
-- [ ] **T16.5.4**: Add configuration management
+- [x] **T16.5.4**: Add configuration management
   - Fusion method selection (RRF, LINEAR)
   - Alpha parameter
   - Candidate pool sizes
@@ -191,26 +201,28 @@ Implement three advanced vector database features to improve search quality and 
 
 ---
 
-### T16.6: REST API Endpoints ✅ API Layer
+### T16.6: REST API Endpoints ✅ API Layer [COMPLETED]
 
 **Description**: Expose hybrid search via REST API
 
+**Status**: ✅ **COMPLETED** (January 8, 2026)
+
 **Tasks**:
-- [ ] **T16.6.1**: Add `/v1/databases/{id}/search/hybrid` endpoint
+- [x] **T16.6.1**: Add `/v1/databases/{id}/search/hybrid` endpoint
   - POST request with query_text, query_vector, top_k
   - Parameters: fusion_method, alpha, metadata_filter
   - Response: HybridResult[] with vector_score, bm25_score, hybrid_score
 
-- [ ] **T16.6.2**: Add `/v1/databases/{id}/search/bm25/build` endpoint
+- [x] **T16.6.2**: Add `/v1/databases/{id}/search/bm25/build` endpoint
   - POST to build BM25 index for database
   - Parameters: text_field, incremental
   - Progress tracking
 
-- [ ] **T16.6.3**: Add `/v1/databases/{id}/search/hybrid/config` endpoint
+- [x] **T16.6.3**: Add `/v1/databases/{id}/search/hybrid/config` endpoint
   - PUT to update hybrid search configuration
   - GET to retrieve current config
 
-- [ ] **T16.6.4**: Update OpenAPI specification
+- [x] **T16.6.4**: Update OpenAPI specification
   - Add new endpoints
   - Request/response schemas
   - Examples
@@ -226,20 +238,22 @@ Implement three advanced vector database features to improve search quality and 
 
 ---
 
-### T16.7: CLI Support ✅ Tooling
+### T16.7: CLI Support ✅ Tooling [COMPLETED]
 
 **Description**: Add hybrid search commands to CLI
 
+**Status**: ✅ **COMPLETED** (January 8, 2026)
+
 **Tasks**:
-- [ ] **T16.7.1**: Add `jade-db hybrid-search query` command
+- [x] **T16.7.1**: Add `jade-db hybrid-search query` command
   - Parameters: --database, --text, --top-k, --fusion-method
   - Output: Results with scores
 
-- [ ] **T16.7.2**: Add `jade-db hybrid-search build` command
+- [x] **T16.7.2**: Add `jade-db hybrid-search build` command
   - Build BM25 index for a database
   - Show progress
 
-- [ ] **T16.7.3**: Add `jade-db hybrid-search config` command
+- [x] **T16.7.3**: Add `jade-db hybrid-search config` command
   - View/update hybrid search configuration
 
 **Acceptance Criteria**:
@@ -306,7 +320,7 @@ Implement three advanced vector database features to improve search quality and 
 
 ## Feature 2: Re-ranking (Weeks 5-8)
 
-### T16.9: Python Reranking Server ✅ Core Component
+### T16.9: Python Reranking Server ✅ Core Component [COMPLETED]
 
 **Description**: Create Python subprocess for cross-encoder inference
 
@@ -335,7 +349,7 @@ After evaluating three architecture options, we've chosen a **phased approach**:
 **See**: `docs/architecture.md` - "Re-ranking Architecture" section for full analysis
 
 **Tasks**:
-- [ ] **T16.9.1**: Implement reranking server script
+- [x] **T16.9.1**: Implement reranking server script
   - File: `python/reranking_server.py`
   - Load model: `cross-encoder/ms-marco-MiniLM-L-6-v2`
   - stdin/stdout JSON communication
@@ -344,14 +358,14 @@ After evaluating three architecture options, we've chosen a **phased approach**:
   - Add subprocess health monitoring hooks
   - Implement graceful shutdown handling
 
-- [ ] **T16.9.2**: Add error handling
+- [x] **T16.9.2**: Add error handling
   - Model loading errors (log and exit with code)
   - Invalid JSON (log error, continue processing)
   - Inference errors (return error response)
   - Timeout handling (configurable timeout)
   - OOM handling (detect and log before crash)
 
-- [ ] **T16.9.3**: Test model inference
+- [x] **T16.9.3**: Test model inference
   - Verify scores are reasonable (0-1 range)
   - Test with sample query-document pairs
   - Benchmark latency (target: <3ms per document)
@@ -377,22 +391,24 @@ After evaluating three architecture options, we've chosen a **phased approach**:
 
 ---
 
-### T16.10: Subprocess Management ✅ Integration
+### T16.10: Subprocess Management ✅ Integration [COMPLETED]
 
 **Description**: Launch and communicate with Python subprocess from C++
 
+**Status**: ✅ **COMPLETED** (January 9, 2026)
+
 **Tasks**:
-- [ ] **T16.10.1**: Implement subprocess launcher
+- [x] **T16.10.1**: Implement subprocess launcher
   - Use popen() to launch Python process
   - Capture stdin/stdout/stderr
   - Monitor process health
 
-- [ ] **T16.10.2**: Implement communication protocol
+- [x] **T16.10.2**: Implement communication protocol
   - Send JSON requests
   - Read JSON responses
   - Handle errors and timeouts
 
-- [ ] **T16.10.3**: Add graceful shutdown
+- [x] **T16.10.3**: Add graceful shutdown
   - Terminate subprocess on exit
   - Clean up resources
 
@@ -407,26 +423,28 @@ After evaluating three architecture options, we've chosen a **phased approach**:
 
 ---
 
-### T16.11: RerankingService ✅ Service Layer
+### T16.11: RerankingService ✅ Service Layer [COMPLETED]
 
 **Description**: Service class for re-ranking results
 
+**Status**: ✅ **COMPLETED** (January 9, 2026)
+
 **Tasks**:
-- [ ] **T16.11.1**: Create RerankingService class
+- [x] **T16.11.1**: Create RerankingService class
   - File: `src/search/reranking_service.h/cpp`
   - Constructor: initialize subprocess
   - Methods: `rerank()`, `compute_scores()`
 
-- [ ] **T16.11.2**: Implement batch inference
+- [x] **T16.11.2**: Implement batch inference
   - Send multiple documents at once
   - Batch size configurable (default 32)
   - Optimize for throughput
 
-- [ ] **T16.11.3**: Implement score normalization
+- [x] **T16.11.3**: Implement score normalization
   - Normalize cross-encoder scores to [0, 1]
   - Optional: combine with original scores
 
-- [ ] **T16.11.4**: Add configuration
+- [x] **T16.11.4**: Add configuration
   - Model selection
   - Batch size
   - Score threshold
@@ -442,19 +460,21 @@ After evaluating three architecture options, we've chosen a **phased approach**:
 
 ---
 
-### T16.12: Service Integration ✅ Pipeline
+### T16.12: Service Integration ✅ Pipeline [COMPLETED]
 
 **Description**: Integrate re-ranking into search pipeline
 
+**Status**: ✅ **COMPLETED** (January 9, 2026)
+
 **Tasks**:
-- [ ] **T16.12.1**: Integrate with HybridSearchEngine
+- [x] **T16.12.1**: Integrate with HybridSearchEngine
   - Add optional `enable_reranking` parameter
   - Two-stage retrieval: hybrid search → re-rank
 
-- [ ] **T16.12.2**: Integrate with SimilaritySearchService
+- [x] **T16.12.2**: Integrate with SimilaritySearchService
   - Vector-only search → re-rank
 
-- [ ] **T16.12.3**: Add adaptive re-ranking
+- [x] **T16.12.3**: Add adaptive re-ranking
   - Only re-rank if initial scores are low confidence
   - Configurable threshold
 
@@ -469,20 +489,22 @@ After evaluating three architecture options, we've chosen a **phased approach**:
 
 ---
 
-### T16.13: REST API Endpoints ✅ API Layer
+### T16.13: REST API Endpoints ✅ API Layer [COMPLETED]
 
 **Description**: Expose re-ranking via REST API
 
+**Status**: ✅ **COMPLETED** (January 9, 2026)
+
 **Tasks**:
-- [ ] **T16.13.1**: Add `/v1/databases/{id}/search/rerank` endpoint
+- [x] **T16.13.1**: Add `/v1/databases/{id}/search/rerank` endpoint
   - POST with query_text, query_vector, enable_reranking
   - Response includes rerank_score field
 
-- [ ] **T16.13.2**: Add `/v1/rerank` standalone endpoint
+- [x] **T16.13.2**: Add `/v1/rerank` standalone endpoint
   - Re-rank arbitrary documents
   - No database required
 
-- [ ] **T16.13.3**: Add `/v1/databases/{id}/reranking/config` endpoint
+- [x] **T16.13.3**: Add `/v1/databases/{id}/reranking/config` endpoint
   - Configure re-ranker model, batch size, etc.
 
 **Acceptance Criteria**:
@@ -560,35 +582,50 @@ After evaluating three architecture options, we've chosen a **phased approach**:
 
 ## Feature 3: Query Analytics (Weeks 9-12)
 
-### T16.15: QueryLogger ✅ Data Collection
+### T16.15: QueryLogger ✅ Data Collection [COMPLETED]
+
+**Status**: ✅ **COMPLETED** (January 26, 2026)
 
 **Description**: Capture and persist all search queries
 
 **Tasks**:
-- [ ] **T16.15.1**: Create QueryLogEntry struct
+- [x] **T16.15.1**: Create QueryLogEntry struct
   - Fields: query_id, database_id, query_text, query_type
   - Performance: retrieval_time_ms, total_time_ms
   - Results: num_results, avg_similarity_score
   - Context: user_id, session_id, client_ip, timestamp
+  - Additional fields: hybrid_alpha, fusion_method, reranking details
 
-- [ ] **T16.15.2**: Implement QueryLogger class
+- [x] **T16.15.2**: Implement QueryLogger class
   - File: `src/analytics/query_logger.h/cpp`
   - Async write queue (non-blocking)
   - Background writer thread
   - Batch writes to SQLite
+  - Thread-safe implementation with statistics tracking
 
-- [ ] **T16.15.3**: Test logging overhead
+- [x] **T16.15.3**: Test logging overhead
   - Target: <1ms per query
   - Test with high query rate (100+ QPS)
+  - 15/15 unit tests passing
+  - Performance benchmark confirms <1ms overhead per query
 
 **Acceptance Criteria**:
-- Queries logged correctly
-- Overhead <1ms
-- No data loss
+- ✅ Queries logged correctly
+- ✅ Overhead <1ms (confirmed via benchmark test)
+- ✅ No data loss (concurrent logging tests passing)
+
+**Implementation Notes**:
+- Created QueryLogEntry with comprehensive metadata fields
+- Implemented async write queue with configurable batch size and flush interval
+- SQLite WAL mode enabled for better concurrency
+- Background writer thread handles batched writes
+- Statistics tracking: total_logged, total_dropped counters
+- Helper functions: generate_query_id(), get_current_timestamp_ms()
+- All 15 unit tests passing including concurrent logging and performance benchmarks
 
 **Dependencies**: None
 
-**Estimate**: 2 days
+**Estimate**: 2 days (completed)
 
 ---
 
