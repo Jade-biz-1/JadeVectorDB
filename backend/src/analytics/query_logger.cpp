@@ -288,6 +288,7 @@ jadevectordb::Result<void> QueryLogger::write_batch(const std::vector<QueryLogEn
 
 jadevectordb::Result<void> QueryLogger::create_tables() {
     const std::string create_sql = R"(
+        -- Query Log: Raw query logs with full details
         CREATE TABLE IF NOT EXISTS query_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             query_id TEXT NOT NULL,
@@ -320,6 +321,98 @@ jadevectordb::Result<void> QueryLogger::create_tables() {
         CREATE INDEX IF NOT EXISTS idx_query_log_query_type ON query_log(query_type);
         CREATE INDEX IF NOT EXISTS idx_query_log_session_id ON query_log(session_id);
         CREATE INDEX IF NOT EXISTS idx_query_log_has_error ON query_log(has_error);
+        CREATE INDEX IF NOT EXISTS idx_query_log_user_id ON query_log(user_id);
+
+        -- Query Stats: Aggregated statistics per time bucket
+        CREATE TABLE IF NOT EXISTS query_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            database_id TEXT NOT NULL,
+            time_bucket INTEGER NOT NULL,
+            bucket_type TEXT NOT NULL,
+            total_queries INTEGER DEFAULT 0,
+            successful_queries INTEGER DEFAULT 0,
+            failed_queries INTEGER DEFAULT 0,
+            unique_users INTEGER DEFAULT 0,
+            unique_sessions INTEGER DEFAULT 0,
+            avg_latency_ms REAL DEFAULT 0.0,
+            p50_latency_ms REAL DEFAULT 0.0,
+            p95_latency_ms REAL DEFAULT 0.0,
+            p99_latency_ms REAL DEFAULT 0.0,
+            avg_results INTEGER DEFAULT 0,
+            zero_result_queries INTEGER DEFAULT 0,
+            avg_similarity_score REAL DEFAULT 0.0,
+            vector_queries INTEGER DEFAULT 0,
+            hybrid_queries INTEGER DEFAULT 0,
+            bm25_queries INTEGER DEFAULT 0,
+            reranked_queries INTEGER DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_query_stats_database_id ON query_stats(database_id);
+        CREATE INDEX IF NOT EXISTS idx_query_stats_time_bucket ON query_stats(time_bucket);
+        CREATE INDEX IF NOT EXISTS idx_query_stats_bucket_type ON query_stats(bucket_type);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_query_stats_unique ON query_stats(database_id, time_bucket, bucket_type);
+
+        -- Search Patterns: Common query patterns and their metrics
+        CREATE TABLE IF NOT EXISTS search_patterns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            database_id TEXT NOT NULL,
+            pattern_text TEXT NOT NULL,
+            normalized_text TEXT NOT NULL,
+            query_count INTEGER DEFAULT 0,
+            avg_latency_ms REAL DEFAULT 0.0,
+            avg_results INTEGER DEFAULT 0,
+            avg_similarity_score REAL DEFAULT 0.0,
+            first_seen INTEGER NOT NULL,
+            last_seen INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_search_patterns_database_id ON search_patterns(database_id);
+        CREATE INDEX IF NOT EXISTS idx_search_patterns_normalized_text ON search_patterns(normalized_text);
+        CREATE INDEX IF NOT EXISTS idx_search_patterns_query_count ON search_patterns(query_count DESC);
+        CREATE INDEX IF NOT EXISTS idx_search_patterns_last_seen ON search_patterns(last_seen DESC);
+
+        -- Performance Metrics: System-wide performance tracking
+        CREATE TABLE IF NOT EXISTS performance_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            database_id TEXT NOT NULL,
+            metric_type TEXT NOT NULL,
+            metric_name TEXT NOT NULL,
+            metric_value REAL NOT NULL,
+            time_bucket INTEGER NOT NULL,
+            bucket_type TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_performance_metrics_database_id ON performance_metrics(database_id);
+        CREATE INDEX IF NOT EXISTS idx_performance_metrics_metric_type ON performance_metrics(metric_type);
+        CREATE INDEX IF NOT EXISTS idx_performance_metrics_time_bucket ON performance_metrics(time_bucket);
+        CREATE INDEX IF NOT EXISTS idx_performance_metrics_composite ON performance_metrics(database_id, metric_type, time_bucket);
+
+        -- User Feedback: User ratings and result clicks
+        CREATE TABLE IF NOT EXISTS user_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            query_id TEXT NOT NULL,
+            database_id TEXT NOT NULL,
+            user_id TEXT,
+            session_id TEXT,
+            feedback_type TEXT NOT NULL,
+            rating INTEGER,
+            clicked_result_id TEXT,
+            clicked_rank INTEGER,
+            feedback_text TEXT,
+            timestamp INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_user_feedback_query_id ON user_feedback(query_id);
+        CREATE INDEX IF NOT EXISTS idx_user_feedback_database_id ON user_feedback(database_id);
+        CREATE INDEX IF NOT EXISTS idx_user_feedback_user_id ON user_feedback(user_id);
+        CREATE INDEX IF NOT EXISTS idx_user_feedback_feedback_type ON user_feedback(feedback_type);
+        CREATE INDEX IF NOT EXISTS idx_user_feedback_timestamp ON user_feedback(timestamp);
     )";
 
     return execute_sql(create_sql);
