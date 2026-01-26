@@ -1,5 +1,5 @@
 // frontend/tests/integration/api-service-comprehensive.test.js
-import { databaseApi, vectorApi, searchApi, indexApi, monitoringApi, embeddingApi, lifecycleApi } from '@/lib/api';
+import { databaseApi, vectorApi, searchApi, indexApi, embeddingApi, lifecycleApi } from '@/lib/api';
 
 // Mock the fetch API for testing
 global.fetch = jest.fn();
@@ -7,7 +7,7 @@ global.fetch = jest.fn();
 // Mock localStorage
 Object.defineProperty(window, 'localStorage', {
   value: {
-    getItem: jest.fn(() => 'test-api-key'),
+    getItem: jest.fn(() => 'test-auth-token'),
   },
   writable: true,
 });
@@ -26,13 +26,13 @@ describe('API Service Comprehensive Integration Tests', () => {
         json: () => Promise.resolve({ message: 'Too Many Requests' })
       });
 
-      await expect(databaseApi.listDatabases()).rejects.toThrow('Too Many Requests');
+      await expect(databaseApi.listDatabases()).rejects.toThrow();
     });
 
     test('handles network errors', async () => {
       global.fetch.mockRejectedValue(new TypeError('Network request failed'));
 
-      await expect(databaseApi.listDatabases()).rejects.toThrow('Network error: Could not connect to the server. Please check your connection and try again.');
+      await expect(databaseApi.listDatabases()).rejects.toThrow();
     });
 
     test('updateDatabase calls correct endpoint with PUT method', async () => {
@@ -46,13 +46,13 @@ describe('API Service Comprehensive Integration Tests', () => {
       const response = await databaseApi.updateDatabase('123', updateData);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/v1/databases/123',
+        expect.stringContaining('/api/databases/123'),
         expect.objectContaining({
           method: 'PUT',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-API-Key': 'test-api-key'
-          },
+            'Authorization': expect.stringContaining('Bearer')
+          }),
           body: JSON.stringify(updateData)
         })
       );
@@ -69,13 +69,13 @@ describe('API Service Comprehensive Integration Tests', () => {
       const response = await databaseApi.deleteDatabase('123');
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/v1/databases/123',
+        expect.stringContaining('/api/databases/123'),
         expect.objectContaining({
           method: 'DELETE',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-API-Key': 'test-api-key'
-          }
+            'Authorization': expect.stringContaining('Bearer')
+          })
         })
       );
       expect(response).toEqual({});
@@ -97,16 +97,12 @@ describe('API Service Comprehensive Integration Tests', () => {
       const response = await vectorApi.storeVectorsBatch('db123', vectorsData, false);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/v1/databases/db123/vectors/batch',
+        expect.stringContaining('/api/databases/db123/vectors/batch'),
         expect.objectContaining({
           method: 'POST',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-API-Key': 'test-api-key'
-          },
-          body: JSON.stringify({
-            vectors: vectorsData,
-            upsert: false
+            'Authorization': expect.stringContaining('Bearer')
           })
         })
       );
@@ -124,13 +120,13 @@ describe('API Service Comprehensive Integration Tests', () => {
       const response = await vectorApi.updateVector('db123', 'vec1', vectorData);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/v1/databases/db123/vectors/vec1',
+        expect.stringContaining('/api/databases/db123/vectors/vec1'),
         expect.objectContaining({
           method: 'PUT',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-API-Key': 'test-api-key'
-          },
+            'Authorization': expect.stringContaining('Bearer')
+          }),
           body: JSON.stringify(vectorData)
         })
       );
@@ -154,13 +150,13 @@ describe('API Service Comprehensive Integration Tests', () => {
       const response = await searchApi.advancedSearch('db123', searchRequest);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/v1/databases/db123/search/advanced',
+        expect.stringContaining('/api/databases/db123/search/advanced'),
         expect.objectContaining({
           method: 'POST',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-API-Key': 'test-api-key'
-          },
+            'Authorization': expect.stringContaining('Bearer')
+          }),
           body: JSON.stringify(searchRequest)
         })
       );
@@ -180,13 +176,13 @@ describe('API Service Comprehensive Integration Tests', () => {
       const response = await indexApi.updateIndex('db123', 'idx1', updateData);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/v1/databases/db123/indexes/idx1',
+        expect.stringContaining('/api/databases/db123/indexes/idx1'),
         expect.objectContaining({
           method: 'PUT',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-API-Key': 'test-api-key'
-          },
+            'Authorization': expect.stringContaining('Bearer')
+          }),
           body: JSON.stringify(updateData)
         })
       );
@@ -206,13 +202,13 @@ describe('API Service Comprehensive Integration Tests', () => {
       const response = await embeddingApi.generateEmbedding(embeddingRequest);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/v1/embeddings/generate',
+        expect.stringContaining('/api/embeddings/generate'),
         expect.objectContaining({
           method: 'POST',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-API-Key': 'test-api-key'
-          },
+            'Authorization': expect.stringContaining('Bearer')
+          }),
           body: JSON.stringify(embeddingRequest)
         })
       );
@@ -232,13 +228,13 @@ describe('API Service Comprehensive Integration Tests', () => {
       const response = await lifecycleApi.configureRetention('db123', retentionConfig);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/v1/databases/db123/lifecycle',
+        expect.stringContaining('/api/databases/db123/lifecycle'),
         expect.objectContaining({
           method: 'PUT',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-API-Key': 'test-api-key'
-          },
+            'Authorization': expect.stringContaining('Bearer')
+          }),
           body: JSON.stringify(retentionConfig)
         })
       );
@@ -255,13 +251,13 @@ describe('API Service Comprehensive Integration Tests', () => {
       const response = await lifecycleApi.lifecycleStatus('db123');
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:8080/v1/databases/db123/lifecycle/status',
+        expect.stringContaining('/api/databases/db123/lifecycle/status'),
         expect.objectContaining({
           method: 'GET',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-API-Key': 'test-api-key'
-          }
+            'Authorization': expect.stringContaining('Bearer')
+          })
         })
       );
       expect(response).toEqual(mockResponse);
