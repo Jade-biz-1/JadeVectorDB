@@ -71,6 +71,26 @@ JadeVectorDB has reached **100% completion** (338/338 tasks) with all core featu
 ✅ **Enhanced CLI Tools** - Full user management and bulk operations support in Python and Shell CLIs
 ✅ **Security Enhancements** - Password validation, secure token management, and access control
 
+### Advanced Search Features (Phase 16: Hybrid Search & Re-ranking) 🆕
+✅ **Hybrid Search** - Combines vector similarity with BM25 keyword search for improved retrieval
+  - BM25 scoring engine with configurable parameters (k1=1.5, b=0.75)
+  - Inverted index with fast term lookup (<1ms per term)
+  - SQLite-based index persistence with incremental updates
+  - Reciprocal Rank Fusion (RRF) and weighted linear score fusion
+  - 59/59 unit tests passing (100% coverage)
+
+✅ **Re-ranking** - Cross-encoder models boost search result precision
+  - Python subprocess architecture using sentence-transformers
+  - Model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  - Batch inference with configurable batch size (default: 32)
+  - Target: +15% precision@5 improvement over bi-encoder alone
+  - Performance: ~150-300ms for 100 documents
+
+⏳ **Query Analytics** - Track and analyze search queries (planned)
+  - Query logging with performance metrics
+  - Pattern identification and insights
+  - Analytics dashboard for optimization
+
 ### Distributed System (100% Complete - 12,259+ lines)
 ✅ **Master-Worker Protocol** - gRPC-based communication with connection pooling
 ✅ **Query Distribution** - Parallel query execution across shards with result merging

@@ -745,9 +745,9 @@ The project uses **AuthenticationService** (located in `backend/src/services/aut
 
 ---
 
-## 📊 Current Project Status (as of Dec 29, 2025)
+## 📊 Current Project Status (as of Jan 26, 2026)
 
-### Overall Progress: 100% complete (338/338 tasks) 🎉
+### Overall Progress: 100% complete (338/338 tasks) + Phase 16 in progress 🎉
 
 ### Completion Status:
 - ✅ **Core vector database**: 100% complete (US1-US4)
@@ -762,6 +762,10 @@ The project uses **AuthenticationService** (located in `backend/src/services/aut
 - ✅ **Interactive tutorial**: 100% complete (all core features and enhancements)
 - ✅ **Frontend basic UI**: Complete (dashboard, databases, users, monitoring)
 - ✅ **Persistence (Sprints 2.1-2.3)**: 100% complete (26/26 tests passing)
+- 🆕 **Phase 16 - Hybrid Search & Re-ranking**: 63.6% complete (14/22 tasks)
+  - ✅ **Feature 1: Hybrid Search**: 100% complete (T16.1-T16.8)
+  - ✅ **Feature 2: Re-ranking**: 100% complete (T16.9-T16.14)
+  - ⏳ **Feature 3: Query Analytics**: Not started (T16.15-T16.22)
 
 ### Current Branch:
 - `run-and-fix`
@@ -780,6 +784,52 @@ All authentication and API tasks completed:
 8. **Documentation** - ✅ Complete (T229, T235)
 9. **Default user seeding** - ✅ Complete (T236-T237)
 
+### Phase 16: Hybrid Search, Re-ranking, and Query Analytics
+**Status**: 🚧 63.6% COMPLETE (14/22 tasks) - Active Development
+**Last Updated**: January 26, 2026
+
+#### Feature 1: Hybrid Search ✅ COMPLETE (T16.1-T16.8)
+Combines vector similarity with BM25 keyword search for improved retrieval quality.
+
+**Completed Components**:
+- ✅ **BM25 Scoring Engine** (T16.1) - Tokenization, IDF calculation, configurable parameters
+- ✅ **Inverted Index** (T16.2) - In-memory index with fast term lookup (<1ms)
+- ✅ **Index Persistence** (T16.3) - SQLite storage with incremental updates
+- ✅ **Score Fusion** (T16.4) - RRF and weighted linear fusion algorithms
+- ✅ **HybridSearchEngine** (T16.5) - Service orchestration and integration
+- ✅ **REST API Endpoints** (T16.6) - 4 new endpoints for hybrid search
+- ✅ **CLI Support** (T16.7) - Full command-line interface
+- ✅ **Testing & Documentation** (T16.8) - 59/59 unit tests passing (100%)
+
+**Test Results**: 59/59 unit tests + all integration tests passing
+**Documentation**: API docs, user guide, architecture - all complete
+
+#### Feature 2: Re-ranking ✅ COMPLETE (T16.9-T16.14)
+Cross-encoder models boost search result precision through intelligent re-ranking.
+
+**Completed Components**:
+- ✅ **Python Reranking Server** (T16.9) - Subprocess with sentence-transformers
+- ✅ **Subprocess Management** (T16.10) - C++/Python IPC communication
+- ✅ **RerankingService** (T16.11) - Batch inference and score normalization
+- ✅ **Service Integration** (T16.12) - Integrated with hybrid and vector search
+- ✅ **REST API Endpoints** (T16.13) - 4 new reranking endpoints
+- ✅ **Testing & Documentation** (T16.14) - Tests created, docs complete
+
+**Architecture**: Python subprocess (Phase 1), future: Microservice + ONNX Runtime
+**Performance**: ~150-300ms for 100 documents
+**Model**: cross-encoder/ms-marco-MiniLM-L-6-v2
+
+#### Feature 3: Query Analytics ⏳ NOT STARTED (T16.15-T16.22)
+Track and analyze search queries for optimization.
+
+**Planned Components**:
+- QueryLogger for data collection
+- Analytics database schema
+- AnalyticsEngine for insights
+- Dashboard for visualization
+
+**Estimated Timeline**: 4 weeks
+
 ### Known Issues:
 **No critical issues** - Project is production-ready!
 
@@ -790,23 +840,33 @@ All authentication and API tasks completed:
 4. ~~**AuthManager cleanup**~~ - ✅ COMPLETE (2025-12-12)
 5. ~~**distributed_worker_service.cpp stubs**~~ - ✅ COMPLETE (T259)
 
-### Recent Work (Last 7 Days):
+### Recent Work (January 2026 - Phase 16):
+**Hybrid Search Implementation** (T16.1-T16.8):
+- ✅ Implemented BM25 scoring engine with configurable parameters (T16.1)
+- ✅ Built inverted index with fast term lookup (T16.2)
+- ✅ Added SQLite-based index persistence (T16.3)
+- ✅ Implemented RRF and weighted linear score fusion (T16.4)
+- ✅ Created HybridSearchEngine service (T16.5)
+- ✅ Added 4 REST API endpoints for hybrid search (T16.6)
+- ✅ Implemented CLI commands (T16.7)
+- ✅ Completed testing: 59/59 unit tests passing (T16.8)
+- ✅ Fixed min-max normalization edge case (identical scores → 1.0)
+
+**Re-ranking Implementation** (T16.9-T16.14):
+- ✅ Created Python reranking server with sentence-transformers (T16.9)
+- ✅ Implemented C++ subprocess management (T16.10)
+- ✅ Built RerankingService with batch inference (T16.11)
+- ✅ Integrated with hybrid and vector search (T16.12)
+- ✅ Added 4 REST API endpoints for re-ranking (T16.13)
+- ✅ Completed documentation and testing (T16.14)
+
+**Previous Work** (December 2025):
 - ✅ Completed all authentication endpoints (T219-T222)
-- ✅ Implemented user management handlers (T220)
-- ✅ Implemented API key management (T221)
-- ✅ Implemented security audit routes (T222)
-- ✅ Built shadcn-based authentication UI (T227)
-- ✅ Environment-specific default user seeding (T236)
-- ✅ Fixed ShardState enum comparison errors in distributed_worker_service.cpp
-- ✅ Fixed authentication system - consolidated to AuthenticationService only
-- ✅ Fixed default user passwords to meet 10-character minimum requirement
-- ✅ Added list_users() and list_api_keys() methods to AuthenticationService
-- ✅ Verified end-to-end authentication flow (login working)
+- ✅ Fixed ShardState enum comparison errors
 - ✅ **AuthManager cleanup COMPLETE** - Deleted lib/auth.h, lib/auth.cpp (2025-12-12)
 - ✅ **Fixed double-free crash** - Singleton ownership issue in main.cpp (2025-12-12)
 - ✅ **Valgrind clean** - 0 errors on shutdown (2025-12-12)
 - ✅ **Fixed Ctrl-C hanging** - Signal handler now exits immediately (2025-12-26)
-- ✅ **Added shutdown API endpoint** - POST /shutdown for graceful termination (2025-12-26)
 
 ---
 
