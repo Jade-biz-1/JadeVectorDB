@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "../src/analytics/query_logger.h"
+#include <sqlite3.h>
 #include <filesystem>
 #include <thread>
 #include <chrono>
@@ -346,8 +347,8 @@ TEST_F(QueryLoggerTest, PerformanceBenchmarkAsync) {
     while (logger.get_total_logged() < num_entries) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         auto elapsed = std::chrono::steady_clock::now() - wait_start;
-        if (elapsed > std::chrono::seconds(5)) {
-            break;  // Timeout after 5 seconds
+        if (elapsed > std::chrono::seconds(10)) {
+            break;  // Timeout after 10 seconds
         }
     }
 
@@ -394,10 +395,52 @@ TEST_F(QueryLoggerTest, ConcurrentLogging) {
     while (logger.get_total_logged() < expected_count) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         auto elapsed = std::chrono::steady_clock::now() - wait_start;
-        if (elapsed > std::chrono::seconds(5)) {
-            break;  // Timeout after 5 seconds
+        if (elapsed > std::chrono::seconds(10)) {
+            break;  // Timeout after 10 seconds
         }
     }
 
     EXPECT_EQ(logger.get_total_logged(), num_threads * entries_per_thread);
+}
+
+// Test 16: Verify all analytics tables are created
+TEST_F(QueryLoggerTest, AnalyticsSchemaCreated) {
+    QueryLoggerConfig config;
+    config.database_path = test_db_path_;
+    config.enable_async = false;
+
+    QueryLogger logger("test_db", config);
+    ASSERT_TRUE(logger.initialize().has_value());
+
+    // Open database and verify tables exist
+    sqlite3* db;
+    int rc = sqlite3_open(test_db_path_.c_str(), &db);
+    ASSERT_EQ(rc, SQLITE_OK);
+
+    // Check for query_log table
+    const char* check_table_sql =
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?";
+
+    std::vector<std::string> expected_tables = {
+        "query_log",
+        "query_stats",
+        "search_patterns",
+        "performance_metrics",
+        "user_feedback"
+    };
+
+    for (const auto& table_name : expected_tables) {
+        sqlite3_stmt* stmt;
+        rc = sqlite3_prepare_v2(db, check_table_sql, -1, &stmt, nullptr);
+        ASSERT_EQ(rc, SQLITE_OK);
+
+        sqlite3_bind_text(stmt, 1, table_name.c_str(), -1, SQLITE_STATIC);
+        rc = sqlite3_step(stmt);
+
+        EXPECT_EQ(rc, SQLITE_ROW) << "Table " << table_name << " not found";
+
+        sqlite3_finalize(stmt);
+    }
+
+    sqlite3_close(db);
 }

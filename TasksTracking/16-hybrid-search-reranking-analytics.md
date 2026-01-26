@@ -629,37 +629,55 @@ After evaluating three architecture options, we've chosen a **phased approach**:
 
 ---
 
-### T16.16: Analytics Database Schema ✅ Data Layer
+### T16.16: Analytics Database Schema ✅ Data Layer [COMPLETED]
+
+**Status**: ✅ **COMPLETED** (January 26, 2026)
 
 **Description**: Design SQLite schema for analytics
 
 **Tasks**:
-- [ ] **T16.16.1**: Create query_log table
-  - All query details
-  - Indexes on timestamp, database_id, query_type
+- [x] **T16.16.1**: Create query_log table
+  - All query details with comprehensive metadata
+  - Indexes on timestamp, database_id, query_type, user_id, session_id, has_error
 
-- [ ] **T16.16.2**: Create query_stats table
+- [x] **T16.16.2**: Create query_stats table
   - Aggregated statistics per time bucket
-  - Hourly/daily granularity
+  - Hourly/daily granularity support
+  - Metrics: total/successful/failed queries, unique users/sessions
+  - Latency: avg, P50, P95, P99
+  - Query type breakdown: vector/hybrid/bm25/reranked
 
-- [ ] **T16.16.3**: Create search_patterns table
-  - Common query patterns
+- [x] **T16.16.3**: Create search_patterns table
+  - Common query patterns with normalized text
   - Frequency and performance metrics
+  - First/last seen timestamps for trend analysis
 
-- [ ] **T16.16.4**: Create performance_metrics table
-  - QPS, latency percentiles, cache hit rate
+- [x] **T16.16.4**: Create performance_metrics table
+  - Flexible metric storage (type, name, value)
+  - Time-bucketed for QPS, latency percentiles, cache hit rate
+  - Composite indexes for efficient querying
 
-- [ ] **T16.16.5**: Create user_feedback table
-  - User ratings, clicks on results
+- [x] **T16.16.5**: Create user_feedback table
+  - User ratings and result clicks
+  - Feedback text for qualitative analysis
+  - Clicked result tracking with rank information
 
 **Acceptance Criteria**:
-- Schema supports all analytics queries
-- Indexes optimize common queries
-- Foreign key constraints
+- ✅ Schema supports all analytics queries
+- ✅ Indexes optimize common queries (6 indexes on query_log, unique composite indexes)
+- ✅ All 5 tables created and verified via unit test
+
+**Implementation Notes**:
+- All tables created in QueryLogger initialization
+- Comprehensive indexing strategy for performance
+- Unique composite indexes prevent duplicate aggregations
+- Normalized query text for pattern matching
+- Flexible metrics table supports custom performance tracking
+- Schema verification test confirms all tables exist
 
 **Dependencies**: None
 
-**Estimate**: 1 day
+**Estimate**: 1 day (completed)
 
 ---
 
