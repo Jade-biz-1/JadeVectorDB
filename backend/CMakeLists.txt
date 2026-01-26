@@ -271,6 +271,9 @@ set(CORE_SOURCES
     src/services/index/lsh_index.cpp
     src/services/index/ivf_index.cpp
     src/services/index/composite_index.cpp
+    src/analytics/query_logger.cpp
+    src/analytics/query_analytics_manager.cpp
+    src/analytics/analytics_engine.cpp
     src/lib/mmap_utils.cpp
     src/lib/simd_ops.cpp
     src/lib/serialization.cpp
@@ -544,6 +547,51 @@ if(BUILD_TESTS)
     )
 
     add_test(NAME RerankingServiceTests COMMAND reranking_service_tests)
+
+    # Phase 16: Query Logger Tests
+    add_executable(query_logger_tests
+        unittesting/test_query_logger.cpp
+    )
+
+    target_link_libraries(query_logger_tests PRIVATE
+        jadevectordb_core
+        SQLite::SQLite3
+        GTest::gtest
+        GTest::gtest_main
+        GTest::gmock
+    )
+
+    add_test(NAME QueryLoggerTests COMMAND query_logger_tests)
+
+    # Phase 16: Query Analytics Manager Tests
+    add_executable(query_analytics_manager_tests
+        unittesting/test_query_analytics_manager.cpp
+    )
+
+    target_link_libraries(query_analytics_manager_tests PRIVATE
+        jadevectordb_core
+        SQLite::SQLite3
+        GTest::gtest
+        GTest::gtest_main
+        GTest::gmock
+    )
+
+    add_test(NAME QueryAnalyticsManagerTests COMMAND query_analytics_manager_tests)
+
+    # Phase 16: Analytics Engine Tests
+    add_executable(analytics_engine_tests
+        unittesting/test_analytics_engine.cpp
+    )
+
+    target_link_libraries(analytics_engine_tests PRIVATE
+        jadevectordb_core
+        SQLite::SQLite3
+        GTest::gtest
+        GTest::gtest_main
+        GTest::gmock
+    )
+
+    add_test(NAME AnalyticsEngineTests COMMAND analytics_engine_tests)
 endif()
 
 #############################################################################
