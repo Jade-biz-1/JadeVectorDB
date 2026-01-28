@@ -609,6 +609,21 @@ if(BUILD_TESTS)
     )
 
     add_test(NAME BatchProcessorTests COMMAND batch_processor_tests)
+
+    # Phase 16: Analytics Integration Tests (T16.22)
+    add_executable(analytics_integration_tests
+        unittesting/test_analytics_integration.cpp
+    )
+
+    target_link_libraries(analytics_integration_tests PRIVATE
+        jadevectordb_core
+        SQLite::SQLite3
+        GTest::gtest
+        GTest::gtest_main
+        GTest::gmock
+    )
+
+    add_test(NAME AnalyticsIntegrationTests COMMAND analytics_integration_tests)
 endif()
 
 #############################################################################
