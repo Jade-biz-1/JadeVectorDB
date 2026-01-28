@@ -657,3 +657,149 @@ export const apiKeysApi = {
     return handleResponse(response);
   },
 };
+
+// API Service for Query Analytics (T16.20 - Query Analytics REST API)
+export const analyticsApi = {
+  // Get query statistics
+  getStatistics: async (databaseId, options = {}) => {
+    const {
+      startTime = Date.now() - 24 * 60 * 60 * 1000, // Last 24 hours
+      endTime = Date.now(),
+      granularity = 'hourly', // hourly, daily, weekly, monthly
+    } = options;
+
+    const params = new URLSearchParams({
+      start_time: startTime.toString(),
+      end_time: endTime.toString(),
+      granularity,
+    });
+
+    const response = await fetch(`${API_BASE_URL}/v1/databases/${databaseId}/analytics/stats?${params}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  // Get recent queries with filtering
+  getRecentQueries: async (databaseId, options = {}) => {
+    const {
+      limit = 50,
+      offset = 0,
+      startTime = null,
+      endTime = null,
+    } = options;
+
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      offset: offset.toString(),
+    });
+
+    if (startTime) params.append('start_time', startTime.toString());
+    if (endTime) params.append('end_time', endTime.toString());
+
+    const response = await fetch(`${API_BASE_URL}/v1/databases/${databaseId}/analytics/queries?${params}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  // Get query patterns
+  getQueryPatterns: async (databaseId, options = {}) => {
+    const {
+      minCount = 2,
+      limit = 50,
+    } = options;
+
+    const params = new URLSearchParams({
+      min_count: minCount.toString(),
+      limit: limit.toString(),
+    });
+
+    const response = await fetch(`${API_BASE_URL}/v1/databases/${databaseId}/analytics/patterns?${params}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  // Get analytics insights
+  getInsights: async (databaseId, options = {}) => {
+    const {
+      startTime = Date.now() - 24 * 60 * 60 * 1000,
+      endTime = Date.now(),
+    } = options;
+
+    const params = new URLSearchParams({
+      start_time: startTime.toString(),
+      end_time: endTime.toString(),
+    });
+
+    const response = await fetch(`${API_BASE_URL}/v1/databases/${databaseId}/analytics/insights?${params}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  // Get trending queries
+  getTrendingQueries: async (databaseId, options = {}) => {
+    const {
+      timeBucket = 'daily',
+      minGrowthRate = 50,
+    } = options;
+
+    const params = new URLSearchParams({
+      time_bucket: timeBucket,
+      min_growth_rate: minGrowthRate.toString(),
+    });
+
+    const response = await fetch(`${API_BASE_URL}/v1/databases/${databaseId}/analytics/trending?${params}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  // Submit user feedback
+  submitFeedback: async (databaseId, feedbackData) => {
+    const response = await fetch(`${API_BASE_URL}/v1/databases/${databaseId}/analytics/feedback`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(feedbackData),
+    });
+    return handleResponse(response);
+  },
+
+  // Export analytics data
+  exportData: async (databaseId, options = {}) => {
+    const {
+      format = 'json', // json or csv
+      startTime = Date.now() - 24 * 60 * 60 * 1000,
+      endTime = Date.now(),
+    } = options;
+
+    const params = new URLSearchParams({
+      format,
+      start_time: startTime.toString(),
+      end_time: endTime.toString(),
+    });
+
+    const response = await fetch(`${API_BASE_URL}/v1/databases/${databaseId}/analytics/export?${params}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    // For CSV/JSON exports, return as text or blob
+    if (format === 'csv') {
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `API error: ${response.status}`);
+      }
+      return response.text();
+    }
+
+    return handleResponse(response);
+  },
+};
