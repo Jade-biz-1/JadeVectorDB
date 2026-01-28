@@ -786,8 +786,8 @@ All authentication and API tasks completed:
 9. **Default user seeding** - ✅ Complete (T236-T237)
 
 ### Phase 16: Hybrid Search, Re-ranking, and Query Analytics
-**Status**: 🚧 63.6% COMPLETE (14/22 tasks) - Active Development
-**Last Updated**: January 26, 2026
+**Status**: 🚧 95.5% COMPLETE (21/22 tasks) - Final Task Remaining
+**Last Updated**: January 28, 2026
 
 #### Feature 1: Hybrid Search ✅ COMPLETE (T16.1-T16.8)
 Combines vector similarity with BM25 keyword search for improved retrieval quality.
@@ -820,16 +820,32 @@ Cross-encoder models boost search result precision through intelligent re-rankin
 **Performance**: ~150-300ms for 100 documents
 **Model**: cross-encoder/ms-marco-MiniLM-L-6-v2
 
-#### Feature 3: Query Analytics ⏳ NOT STARTED (T16.15-T16.22)
+#### Feature 3: Query Analytics ✅ 87.5% COMPLETE (7/8 tasks done)
 Track and analyze search queries for optimization.
 
-**Planned Components**:
-- QueryLogger for data collection
-- Analytics database schema
-- AnalyticsEngine for insights
-- Dashboard for visualization
+**Completed Components** (T16.15-T16.21):
+- ✅ **QueryLogger** (T16.15) - Data collection with 15/15 tests passing
+- ✅ **Analytics Database Schema** (T16.16) - Complete SQLite schema
+- ✅ **Query Interception** (T16.17) - QueryAnalyticsManager integration
+- ✅ **AnalyticsEngine** (T16.18) - Insights generation with 15/15 tests passing
+- ✅ **Batch Processor** (T16.19) - Background jobs with 15/15 tests passing
+- ✅ **REST API Endpoints** (T16.20) - 7 new analytics endpoints
+- ✅ **Analytics Dashboard** (T16.21) - Full web UI with Recharts visualization
 
-**Estimated Timeline**: 4 weeks
+**Remaining**:
+- ⏳ **Testing & Documentation** (T16.22) - Final integration tests and docs
+
+**Dashboard Features**:
+- Key metrics cards (total queries, success rate, avg latency, QPS)
+- Time-series charts (queries over time, latency distribution)
+- Tabbed interface (Overview, Query Explorer, Patterns, Insights)
+- Automated insights with color-coded recommendations
+- Query patterns analysis, slow queries detection, trending queries
+- Database selector, time range picker (1h, 24h, 7d, 30d)
+- Auto-refresh every 30 seconds
+
+**Backend**: All 7 REST API endpoints implemented and functional
+**Frontend**: Analytics dashboard page created (1048 lines) with Recharts library
 
 ### Frontend Status (Updated Jan 13, 2026):
 **Build Status**: ✅ Production build working (all 32 pages compile successfully)
