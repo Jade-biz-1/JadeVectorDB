@@ -6,8 +6,13 @@
 #include <thread>
 #include <chrono>
 #include <atomic>
+#ifdef _WIN32
+#include <windows.h>
+#include <process.h>
+#else
 #include <unistd.h>
 #include <sys/types.h>
+#endif
 #include <nlohmann/json.hpp>
 #include "lib/error_handling.h"
 #include "lib/logging.h"

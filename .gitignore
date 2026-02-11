@@ -19,6 +19,7 @@ compile_commands.json
 # IDE specific files
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~

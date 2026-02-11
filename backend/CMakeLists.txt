@@ -8,22 +8,93 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+#############################################################################
+# PLATFORM DETECTION
+#############################################################################
+
+if(APPLE)
+    message(STATUS "Platform: macOS")
+    # Homebrew installs packages to different prefixes on Intel vs Apple Silicon
+    execute_process(
+        COMMAND brew --prefix
+        OUTPUT_VARIABLE HOMEBREW_PREFIX
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(HOMEBREW_PREFIX)
+        message(STATUS "Homebrew prefix: ${HOMEBREW_PREFIX}")
+
+        # OpenSSL - Homebrew keg-only, needs explicit path
+        if(NOT OPENSSL_ROOT_DIR)
+            set(OPENSSL_ROOT_DIR "${HOMEBREW_PREFIX}/opt/openssl@3" CACHE PATH "OpenSSL root directory")
+        endif()
+
+        # Boost - add Homebrew path
+        if(NOT BOOST_ROOT)
+            set(BOOST_ROOT "${HOMEBREW_PREFIX}/opt/boost" CACHE PATH "Boost root directory")
+        endif()
+
+        # SQLite3 - Homebrew keg-only on macOS
+        if(NOT SQLite3_ROOT)
+            set(SQLite3_ROOT "${HOMEBREW_PREFIX}/opt/sqlite" CACHE PATH "SQLite3 root directory")
+            list(APPEND CMAKE_PREFIX_PATH "${HOMEBREW_PREFIX}/opt/sqlite")
+        endif()
+
+        # zlib - use Homebrew version if available
+        list(APPEND CMAKE_PREFIX_PATH "${HOMEBREW_PREFIX}/opt/zlib")
+    else()
+        message(WARNING "Homebrew not found. You may need to set dependency paths manually.")
+    endif()
+elseif(WIN32)
+    message(STATUS "Platform: Windows")
+    # Windows-specific definitions
+    add_definitions(-D_WIN32_WINNT=0x0A00)  # Windows 10+
+    add_definitions(-DNOMINMAX)              # Prevent min/max macro conflicts
+    add_definitions(-DWIN32_LEAN_AND_MEAN)   # Reduce Windows.h bloat
+elseif(UNIX)
+    message(STATUS "Platform: Linux")
+endif()
+
 # Compiler-specific options
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -O3 -std=c++20")
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
+    endif()
     # Coverage options - only when BUILD_COVERAGE is enabled
     option(BUILD_COVERAGE "Build with gcov coverage" OFF)
     if(BUILD_COVERAGE)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage -g")
     endif()
 elseif(MSVC)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /std:c++20")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /EHsc")
+    # Suppress specific MSVC warnings that are noisy in cross-platform code
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4244 /wd4267 /wd4996")
 endif()
 
 # Find required packages
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
+if(OpenSSL_FOUND)
+    message(STATUS "Found OpenSSL: ${OPENSSL_VERSION} at ${OPENSSL_INCLUDE_DIR}")
+endif()
+
 find_package(ZLIB REQUIRED)
+
+# Find Boost (required by Crow web framework)
+find_package(Boost 1.64 REQUIRED COMPONENTS system date_time)
+if(Boost_FOUND)
+    message(STATUS "Found Boost: ${Boost_VERSION}")
+    include_directories(${Boost_INCLUDE_DIRS})
+else()
+    if(APPLE)
+        message(FATAL_ERROR "Boost not found. Install via: brew install boost")
+    elseif(WIN32)
+        message(FATAL_ERROR "Boost not found. Install via: vcpkg install boost:x64-windows")
+    else()
+        message(FATAL_ERROR "Boost not found. Install via: sudo apt-get install libboost-all-dev")
+    endif()
+endif()
 
 # Find SQLite3 for persistence layer
 find_package(SQLite3 REQUIRED)
@@ -31,7 +102,20 @@ if(SQLite3_FOUND)
     message(STATUS "Found SQLite3: ${SQLite3_VERSION}")
     include_directories(${SQLite3_INCLUDE_DIRS})
 else()
-    message(FATAL_ERROR "SQLite3 not found. Please install: sudo apt-get install libsqlite3-dev")
+    if(APPLE)
+        message(FATAL_ERROR "SQLite3 not found. Install via: brew install sqlite3")
+    elseif(WIN32)
+        message(FATAL_ERROR "SQLite3 not found. Install via: vcpkg install sqlite3:x64-windows")
+    else()
+        message(FATAL_ERROR "SQLite3 not found. Install via: sudo apt-get install libsqlite3-dev")
+    endif()
+endif()
+
+# Platform-specific link libraries
+if(WIN32)
+    set(PLATFORM_LIBS ws2_32 mswsock advapi32)
+else()
+    set(PLATFORM_LIBS "")
 endif()
 
 # Use FetchContent to include all required libraries directly from source
@@ -76,14 +160,35 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# TartanLlama/expected - std::expected backport for C++17/20
+message(STATUS "Fetching TartanLlama/expected...")
+FetchContent_Declare(
+    expected
+    GIT_REPOSITORY https://github.com/TartanLlama/expected.git
+    GIT_TAG v1.1.0
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(expected)
+
+# Copy expected.hpp to src/lib for easier inclusion
+set(EXPECTED_HEADER "${expected_SOURCE_DIR}/include/tl/expected.hpp")
+set(EXPECTED_DEST "${CMAKE_CURRENT_SOURCE_DIR}/src/lib/expected.hpp")
+file(COPY ${EXPECTED_HEADER} DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/src/lib/")
+file(RENAME "${CMAKE_CURRENT_SOURCE_DIR}/src/lib/expected.hpp" ${EXPECTED_DEST})
+
 # Crow - Web framework for REST API
 message(STATUS "Fetching Crow...")
 FetchContent_Declare(
     crow
     GIT_REPOSITORY https://github.com/CrowCpp/Crow.git
-    GIT_TAG v1.0+5
+    GIT_TAG v1.2.1.2
     GIT_SHALLOW TRUE
 )
+# Crow uses standalone ASIO by default (not Boost.Asio)
+# Standalone ASIO must be installed: brew install asio (macOS), apt install libasio-dev (Linux)
+set(CROW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(CROW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(CROW_INSTALL OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(crow)
 
 # Google Test - Testing framework
@@ -207,6 +312,12 @@ include_directories(${eigen_SOURCE_DIR})
 include_directories(${flatbuffers_SOURCE_DIR}/include)
 include_directories(${nlohmann_json_SOURCE_DIR}/include)
 include_directories(${crow_SOURCE_DIR}/include)
+
+# ASIO include directory (used by Crow for async I/O)
+if(ASIO_INCLUDE_DIR)
+    include_directories(${ASIO_INCLUDE_DIR})
+    message(STATUS "ASIO include dir: ${ASIO_INCLUDE_DIR}")
+endif()
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/models)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/services)
@@ -331,11 +442,14 @@ target_link_libraries(jadevectordb_core PUBLIC
     OpenSSL::Crypto
     ZLIB::ZLIB
     SQLite::SQLite3
+    Boost::system
+    Boost::date_time
     $<$<BOOL:${GRPC_AVAILABLE}>:grpc++>
     $<$<BOOL:${GRPC_AVAILABLE}>:grpc>
     $<$<BOOL:${GRPC_AVAILABLE}>:gpr>
     $<$<BOOL:${BUILD_WITH_ARROW}>:arrow_static>
     ${CMAKE_DL_LIBS}
+    ${PLATFORM_LIBS}
 )
 
 # Main executable
@@ -347,6 +461,8 @@ add_executable(jadevectordb
 target_link_libraries(jadevectordb PRIVATE
     jadevectordb_core
     Threads::Threads
+    Boost::system
+    Boost::date_time
     $<$<BOOL:${GRPC_AVAILABLE}>:grpc++>
     $<$<BOOL:${GRPC_AVAILABLE}>:grpc>
     $<$<BOOL:${GRPC_AVAILABLE}>:gpr>

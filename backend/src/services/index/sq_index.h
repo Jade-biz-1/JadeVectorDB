@@ -9,7 +9,6 @@
 #include <unordered_map>
 #include <map>
 #include <string>
-#include <boost/thread/shared_mutex.hpp>
 #include <shared_mutex>
 #include <random>
 

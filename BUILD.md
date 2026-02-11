@@ -205,15 +205,20 @@ git --version
 # Should output: git version 2.x.x
 ```
 
-### Missing Compiler
+### Missing Compiler or Dependencies
 
-Install GCC 11+ or Clang 14+:
+Install the required toolchain and system dependencies:
 ```bash
 # Ubuntu/Debian
-sudo apt-get update && sudo apt-get install -y build-essential cmake git
+sudo apt-get update && sudo apt-get install -y \
+    build-essential cmake git \
+    libssl-dev zlib1g-dev libsqlite3-dev libboost-all-dev libasio-dev
 
-# macOS
-brew install cmake git
+# macOS (Homebrew)
+brew install cmake openssl boost sqlite3 asio
+
+# Windows (vcpkg)
+vcpkg install openssl:x64-windows boost:x64-windows sqlite3:x64-windows asio:x64-windows
 ```
 
 ### Slow Build

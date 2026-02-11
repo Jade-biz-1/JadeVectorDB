@@ -3,10 +3,14 @@
 
 #include <string>
 #include <memory>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#endif
 
 namespace jadevectordb {
 

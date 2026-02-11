@@ -1,8 +1,13 @@
 #include "subprocess_manager.h"
+#ifdef _WIN32
+#include <windows.h>
+#include <io.h>
+#else
 #include <sys/wait.h>
 #include <signal.h>
 #include <fcntl.h>
 #include <poll.h>
+#endif
 #include <sstream>
 #include <iostream>
 #include <cstring>
