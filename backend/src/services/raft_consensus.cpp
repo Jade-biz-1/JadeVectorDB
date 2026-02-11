@@ -9,6 +9,7 @@
 #include <chrono>
 #include <fstream>
 #include <sstream>
+#include <filesystem>
 
 namespace jadevectordb {
 
@@ -781,14 +782,12 @@ void RaftConsensus::persist_state() {
     try {
         // Create state directory if it doesn't exist
         std::string state_dir = "/tmp/jadevectordb/raft/" + server_id_;
-        #ifdef __linux__
-        std::string mkdir_cmd = "mkdir -p " + state_dir;
-        int result = system(mkdir_cmd.c_str());
-        if (result != 0) {
-            LOG_WARN(logger_, "Failed to create state directory: " + state_dir);
+        try {
+            std::filesystem::create_directories(state_dir);
+        } catch (const std::exception& e) {
+            LOG_WARN(logger_, "Failed to create state directory: " + state_dir + " - " + e.what());
             return;
         }
-        #endif
 
         // Persist to file
         std::string state_file = state_dir + "/raft_state.dat";
@@ -985,7 +984,7 @@ void RaftConsensus::persist_snapshot(const Snapshot& snapshot) {
     try {
         // Create directory if it doesn't exist
         std::string state_dir = "/tmp/jadevectordb/raft/" + server_id_;
-        std::system(("mkdir -p " + state_dir).c_str());
+        std::filesystem::create_directories(state_dir);
 
         std::string snapshot_path = state_dir + "/snapshot.dat";
         std::ofstream ofs(snapshot_path, std::ios::binary);

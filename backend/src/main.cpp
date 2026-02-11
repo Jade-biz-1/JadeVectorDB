@@ -10,7 +10,13 @@
 #include <fstream>
 #include <ctime>
 #include <cstring>   // for strlen
+#ifdef _WIN32
+#include <io.h>      // for _write on Windows
+#include <windows.h>
+#define STDOUT_FILENO _fileno(stdout)
+#else
 #include <unistd.h>  // for write, STDOUT_FILENO (async-signal-safe I/O)
+#endif
 
 #include "lib/logging.h"
 #include "lib/error_handling.h"

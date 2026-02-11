@@ -4,7 +4,16 @@
 #include <string>
 #include <cstring>
 #include <cstdlib>
+
+#ifdef __linux__
 #include <sys/sysinfo.h>  // For getting system memory info on Linux
+#elif __APPLE__
+#include <sys/types.h>
+#include <sys/sysctl.h>
+#include <mach/mach.h>
+#elif _WIN32
+#include <windows.h>
+#endif
 
 #ifdef CUDA_AVAILABLE
 #include <cuda_runtime.h>
@@ -25,10 +34,31 @@ CPUDevice::CPUDevice() {
 
 size_t CPUDevice::get_memory_size() const {
     // Get available system memory
+#ifdef __linux__
     struct sysinfo info;
     if (sysinfo(&info) == 0) {
         return static_cast<size_t>(info.freeram) * info.mem_unit;
     }
+#elif __APPLE__
+    vm_size_t page_size;
+    mach_port_t mach_port;
+    mach_msg_type_number_t count;
+    vm_statistics64_data_t vm_stats;
+
+    mach_port = mach_host_self();
+    count = sizeof(vm_stats) / sizeof(natural_t);
+    if (KERN_SUCCESS == host_page_size(mach_port, &page_size) &&
+        KERN_SUCCESS == host_statistics64(mach_port, HOST_VM_INFO,
+                                          (host_info64_t)&vm_stats, &count)) {
+        return (vm_stats.free_count + vm_stats.inactive_count) * page_size;
+    }
+#elif _WIN32
+    MEMORYSTATUSEX status;
+    status.dwLength = sizeof(status);
+    if (GlobalMemoryStatusEx(&status)) {
+        return static_cast<size_t>(status.ullAvailPhys);
+    }
+#endif
     return 0; // Return 0 if unable to get memory info
 }
 

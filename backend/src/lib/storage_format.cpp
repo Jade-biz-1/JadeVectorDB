@@ -7,9 +7,14 @@
 #include <set>
 #include <unordered_set>
 #include <zlib.h>
+#ifdef _WIN32
+#include <io.h>
+#include <windows.h>
+#else
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/file.h>
+#endif
 #include <nlohmann/json.hpp>  // For JSON serialization/deserialization
 #include "lib/mmap_utils.h"
 

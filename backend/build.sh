@@ -24,7 +24,14 @@ BUILD_BENCHMARKS="${BUILD_BENCHMARKS:-ON}"
 BUILD_COVERAGE="${BUILD_COVERAGE:-OFF}"
 BUILD_WITH_GRPC="${BUILD_WITH_GRPC:-OFF}"
 CLEAN_BUILD="${CLEAN_BUILD:-false}"
-PARALLEL_JOBS="${PARALLEL_JOBS:-$(nproc)}"
+# Detect number of CPU cores (cross-platform)
+if command -v nproc >/dev/null 2>&1; then
+    PARALLEL_JOBS="${PARALLEL_JOBS:-$(nproc)}"
+elif command -v sysctl >/dev/null 2>&1; then
+    PARALLEL_JOBS="${PARALLEL_JOBS:-$(sysctl -n hw.ncpu)}"
+else
+    PARALLEL_JOBS="${PARALLEL_JOBS:-4}"
+fi
 VERBOSE="${VERBOSE:-false}"
 
 # Colors for output
@@ -73,12 +80,76 @@ print_config() {
     echo ""
 }
 
+detect_platform() {
+    PLATFORM="$(uname -s)"
+    case "${PLATFORM}" in
+        Linux*)     PLATFORM_NAME="Linux";;
+        Darwin*)    PLATFORM_NAME="macOS";;
+        CYGWIN*|MINGW*|MSYS*) PLATFORM_NAME="Windows";;
+        *)          PLATFORM_NAME="Unknown";;
+    esac
+    log_info "Detected platform: ${PLATFORM_NAME} ($(uname -m))"
+}
+
+setup_macos_deps() {
+    if [ "${PLATFORM_NAME}" != "macOS" ]; then
+        return
+    fi
+
+    log_info "Setting up macOS dependency paths..."
+
+    # Check for Homebrew
+    if ! command -v brew &> /dev/null; then
+        log_error "Homebrew is not installed. Please install it from https://brew.sh"
+        exit 1
+    fi
+
+    HOMEBREW_PREFIX=$(brew --prefix)
+    log_success "Found Homebrew at ${HOMEBREW_PREFIX}"
+
+    # Check and hint for required dependencies
+    local missing_deps=()
+
+    if ! brew list openssl &> /dev/null; then
+        missing_deps+=("openssl")
+    fi
+    if ! brew list boost &> /dev/null; then
+        missing_deps+=("boost")
+    fi
+    if ! brew list sqlite3 &> /dev/null; then
+        missing_deps+=("sqlite3")
+    fi
+    if ! brew list asio &> /dev/null; then
+        missing_deps+=("asio")
+    fi
+
+    if [ ${#missing_deps[@]} -gt 0 ]; then
+        log_error "Missing Homebrew dependencies: ${missing_deps[*]}"
+        log_info "Install them with: brew install ${missing_deps[*]}"
+        exit 1
+    fi
+
+    # Set environment hints for CMake
+    export OPENSSL_ROOT_DIR="${HOMEBREW_PREFIX}/opt/openssl@3"
+    log_success "OpenSSL: ${OPENSSL_ROOT_DIR}"
+    log_success "Boost: ${HOMEBREW_PREFIX}/opt/boost"
+    log_success "SQLite3: ${HOMEBREW_PREFIX}/opt/sqlite"
+}
+
 check_requirements() {
     log_info "Checking build requirements..."
+
+    # Detect platform first
+    detect_platform
 
     # Check for CMake
     if ! command -v cmake &> /dev/null; then
         log_error "CMake is not installed. Please install CMake 3.20 or later."
+        if [ "${PLATFORM_NAME}" = "macOS" ]; then
+            log_info "Install via: brew install cmake"
+        elif [ "${PLATFORM_NAME}" = "Linux" ]; then
+            log_info "Install via: sudo apt-get install cmake"
+        fi
         exit 1
     fi
 
@@ -88,15 +159,18 @@ check_requirements() {
     # Check for C++ compiler
     if ! command -v g++ &> /dev/null && ! command -v clang++ &> /dev/null; then
         log_error "No C++ compiler found. Please install GCC 11+ or Clang 14+."
+        if [ "${PLATFORM_NAME}" = "macOS" ]; then
+            log_info "Install via: xcode-select --install"
+        fi
         exit 1
     fi
 
-    if command -v g++ &> /dev/null; then
-        GCC_VERSION=$(g++ --version | head -n1)
-        log_success "Found ${GCC_VERSION}"
-    elif command -v clang++ &> /dev/null; then
+    if command -v clang++ &> /dev/null; then
         CLANG_VERSION=$(clang++ --version | head -n1)
         log_success "Found ${CLANG_VERSION}"
+    elif command -v g++ &> /dev/null; then
+        GCC_VERSION=$(g++ --version | head -n1)
+        log_success "Found ${GCC_VERSION}"
     fi
 
     # Check for Git (needed for FetchContent)
@@ -105,6 +179,9 @@ check_requirements() {
         exit 1
     fi
     log_success "Found Git $(git --version | cut -d' ' -f3)"
+
+    # Setup platform-specific dependencies
+    setup_macos_deps
 
     echo ""
 }

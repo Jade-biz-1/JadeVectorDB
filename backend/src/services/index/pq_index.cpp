@@ -6,7 +6,6 @@
 #include <limits>
 #include <random>
 #include <shared_mutex>
-#include <boost/thread/shared_mutex.hpp>
 #include <sstream>
 
 namespace jadevectordb {
