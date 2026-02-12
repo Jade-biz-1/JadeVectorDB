@@ -185,7 +185,23 @@ Result<std::string> AuthenticationService::register_user(const std::string& user
         // Assign roles to user
         for (const auto& role : roles) {
             std::cout << "[DEBUG] Assigning role: " << role << " to user: " << username << std::endl;
-            auto role_result = persistence_->assign_role_to_user(user_id, role);
+
+            // Look up role_id by role name (DB stores role_id like "role_admin" for name "admin")
+            std::string role_id = role;
+            auto lookup = persistence_->get_role_id_by_name(role);
+            if (lookup.has_value()) {
+                role_id = lookup.value();
+            } else {
+                // Role doesn't exist yet - create it with the name as the role_id
+                auto create = persistence_->create_role(role, role, "Custom role: " + role);
+                if (!create.has_value()) {
+                    LOG_WARN(logger_, "Failed to create role '" + role + "': " +
+                             ErrorHandler::format_error(create.error()));
+                    continue;
+                }
+            }
+
+            auto role_result = persistence_->assign_role_to_user(user_id, role_id);
             if (!role_result.has_value()) {
                 LOG_WARN(logger_, "Failed to assign role '" + role + "' to user: " +
                          ErrorHandler::format_error(role_result.error()));
@@ -580,11 +596,10 @@ Result<std::string> AuthenticationService::generate_api_key(const std::string& u
             RETURN_ERROR(ErrorCode::PERMISSION_DENIED, "API keys are disabled");
         }
 
-        // Validate that user exists
-        {
-            std::lock_guard<std::mutex> lock(users_mutex_);
-            auto it = users_.find(user_id);
-            if (it == users_.end()) {
+        // Validate that user exists (check database)
+        if (persistence_) {
+            auto user_check = persistence_->get_user(user_id);
+            if (!user_check.has_value()) {
                 LOG_WARN(logger_, "Attempt to generate API key for non-existent user: " + user_id);
                 RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
             }
@@ -741,26 +756,45 @@ void AuthenticationService::log_auth_event(SecurityEventType event_type,
 
 void AuthenticationService::handle_failed_login(const std::string& user_id,
                                                const std::string& ip_address) {
-    auto it = users_.find(user_id);
-    if (it != users_.end()) {
-        it->second.failed_login_attempts++;
+    if (!persistence_) return;
+
+    // Increment failed login count in database
+    auto inc_result = persistence_->increment_failed_login(user_id);
+    if (!inc_result.has_value()) {
+        LOG_WARN(logger_, "Failed to increment login attempts for user: " + user_id);
+        return;
+    }
+
+    // Check if we should lock the account
+    auto user_result = persistence_->get_user(user_id);
+    if (user_result.has_value()) {
+        auto& user = user_result.value();
         LOG_WARN(logger_, "Failed login attempt " +
-                std::to_string(it->second.failed_login_attempts) +
+                std::to_string(user.failed_login_attempts) +
                 " for user: " + user_id);
+
+        if (user.failed_login_attempts >= config_.max_failed_attempts) {
+            int64_t lock_until = std::time(nullptr) + config_.account_lockout_duration_seconds;
+            persistence_->lock_account(user_id, lock_until);
+            LOG_WARN(logger_, "Account locked for user: " + user_id);
+        }
     }
 }
 
 void AuthenticationService::reset_failed_login_attempts(const std::string& user_id) {
-    auto it = users_.find(user_id);
-    if (it != users_.end()) {
-        it->second.failed_login_attempts = 0;
+    if (persistence_) {
+        persistence_->reset_failed_login(user_id);
     }
 }
 
 bool AuthenticationService::is_user_locked_out(const std::string& user_id) const {
-    auto it = users_.find(user_id);
-    if (it != users_.end()) {
-        return it->second.failed_login_attempts >= config_.max_failed_attempts;
+    if (persistence_) {
+        auto user_result = persistence_->get_user(user_id);
+        if (user_result.has_value()) {
+            const auto& user = user_result.value();
+            return user.failed_login_attempts >= config_.max_failed_attempts ||
+                   (user.account_locked_until > 0 && user.account_locked_until > std::time(nullptr));
+        }
     }
     return false;
 }
@@ -1099,14 +1133,25 @@ Result<bool> AuthenticationService::seed_default_users() {
 }
 
 Result<bool> AuthenticationService::set_user_active_status(const std::string& user_id, bool is_active) {
-    std::lock_guard<std::mutex> lock(users_mutex_);
+    if (!persistence_) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Persistence layer not initialized");
+    }
 
-    auto it = users_.find(user_id);
-    if (it == users_.end()) {
+    // Get user from database
+    auto user_result = persistence_->get_user(user_id);
+    if (!user_result.has_value()) {
         RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
     }
 
-    it->second.is_active = is_active;
+    // Update active status in database
+    auto user = user_result.value();
+    user.is_active = is_active;
+    auto update_result = persistence_->update_user(user_id, user);
+    if (!update_result.has_value()) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to update user status: " +
+                    ErrorHandler::format_error(update_result.error()));
+    }
+
     LOG_INFO(logger_, "User " + user_id + " active status set to " + (is_active ? "true" : "false"));
 
     return true;

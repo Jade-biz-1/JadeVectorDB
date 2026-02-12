@@ -136,7 +136,9 @@ jadevectordb::Result<void> QueryLogger::log_query(const QueryLogEntry& entry) {
         }
 
         queue_.push(entry);
-        queue_cv_.notify_one();
+        if (queue_.size() >= config_.batch_size) {
+            queue_cv_.notify_one();
+        }
 
         return jadevectordb::Result<void>{};
     } else {

@@ -71,6 +71,8 @@ public:
     // === Role Management ===
     Result<std::vector<Role>> list_roles();
     Result<Role> get_role(const std::string& role_id);
+    Result<std::string> get_role_id_by_name(const std::string& role_name);
+    Result<void> create_role(const std::string& role_id, const std::string& role_name, const std::string& description = "");
     
     // User role assignment
     Result<void> assign_role_to_user(const std::string& user_id, const std::string& role_id);

@@ -4,6 +4,7 @@
 #include <vector>
 #include <thread>
 #include <chrono>
+#include <filesystem>
 
 #include "services/authentication_service.h"
 #include "services/security_audit_logger.h"
@@ -15,11 +16,16 @@ namespace jadevectordb {
 class ApiKeyLifecycleTest : public ::testing::Test {
 protected:
     void SetUp() override {
+        // Use a unique temp directory per test to avoid shared DB state
+        test_data_dir_ = std::filesystem::temp_directory_path() /
+            ("jade_apikey_test_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        std::filesystem::create_directories(test_data_dir_);
+
         // Initialize security audit logger
         audit_logger_ = std::make_shared<SecurityAuditLogger>();
 
-        // Initialize authentication service
-        auth_service_ = std::make_unique<AuthenticationService>();
+        // Initialize authentication service with isolated data directory
+        auth_service_ = std::make_unique<AuthenticationService>(test_data_dir_.string());
 
         AuthenticationConfig config;
         config.enable_api_keys = true;
@@ -37,9 +43,11 @@ protected:
     }
 
     void TearDown() override {
-        // Clean up is handled automatically
+        auth_service_.reset();
+        std::filesystem::remove_all(test_data_dir_);
     }
 
+    std::filesystem::path test_data_dir_;
     std::unique_ptr<AuthenticationService> auth_service_;
     std::shared_ptr<SecurityAuditLogger> audit_logger_;
     std::string test_user_id_;
