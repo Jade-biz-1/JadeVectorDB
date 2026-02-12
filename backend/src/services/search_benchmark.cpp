@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <numeric>
 #include <cmath>
+#include <sstream>
 
 namespace jadevectordb {
 

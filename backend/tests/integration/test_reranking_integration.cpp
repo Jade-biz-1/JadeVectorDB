@@ -88,6 +88,7 @@ protected:
         v1.metadata.source = "Machine learning algorithms are fundamental to artificial intelligence and data science applications";
   // Store text for reranking
         v1.metadata.category = "AI";
+        v1.metadata.status = "active";
         vectors_.push_back(v1);
 
         // Document 2: Medium-high relevance - related concepts
@@ -97,6 +98,7 @@ protected:
         v2.values = {0.9f, 0.1f, 0.0f, 0.0f};
         v2.metadata.source = "Deep learning neural networks use gradient descent optimization techniques for training";
         v2.metadata.category = "AI";
+        v2.metadata.status = "active";
         vectors_.push_back(v2);
 
         // Document 3: Medium relevance - tangentially related
@@ -106,6 +108,7 @@ protected:
         v3.values = {0.8f, 0.0f, 0.2f, 0.0f};
         v3.metadata.source = "Statistical analysis methods for data processing and pattern recognition in large datasets";
         v3.metadata.category = "Statistics";
+        v3.metadata.status = "active";
         vectors_.push_back(v3);
 
         // Document 4: Low relevance - different topic
@@ -115,6 +118,7 @@ protected:
         v4.values = {0.5f, 0.5f, 0.0f, 0.0f};
         v4.metadata.source = "Database management systems and SQL query optimization for relational databases";
         v4.metadata.category = "Database";
+        v4.metadata.status = "active";
         vectors_.push_back(v4);
 
         // Document 5: Very low relevance - unrelated
@@ -124,6 +128,7 @@ protected:
         v5.values = {0.0f, 0.0f, 0.0f, 1.0f};
         v5.metadata.source = "Cooking recipes and culinary techniques for Italian cuisine preparation";
         v5.metadata.category = "Cooking";
+        v5.metadata.status = "active";
         vectors_.push_back(v5);
 
         // Insert vectors

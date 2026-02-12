@@ -5,6 +5,7 @@
 #include <sstream>
 #include <cmath>
 #include <limits>
+#include <cstdlib>
 
 namespace jadedb {
 namespace search {
@@ -40,6 +41,12 @@ jadevectordb::Result<void> RerankingService::initialize() {
     SubprocessConfig subprocess_config;
     subprocess_config.model_name = config_.model_name;
     subprocess_config.batch_size = config_.batch_size;
+
+    // Allow overriding script path via environment variable (used by tests)
+    const char* script_path_env = std::getenv("RERANKING_SCRIPT_PATH");
+    if (script_path_env) {
+        subprocess_config.script_path = script_path_env;
+    }
 
     // Create and start subprocess
     subprocess_ = std::make_unique<SubprocessManager>(subprocess_config);
@@ -101,11 +108,12 @@ jadevectordb::Result<std::vector<RerankingResult>> RerankingService::rerank(
     auto rerank_result = rerank_batch(query, doc_ids, documents, original_scores);
 
     auto end_time = std::chrono::steady_clock::now();
-    auto latency_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+    auto latency_us = std::chrono::duration_cast<std::chrono::microseconds>(
         end_time - start_time
     ).count();
+    double latency_ms = static_cast<double>(latency_us) / 1000.0;
 
-    update_statistics(rerank_result.has_value(), static_cast<double>(latency_ms), documents.size());
+    update_statistics(rerank_result.has_value(), latency_ms, documents.size());
 
     return rerank_result;
 }

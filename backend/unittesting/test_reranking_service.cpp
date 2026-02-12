@@ -63,7 +63,7 @@ import sys
 import json
 
 # Send ready signal
-print(json.dumps({"status": "ready"}))
+print(json.dumps({"type": "ready", "model": "test-model"}))
 sys.stdout.flush()
 
 # Request loop
@@ -331,9 +331,10 @@ TEST_F(RerankingServiceTest, Statistics) {
     auto stats_before = service.get_statistics();
     EXPECT_EQ(stats_before.total_requests, 0);
 
-    // Perform reranking
-    auto result = service.rerank_batch("query", doc_ids_, documents_, original_scores_);
-    ASSERT_TRUE(result.has_value());
+    // Perform reranking (use rerank() which updates statistics, not rerank_batch())
+    auto result = service.rerank("query", search_results_, document_texts_);
+    ASSERT_TRUE(result.has_value()) << "Reranking should succeed: " <<
+        (result.has_value() ? "" : result.error().message);
 
     // Check updated stats
     auto stats_after = service.get_statistics();

@@ -88,7 +88,13 @@ Result<std::vector<SearchResult>> SimilaritySearchService::similarity_search(
     const SearchParams& params,
     const std::string& query_text,
     bool enable_reranking) const {
-    
+
+    if (!vector_storage_) {
+        return tl::make_unexpected(ErrorHandler::create_error(
+            ErrorCode::INVALID_STATE,
+            "Vector storage service not initialized"));
+    }
+
     // Validate parameters
     auto validation_result = validate_search_params(params);
     if (!validation_result.has_value()) {
@@ -240,7 +246,13 @@ Result<std::vector<SearchResult>> SimilaritySearchService::euclidean_search(
     const SearchParams& params,
     const std::string& query_text,
     bool enable_reranking) const {
-    
+
+    if (!vector_storage_) {
+        return tl::make_unexpected(ErrorHandler::create_error(
+            ErrorCode::INVALID_STATE,
+            "Vector storage service not initialized"));
+    }
+
     // Validate parameters
     auto validation_result = validate_search_params(params);
     if (!validation_result.has_value()) {
@@ -369,7 +381,13 @@ Result<std::vector<SearchResult>> SimilaritySearchService::dot_product_search(
     const SearchParams& params,
     const std::string& query_text,
     bool enable_reranking) const {
-    
+
+    if (!vector_storage_) {
+        return tl::make_unexpected(ErrorHandler::create_error(
+            ErrorCode::INVALID_STATE,
+            "Vector storage service not initialized"));
+    }
+
     // Validate parameters
     auto validation_result = validate_search_params(params);
     if (!validation_result.has_value()) {

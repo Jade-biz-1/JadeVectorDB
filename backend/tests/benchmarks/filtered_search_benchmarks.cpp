@@ -1,4 +1,3 @@
-#include <gtest/gtest.h>
 #include <benchmark/benchmark.h>
 #include <memory>
 #include <vector>

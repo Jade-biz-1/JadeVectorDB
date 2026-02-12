@@ -1144,33 +1144,84 @@ Result<std::vector<std::string>> SQLitePersistenceLayer::get_user_groups(const s
 
 // === Role Management Implementation ===
 
-Result<void> SQLitePersistenceLayer::assign_role_to_user(
-    const std::string& user_id,
-    const std::string& role_id) {
-    
+Result<std::string> SQLitePersistenceLayer::get_role_id_by_name(const std::string& role_name) {
     std::lock_guard<std::mutex> lock(db_mutex_);
-    
-    int64_t now = current_timestamp();
-    
-    const char* sql = "INSERT INTO user_roles (user_id, role_id, assigned_at) VALUES (?, ?, ?)";
-    
+
+    const char* sql = "SELECT role_id FROM roles WHERE role_name = ?";
+
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
     }
-    
-    sqlite3_bind_text(stmt, 1, user_id.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 2, role_id.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int64(stmt, 3, now);
-    
+
+    sqlite3_bind_text(stmt, 1, role_name.c_str(), -1, SQLITE_TRANSIENT);
+
+    rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+        std::string role_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        sqlite3_finalize(stmt);
+        return role_id;
+    }
+
+    sqlite3_finalize(stmt);
+    RETURN_ERROR(ErrorCode::NOT_FOUND, "Role not found with name: " + role_name);
+}
+
+Result<void> SQLitePersistenceLayer::create_role(const std::string& role_id, const std::string& role_name, const std::string& description) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+
+    const char* sql = "INSERT OR IGNORE INTO roles (role_id, role_name, description, is_system_role) VALUES (?, ?, ?, 0)";
+
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
+    }
+
+    sqlite3_bind_text(stmt, 1, role_id.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, role_name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, description.c_str(), -1, SQLITE_TRANSIENT);
+
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
-    
+
     if (rc != SQLITE_DONE) {
-        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to assign role to user");
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to create role: " + std::string(sqlite3_errmsg(db_)));
     }
-    
+
+    return {};
+}
+
+Result<void> SQLitePersistenceLayer::assign_role_to_user(
+    const std::string& user_id,
+    const std::string& role_id) {
+
+    {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+
+        int64_t now = current_timestamp();
+
+        const char* sql = "INSERT INTO user_roles (user_id, role_id, assigned_at) VALUES (?, ?, ?)";
+
+        sqlite3_stmt* stmt;
+        int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+        if (rc != SQLITE_OK) {
+            RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
+        }
+
+        sqlite3_bind_text(stmt, 1, user_id.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, role_id.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(stmt, 3, now);
+
+        rc = sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+
+        if (rc != SQLITE_DONE) {
+            RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to assign role to user");
+        }
+    } // Release db_mutex_ before calling log_audit_event (which also acquires it)
+
     // Log audit event for role assignment
     auto audit_result = log_audit_event(
         "system",  // TODO: Pass actual user_id who assigned role
@@ -1186,26 +1237,28 @@ Result<void> SQLitePersistenceLayer::assign_role_to_user(
 }
 
 Result<void> SQLitePersistenceLayer::revoke_role_from_user(const std::string& user_id, const std::string& role_id) {
-    std::lock_guard<std::mutex> lock(db_mutex_);
-    
-    const char* sql = "DELETE FROM user_roles WHERE user_id = ? AND role_id = ?";
-    
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
-    }
-    
-    sqlite3_bind_text(stmt, 1, user_id.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 2, role_id.c_str(), -1, SQLITE_TRANSIENT);
-    
-    rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    
-    if (rc != SQLITE_DONE) {
-        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to revoke role from user");
-    }
-    
+    {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+
+        const char* sql = "DELETE FROM user_roles WHERE user_id = ? AND role_id = ?";
+
+        sqlite3_stmt* stmt;
+        int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+        if (rc != SQLITE_OK) {
+            RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
+        }
+
+        sqlite3_bind_text(stmt, 1, user_id.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, role_id.c_str(), -1, SQLITE_TRANSIENT);
+
+        rc = sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+
+        if (rc != SQLITE_DONE) {
+            RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to revoke role from user");
+        }
+    } // Release db_mutex_ before calling log_audit_event
+
     // Log audit event for role revocation
     auto audit_result = log_audit_event(
         "system",  // TODO: Pass actual user_id who revoked role
@@ -1216,7 +1269,7 @@ Result<void> SQLitePersistenceLayer::revoke_role_from_user(const std::string& us
         true,
         "Revoked role " + role_id + " from user " + user_id
     );
-    
+
     return {};
 }
 
