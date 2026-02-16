@@ -93,13 +93,10 @@ void RestApiService::stop() {
         LOG_INFO(logger_, "Stopping REST API server");
         running_ = false;
 
-        // Stop the Crow app - with run_async(), this stops Crow's internal threads
+        // Stop the Crow app - stop_server() waits for the async thread to finish
         if (api_impl_) {
             api_impl_->stop_server();
         }
-
-        // Give Crow a moment to shutdown cleanly
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         LOG_INFO(logger_, "REST API server stopped");
     }
@@ -136,13 +133,10 @@ RestApiImpl::~RestApiImpl() {
     // Ensure Crow app is stopped before destruction
     if (app_ && !server_stopped_) {
         try {
-            app_->stop();
-            server_stopped_ = true;
+            stop_server();
         } catch (...) {
             // Ignore exceptions during shutdown
         }
-        // Give Crow threads time to finish
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 
@@ -239,9 +233,10 @@ bool RestApiImpl::initialize(int port) {
 void RestApiImpl::start_server() {
     if (app_) {
         LOG_INFO(logger_, "Starting Crow server on port " << server_port_);
-        // Use run_async() instead of run() to avoid Crow's signal handler conflicts
-        // This returns immediately and doesn't install signal handlers
-        app_->port(server_port_).multithreaded().run_async();
+        // Clear Crow's internal SIGINT/SIGTERM handlers to avoid conflicts with ours
+        app_->signal_clear();
+        // Use run_async() to avoid blocking; capture future for proper join on shutdown
+        server_future_ = app_->port(server_port_).multithreaded().run_async();
 
         // Wait for server to be ready before returning
         app_->wait_for_server_start();
@@ -254,6 +249,13 @@ void RestApiImpl::stop_server() {
         LOG_INFO(logger_, "Stopping Crow server");
         app_->stop();
         server_stopped_ = true;
+        // Wait for the async server thread to finish (up to 3 seconds)
+        if (server_future_.valid()) {
+            auto status = server_future_.wait_for(std::chrono::seconds(3));
+            if (status == std::future_status::timeout) {
+                LOG_WARN(logger_, "Crow server did not stop within 3 seconds");
+            }
+        }
     }
 }
 
@@ -283,6 +285,7 @@ void RestApiImpl::register_routes() {
         });
     
     app_->route_dynamic("/v1/databases/<string>")
+        .methods(crow::HTTPMethod::GET, crow::HTTPMethod::PUT, crow::HTTPMethod::DELETE)
         ([this](const crow::request& req, std::string database_id) {
             if (req.method == crow::HTTPMethod::GET) {
                 return handle_get_database_request(req, database_id);
@@ -298,6 +301,7 @@ void RestApiImpl::register_routes() {
     // GET /v1/databases/<id>/vectors - List vectors
     // POST /v1/databases/<id>/vectors - Store vector
     app_->route_dynamic("/v1/databases/<string>/vectors")
+        .methods(crow::HTTPMethod::GET, crow::HTTPMethod::POST)
         ([this](const crow::request& req, std::string database_id) {
             if (req.method == crow::HTTPMethod::GET) {
                 return handle_list_vectors_request(req, database_id);
@@ -307,6 +311,7 @@ void RestApiImpl::register_routes() {
             return crow::response(405, "Method not allowed");
         });
     app_->route_dynamic("/v1/databases/<string>/vectors/batch")
+        .methods(crow::HTTPMethod::POST)
         ([this](const crow::request& req, std::string database_id) {
             if (req.method == crow::HTTPMethod::POST) {
                 return handle_batch_store_vectors_request(req, database_id);
@@ -314,6 +319,7 @@ void RestApiImpl::register_routes() {
             return crow::response(405, "Method not allowed");
         });
     app_->route_dynamic("/v1/databases/<string>/vectors/batch-get")
+        .methods(crow::HTTPMethod::POST)
         ([this](const crow::request& req, std::string database_id) {
             if (req.method == crow::HTTPMethod::POST) {
                 return handle_batch_get_vectors_request(req, database_id);
@@ -322,6 +328,7 @@ void RestApiImpl::register_routes() {
         });
     
     app_->route_dynamic("/v1/databases/<string>/vectors/<string>")
+        .methods(crow::HTTPMethod::GET, crow::HTTPMethod::PUT, crow::HTTPMethod::DELETE)
         ([this](const crow::request& req, std::string database_id, std::string vector_id) {
             if (req.method == crow::HTTPMethod::GET) {
                 return handle_get_vector_request(req, database_id, vector_id);
@@ -341,6 +348,7 @@ void RestApiImpl::register_routes() {
             return handle_similarity_search_request(req, database_id);
         });
     app_->route_dynamic("/v1/databases/<string>/search/advanced")
+        .methods(crow::HTTPMethod::POST)
         ([this](const crow::request& req, std::string database_id) {
             if (req.method == crow::HTTPMethod::POST) {
                 return handle_advanced_search_request(req, database_id);
@@ -350,6 +358,7 @@ void RestApiImpl::register_routes() {
 
     // POST /v1/databases/<id>/search/hybrid - Hybrid search (vector + BM25)
     app_->route_dynamic("/v1/databases/<string>/search/hybrid")
+        .methods(crow::HTTPMethod::POST)
         ([this](const crow::request& req, std::string database_id) {
             if (req.method == crow::HTTPMethod::POST) {
                 return handle_hybrid_search_request(req, database_id);
@@ -360,6 +369,7 @@ void RestApiImpl::register_routes() {
     // BM25 Index Building endpoints
     // POST /v1/databases/<id>/bm25-index/build - Build BM25 index
     app_->route_dynamic("/v1/databases/<string>/bm25-index/build")
+        .methods(crow::HTTPMethod::POST)
         ([this](const crow::request& req, std::string database_id) {
             if (req.method == crow::HTTPMethod::POST) {
                 return handle_build_bm25_index_request(req, database_id);
@@ -378,6 +388,7 @@ void RestApiImpl::register_routes() {
 
     // POST /v1/databases/<id>/bm25-index/rebuild - Rebuild BM25 index
     app_->route_dynamic("/v1/databases/<string>/bm25-index/rebuild")
+        .methods(crow::HTTPMethod::POST)
         ([this](const crow::request& req, std::string database_id) {
             if (req.method == crow::HTTPMethod::POST) {
                 return handle_rebuild_bm25_index_request(req, database_id);
@@ -387,6 +398,7 @@ void RestApiImpl::register_routes() {
 
     // POST /v1/databases/<id>/bm25-index/documents - Add documents to index
     app_->route_dynamic("/v1/databases/<string>/bm25-index/documents")
+        .methods(crow::HTTPMethod::POST)
         ([this](const crow::request& req, std::string database_id) {
             if (req.method == crow::HTTPMethod::POST) {
                 return handle_add_bm25_documents_request(req, database_id);
@@ -397,6 +409,7 @@ void RestApiImpl::register_routes() {
     // Reranking endpoints
     // POST /v1/databases/<id>/search/rerank - Extended hybrid search with reranking
     app_->route_dynamic("/v1/databases/<string>/search/rerank")
+        .methods(crow::HTTPMethod::POST)
         ([this](const crow::request& req, std::string database_id) {
             if (req.method == crow::HTTPMethod::POST) {
                 return handle_rerank_search_request(req, database_id);
@@ -406,6 +419,7 @@ void RestApiImpl::register_routes() {
 
     // POST /v1/rerank - Standalone reranking (no database required)
     app_->route_dynamic("/v1/rerank")
+        .methods(crow::HTTPMethod::POST)
         ([this](const crow::request& req) {
             if (req.method == crow::HTTPMethod::POST) {
                 return handle_standalone_rerank_request(req);
@@ -415,6 +429,7 @@ void RestApiImpl::register_routes() {
 
     // GET/PUT /v1/databases/<id>/reranking/config - Reranking configuration
     app_->route_dynamic("/v1/databases/<string>/reranking/config")
+        .methods(crow::HTTPMethod::GET, crow::HTTPMethod::PUT)
         ([this](const crow::request& req, std::string database_id) {
             if (req.method == crow::HTTPMethod::GET) {
                 return handle_get_reranking_config_request(req, database_id);
@@ -426,6 +441,7 @@ void RestApiImpl::register_routes() {
 
     // Index management endpoints
     app_->route_dynamic("/v1/databases/<string>/indexes")
+        .methods(crow::HTTPMethod::GET, crow::HTTPMethod::POST)
         ([this](const crow::request& req, std::string database_id) {
             if (req.method == crow::HTTPMethod::POST) {
                 return handle_create_index_request(req, database_id);
@@ -435,6 +451,7 @@ void RestApiImpl::register_routes() {
             return crow::response(405, "Method not allowed");
         });
     app_->route_dynamic("/v1/databases/<string>/indexes/<string>")
+        .methods(crow::HTTPMethod::PUT, crow::HTTPMethod::DELETE)
         ([this](const crow::request& req, std::string database_id, std::string index_id) {
             if (req.method == crow::HTTPMethod::PUT) {
                 return handle_update_index_request(req, database_id, index_id);
@@ -446,6 +463,7 @@ void RestApiImpl::register_routes() {
     
     // Embedding generation endpoints
     app_->route_dynamic("/v1/embeddings/generate")
+        .methods(crow::HTTPMethod::POST)
         ([this](const crow::request& req) {
             if (req.method == crow::HTTPMethod::POST) {
                 return handle_generate_embedding_request(req);
@@ -528,6 +546,7 @@ void RestApiImpl::handle_shutdown() {
     LOG_DEBUG(logger_, "Setting up shutdown endpoint at /shutdown");
     
     app_->route_dynamic("/shutdown")
+    .methods(crow::HTTPMethod::POST)
     ([this](const crow::request& req) {
         try {
             // Extract API key from header (required for shutdown)
@@ -923,6 +942,14 @@ crow::response RestApiImpl::handle_list_vectors_request(const crow::request& req
             if (!vector.metadata.owner.empty()) metadata["owner"] = vector.metadata.owner;
             if (!vector.metadata.category.empty()) metadata["category"] = vector.metadata.category;
             if (!vector.metadata.status.empty()) metadata["status"] = vector.metadata.status;
+            // Include custom metadata fields
+            for (const auto& [key, value] : vector.metadata.custom) {
+                if (value.is_string()) {
+                    metadata[key] = value.get<std::string>();
+                } else {
+                    metadata[key] = value.dump();
+                }
+            }
             vec_obj["metadata"] = std::move(metadata);
 
             vectors_array[idx++] = std::move(vec_obj);
@@ -993,6 +1020,13 @@ crow::response RestApiImpl::handle_store_vector_request(const crow::request& req
             if (meta.has("owner")) vector_data.metadata.owner = meta["owner"].s();
             if (meta.has("category")) vector_data.metadata.category = meta["category"].s();
             if (meta.has("status")) vector_data.metadata.status = meta["status"].s();
+            // Store unrecognized fields in custom metadata map
+            for (auto& key : meta.keys()) {
+                std::string k = key;
+                if (k != "source" && k != "owner" && k != "category" && k != "status") {
+                    vector_data.metadata.custom[k] = nlohmann::json(meta[k].s());
+                }
+            }
         }
 
         // Set default status if not provided
@@ -1140,6 +1174,7 @@ crow::response RestApiImpl::handle_update_vector_request(const crow::request& re
         // Create a Vector object from JSON
         Vector vector_data;
         vector_data.id = vector_id;  // Ensure vector ID matches the path parameter
+        vector_data.databaseId = database_id;  // Required by validate()
         if (body_json["values"].t() != crow::json::type::List) {
             return crow::response(400, "{\"error\":\"Vector values must be an array\"}");
         }
@@ -1157,6 +1192,18 @@ crow::response RestApiImpl::handle_update_vector_request(const crow::request& re
             if (meta.has("owner")) vector_data.metadata.owner = meta["owner"].s();
             if (meta.has("category")) vector_data.metadata.category = meta["category"].s();
             if (meta.has("status")) vector_data.metadata.status = meta["status"].s();
+            // Store unrecognized fields in custom metadata map
+            for (auto& key : meta.keys()) {
+                std::string k = key;
+                if (k != "source" && k != "owner" && k != "category" && k != "status") {
+                    vector_data.metadata.custom[k] = nlohmann::json(meta[k].s());
+                }
+            }
+        }
+
+        // Set default status if not provided
+        if (vector_data.metadata.status.empty()) {
+            vector_data.metadata.status = "active";
         }
 
         // Update the vector using the service
@@ -3821,6 +3868,7 @@ void RestApiImpl::handle_analytics_routes() {
 
     // POST /v1/databases/{id}/analytics/feedback - Submit user feedback
     app_->route_dynamic("/v1/databases/<string>/analytics/feedback")
+        .methods(crow::HTTPMethod::POST)
         ([this](const crow::request& req, std::string database_id) {
             if (req.method != crow::HTTPMethod::POST) {
                 return crow::response(405, "Method not allowed");

@@ -198,6 +198,7 @@ private:
     
     // Crow app instance
     std::unique_ptr<crow::App<>> app_;
+    std::future<void> server_future_;  // Holds the async server thread for proper join on shutdown
     int server_port_;
     bool server_stopped_;  // Track if stop() has been called
 
