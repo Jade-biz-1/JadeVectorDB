@@ -142,24 +142,30 @@ class PersistentDatabasePersistence : public DatabasePersistenceInterface {
 private:
     std::unordered_map<std::string, Database> databases_;
     std::unordered_map<std::string, std::unordered_map<std::string, Index>> indexes_by_db_;
-    
+
+    // Per-vector metadata (not stored in .jvdb binary files)
+    std::unordered_map<std::string, std::unordered_map<std::string, Vector::Metadata>> vector_metadata_;
+    mutable std::shared_mutex vector_metadata_mutex_;
+
     std::unique_ptr<MemoryMappedVectorStore> vector_store_;
     std::string storage_path_;
-    
+
     mutable std::shared_mutex databases_mutex_;
     mutable std::shared_mutex indexes_mutex_;
-    
+
     std::shared_ptr<logging::Logger> logger_;
-    
+
     // Distributed services
     std::shared_ptr<ShardingService> sharding_service_;
     std::shared_ptr<QueryRouter> query_router_;
     std::shared_ptr<ReplicationService> replication_service_;
-    
+
     // Internal methods
     Result<void> load_databases_from_disk();
     Result<void> save_database_metadata(const Database& db);
     Result<Database> load_database_metadata(const std::string& database_id);
+    void save_vector_metadata(const std::string& database_id);
+    void load_vector_metadata(const std::string& database_id);
 
 public:
     explicit PersistentDatabasePersistence(

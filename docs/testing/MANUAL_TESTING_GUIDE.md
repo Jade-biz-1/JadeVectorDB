@@ -1,8 +1,8 @@
 # Manual Testing Guide - Persistent Vector Storage
 
-**Date:** December 29, 2025
+**Date:** February 13, 2026
 **Sprint:** 2.3 - Advanced Persistence Features (COMPLETE)
-**Latest Features:** Admin Shutdown Endpoint + Vector Listing Endpoint
+**Latest Features:** Graceful Shutdown Fix + Admin Shutdown Endpoint + Vector Listing Endpoint
 **Status:** Ready for Comprehensive Manual Testing
 
 ---
@@ -22,9 +22,25 @@ Ensure you have:
 
 **IMPORTANT**: The backend must be started with the development environment variable to enable default test users.
 
+#### Navigate to backend build directory and start server
+##### Linux:
 ```bash
 # Navigate to backend build directory
 cd /home/deepak/Public/JadeVectorDB/backend/build
+
+# Set environment to development (enables default users)
+export JADEVECTORDB_ENV=development
+
+# Start the backend server with logs to console
+# Note: Application logs go to logs/jadevectordb.log by default
+# To see logs in console, tail the log file in another terminal:
+# tail -f logs/jadevectordb.log
+./jadevectordb
+```
+##### Mac:
+```bash
+# Navigate to backend build directory
+cd /Users/Deepak/Public/JadeVectorDB/backend/build
 
 # Set environment to development (enables default users)
 export JADEVECTORDB_ENV=development
@@ -49,12 +65,21 @@ export JADEVECTORDB_ENV=development
 ```
 
 **Alternative**: Run in background
+##### Linux:
 ```bash
 # Start backend in background
 export JADEVECTORDB_ENV=development
 cd /home/deepak/Public/JadeVectorDB/backend/build
 ./jadevectordb &
-
+# Note the process ID for later shutdown
+echo $! > jadevectordb.pid
+```
+##### Mac:
+```bash
+# Start backend in background
+export JADEVECTORDB_ENV=development
+cd /Users/Deepak/Public/JadeVectorDB/backend/build
+./jadevectordb &
 # Note the process ID for later shutdown
 echo $! > jadevectordb.pid
 ```
@@ -73,9 +98,21 @@ curl http://localhost:8080/health
 
 Open a **new terminal** and run:
 
+##### Linux:
 ```bash
 # Navigate to frontend directory
 cd /home/deepak/Public/JadeVectorDB/frontend
+
+# Install dependencies (first time only)
+npm install
+
+# Start the development server
+npm run dev
+```
+##### Mac:
+```bash
+# Navigate to frontend directory
+cd /Users/Deepak/Public/JadeVectorDB/frontend
 
 # Install dependencies (first time only)
 npm install
@@ -161,18 +198,25 @@ curl http://localhost:8080/health
 - Should see dashboard after successful login
 
 **✅ Check Logs:**
+##### Linux:
 ```bash
 # Backend logs (in terminal where backend is running)
 # Should see no ERROR messages
-
 # Check log files (if configured)
 tail -f /home/deepak/Public/JadeVectorDB/backend/build/logs/*.log
+```
+##### Mac:
+```bash
+# Backend logs (in terminal where backend is running)
+# Should see no ERROR messages
+# Check log files (if configured)
+tail -f /Users/Deepak/Public/JadeVectorDB/backend/build/logs/*.log
 ```
 
 **✅ Test API Access:**
 ```bash
 # Test authentication endpoint
-curl -X POST http://localhost:8080/api/auth/login \
+curl -X POST http://localhost:8080/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}'
 
@@ -193,6 +237,26 @@ pkill jadevectordb
 
 # Check for build errors
 cd /home/deepak/Public/JadeVectorDB/backend
+./build.sh --no-tests --no-benchmarks
+```
+##### Linux:
+```bash
+# Check if port 8080 is already in use
+lsof -i :8080
+# Kill existing process if needed
+pkill jadevectordb
+# Check for build errors
+cd /home/deepak/Public/JadeVectorDB/backend
+./build.sh --no-tests --no-benchmarks
+```
+##### Mac:
+```bash
+# Check if port 8080 is already in use
+lsof -i :8080
+# Kill existing process if needed
+pkill jadevectordb
+# Check for build errors
+cd /Users/Deepak/Public/JadeVectorDB/backend
 ./build.sh --no-tests --no-benchmarks
 ```
 
@@ -240,7 +304,9 @@ cd /home/deepak/Public/JadeVectorDB/frontend
 npm run dev
 
 # STOP BACKEND (Graceful)
-# Option 1: Use the admin shutdown endpoint (recommended - NEW!)
+# Option 1: Press Ctrl+C in the backend terminal (recommended)
+# First Ctrl+C = graceful shutdown; second Ctrl+C = force exit
+# Option 2: Use the admin shutdown endpoint
 # First, get admin token
 TOKEN=$(curl -s -X POST http://localhost:8080/v1/auth/login \
   -H "Content-Type: application/json" \
@@ -248,11 +314,10 @@ TOKEN=$(curl -s -X POST http://localhost:8080/v1/auth/login \
 # Then shutdown
 curl -X POST http://localhost:8080/admin/shutdown \
   -H "Authorization: Bearer $TOKEN"
-# Option 2: Use the dashboard shutdown button (admin users only)
+# Option 3: Use the dashboard shutdown button (admin users only)
 # Login to http://localhost:3003/dashboard and click "Shutdown Server" button
-# Option 3: Send SIGTERM signal
+# Option 4: Send SIGTERM signal
 pkill -SIGTERM jadevectordb
-# Option 4: Press Ctrl+C in the backend terminal (may hang - avoid if possible)
 
 # STOP FRONTEND
 # Press Ctrl+C in terminal where npm is running
@@ -264,6 +329,75 @@ ps aux | grep "next dev"
 # VIEW LOGS
 tail -f /home/deepak/Public/JadeVectorDB/backend/build/logs/*.log
 ```
+
+---
+
+## Test Execution Reporting
+
+Use the test IDs below (MT-01 through MT-18) when reporting results. Copy-paste this template and fill in your results:
+
+```
+### Test Round: [date]
+### Build: [commit hash or build timestamp]
+### Tester: [name]
+
+| Test ID | Result | Notes |
+|---------|--------|-------|
+| MT-01   |        |       |
+| MT-02   |        |       |
+| MT-03   |        |       |
+| MT-04   |        |       |
+| MT-05   |        |       |
+| MT-06   |        |       |
+| MT-07   |        |       |
+| MT-08   |        |       |
+| MT-09   |        |       |
+| MT-10   |        |       |
+| MT-11   |        |       |
+| MT-12   |        |       |
+| MT-13   |        |       |
+| MT-14   |        |       |
+| MT-15   |        |       |
+| MT-16   |        |       |
+| MT-17   |        |       |
+| MT-18   |        |       |
+```
+
+**Result values:** PASS, FAIL, SKIP, BLOCKED
+
+**Example report:**
+```
+MT-01: PASS
+MT-02: PASS
+MT-03: FAIL - vectors missing after restart, only 8 of 10 found
+MT-17: PASS - clean exit in ~1s, immediate restart worked
+MT-18: SKIP - not tested this round
+```
+
+Paste your results and I will investigate any FAILs.
+
+### Test ID Quick Reference
+
+| ID    | Test Name                          | Category       |
+|-------|------------------------------------|----------------|
+| MT-01 | Basic Database Creation             | Core           |
+| MT-02 | Store Vectors                       | Core           |
+| MT-03 | Restart Persistence (CRITICAL)      | Core           |
+| MT-04 | Multiple Databases                  | Core           |
+| MT-05 | Update and Delete Operations        | Core           |
+| MT-06 | Large Dataset (1000+ vectors)       | Performance    |
+| MT-07 | Flush Operations                    | Core           |
+| MT-08 | Database Deletion                   | Core           |
+| MT-09 | Index Resize                        | Sprint 2.3     |
+| MT-10 | WAL Crash Recovery                  | Sprint 2.3     |
+| MT-11 | Snapshot Backup & Restore           | Sprint 2.3     |
+| MT-12 | Persistence Statistics              | Sprint 2.3     |
+| MT-13 | Data Integrity Verifier             | Sprint 2.3     |
+| MT-14 | Free List Space Reuse               | Sprint 2.3     |
+| MT-15 | Admin Shutdown Endpoint             | Admin          |
+| MT-16 | Vector Listing Endpoint             | API            |
+| MT-17 | Graceful Shutdown & Restart (NEW)   | Shutdown       |
+| MT-18 | Force Exit on Double Ctrl+C (NEW)   | Shutdown       |
 
 ---
 
@@ -319,7 +453,7 @@ tail -f /home/deepak/Public/JadeVectorDB/backend/build/logs/*.log
 
 ## Test Scenarios
 
-### Test 1: Basic Database Creation
+### MT-01: Basic Database Creation
 **Goal:** Verify that databases can be created and `.jvdb` files are generated
 
 **Steps:**
@@ -349,7 +483,7 @@ find /home/deepak/Public/JadeVectorDB/backend/build/data/ -name "*.jvdb" -ls
 
 ---
 
-### Test 2: Store Vectors
+### MT-02: Store Vectors
 **Goal:** Verify vectors can be stored and retrieved
 
 **Steps:**
@@ -379,7 +513,7 @@ ls -lh $(find /home/deepak/Public/JadeVectorDB/backend/build/data/ -name "*.jvdb
 
 ---
 
-### Test 3: Restart Persistence (CRITICAL TEST)
+### MT-03: Restart Persistence (CRITICAL TEST)
 **Goal:** Verify data survives server restart
 
 **Steps:**
@@ -416,7 +550,7 @@ ls -lh $(find /home/deepak/Public/JadeVectorDB/backend/build/data/ -name "*.jvdb
 
 ---
 
-### Test 4: Multiple Databases
+### MT-04: Multiple Databases
 **Goal:** Verify independent storage for multiple databases
 
 **Steps:**
@@ -446,7 +580,7 @@ find /home/deepak/Public/JadeVectorDB/backend/build/data/ -name "*.jvdb" -exec l
 
 ---
 
-### Test 5: Update and Delete Operations
+### MT-05: Update and Delete Operations
 **Goal:** Verify updates and deletes persist
 
 **Steps:**
@@ -466,7 +600,7 @@ find /home/deepak/Public/JadeVectorDB/backend/build/data/ -name "*.jvdb" -exec l
 
 ---
 
-### Test 6: Large Dataset (Optional - Time Permitting)
+### MT-06: Large Dataset (Optional - Time Permitting)
 **Goal:** Verify performance with larger datasets
 
 **Steps:**
@@ -484,7 +618,7 @@ find /home/deepak/Public/JadeVectorDB/backend/build/data/ -name "*.jvdb" -exec l
 
 ---
 
-### Test 7: Flush Operations
+### MT-07: Flush Operations
 **Goal:** Verify manual and automatic flushing
 
 **Steps:**
@@ -500,7 +634,7 @@ find /home/deepak/Public/JadeVectorDB/backend/build/data/ -name "*.jvdb" -exec l
 
 ---
 
-### Test 8: Database Deletion
+### MT-08: Database Deletion
 **Goal:** Verify `.jvdb` files are deleted when database is deleted
 
 **Steps:**
@@ -526,7 +660,7 @@ find /home/deepak/Public/JadeVectorDB/backend/build/data/ -name "*.jvdb"
 
 ---
 
-### Test 9: Index Resize (Sprint 2.3 - Critical Bug Fixed ✅)
+### MT-09: Index Resize (Sprint 2.3 - Critical Bug Fixed)
 **Goal:** Verify automatic index capacity growth preserves data integrity
 
 **Steps:**
@@ -547,7 +681,7 @@ find /home/deepak/Public/JadeVectorDB/backend/build/data/ -name "*.jvdb"
 
 ---
 
-### Test 10: Write-Ahead Log (WAL) - Crash Recovery
+### MT-10: Write-Ahead Log (WAL) - Crash Recovery
 **Goal:** Verify WAL enables crash recovery
 
 **Steps:**
@@ -575,7 +709,7 @@ pkill -9 jadevectordb
 
 ---
 
-### Test 11: Snapshot Manager - Backup & Restore
+### MT-11: Snapshot Manager - Backup & Restore
 **Goal:** Verify snapshot creation and restoration
 
 **Steps:**
@@ -595,7 +729,7 @@ pkill -9 jadevectordb
 
 ---
 
-### Test 12: Persistence Statistics
+### MT-12: Persistence Statistics
 **Goal:** Verify operation tracking and statistics
 
 **Steps:**
@@ -615,7 +749,7 @@ pkill -9 jadevectordb
 
 ---
 
-### Test 13: Data Integrity Verifier
+### MT-13: Data Integrity Verifier
 **Goal:** Verify integrity checking and repair
 
 **Steps:**
@@ -633,7 +767,7 @@ pkill -9 jadevectordb
 
 ---
 
-### Test 14: Free List - Space Reuse
+### MT-14: Free List - Space Reuse
 **Goal:** Verify deleted space is reused efficiently
 
 **Steps:**
@@ -725,26 +859,30 @@ watch -n 2 'ps aux | grep jadevectordb | grep -v grep'
 ## Success Criteria
 
 ### Must Pass (Core Persistence - Sprint 2.1):
-- [ ] Test 1: Database creation with `.jvdb` file
-- [ ] Test 2: Vector storage and retrieval
-- [ ] Test 3: **Data persists after restart** (CRITICAL)
-- [ ] Test 4: Multiple databases work independently
-- [ ] Test 5: Updates and deletes persist
-- [ ] Test 8: Database deletion removes `.jvdb` file
+- [ ] MT-01: Database creation with `.jvdb` file
+- [ ] MT-02: Vector storage and retrieval
+- [ ] MT-03: **Data persists after restart** (CRITICAL)
+- [ ] MT-04: Multiple databases work independently
+- [ ] MT-05: Updates and deletes persist
+- [ ] MT-08: Database deletion removes `.jvdb` file
 
 ### Must Pass (Advanced Features - Sprint 2.3):
-- [ ] Test 9: **Index resize preserves data** (CRITICAL - bug fixed)
-- [ ] Test 10: WAL provides crash recovery
-- [ ] Test 11: Snapshot backup and restore
-- [ ] Test 12: Statistics tracking works
-- [ ] Test 13: Integrity verifier detects issues
-- [ ] Test 14: Free list reuses space efficiently
-- [ ] Test 15: **Admin shutdown endpoint** (NEW - December 26, 2025)
-- [ ] Test 16: **Vector listing endpoint** (NEW - December 29, 2025)
+- [ ] MT-09: **Index resize preserves data** (CRITICAL)
+- [ ] MT-10: WAL provides crash recovery
+- [ ] MT-11: Snapshot backup and restore
+- [ ] MT-12: Statistics tracking works
+- [ ] MT-13: Integrity verifier detects issues
+- [ ] MT-14: Free list reuses space efficiently
+- [ ] MT-15: Admin shutdown endpoint
+- [ ] MT-16: Vector listing endpoint
+
+### Must Pass (Shutdown - February 2026):
+- [ ] MT-17: **Graceful shutdown & immediate restart** (CRITICAL)
+- [ ] MT-18: Force exit on double Ctrl+C
 
 ### Should Pass:
-- [ ] Test 6: Can handle 1,000+ vectors
-- [ ] Test 7: Auto-flush works
+- [ ] MT-06: Can handle 1,000+ vectors
+- [ ] MT-07: Auto-flush works
 
 ### Nice to Have:
 - [ ] Performance: Sub-second retrieval for 10K vectors
@@ -800,7 +938,7 @@ Test 3: Restart Persistence
 
 ---
 
-### Test 15: Admin Shutdown Endpoint (NEW - December 26, 2025)
+### MT-15: Admin Shutdown Endpoint
 **Goal:** Verify graceful server shutdown via admin endpoint
 
 **Steps:**
@@ -853,7 +991,7 @@ grep -i shutdown /tmp/jadedb.log
 
 ---
 
-### Test 16: Vector Listing Endpoint (NEW - December 29, 2025)
+### MT-16: Vector Listing Endpoint
 **Goal:** Verify the vector listing endpoint works correctly with pagination and filtering
 
 **Steps:**
@@ -932,6 +1070,80 @@ curl -s -X GET "http://localhost:8080/v1/databases/list_test/vectors" \
   -H "Authorization: Bearer $TOKEN" | jq '.total_count'
 # Expected: 25
 ```
+
+---
+
+### MT-17: Graceful Shutdown & Immediate Restart (NEW - February 2026)
+**Goal:** Verify Ctrl+C cleanly stops the server and the port is immediately available for restart
+
+**Steps:**
+1. Start the server:
+   ```bash
+   cd /Users/Deepak/Public/JadeVectorDB/backend/build
+   rm -rf data && export JADEVECTORDB_ENV=development
+   ./jadevectordb
+   ```
+2. Verify healthcheck:
+   ```bash
+   curl http://localhost:8080/health
+   ```
+3. Press Ctrl+C once in the server terminal
+4. Observe the shutdown message
+5. Immediately restart:
+   ```bash
+   ./jadevectordb
+   ```
+6. Verify healthcheck again:
+   ```bash
+   curl http://localhost:8080/health
+   ```
+
+**Expected Results:**
+- Server prints: `Shutting down... (press Ctrl+C again to force)`
+- Server process exits within 3 seconds
+- No need for `pkill` or `kill -9`
+- Immediate restart binds port 8080 without errors
+- Healthcheck returns `{"status": "healthy"}` after restart
+- No "Address already in use" errors
+
+**Verification:**
+```bash
+# After Ctrl+C, verify no lingering processes
+ps aux | grep jadevectordb | grep -v grep
+# Should show no results (process fully exited)
+
+# Verify port is free
+lsof -i :8080
+# Should show no results
+```
+
+---
+
+### MT-18: Force Exit on Double Ctrl+C (NEW - February 2026)
+**Goal:** Verify that pressing Ctrl+C twice forces immediate exit when graceful shutdown hangs
+
+**Steps:**
+1. Start the server:
+   ```bash
+   cd /Users/Deepak/Public/JadeVectorDB/backend/build
+   rm -rf data && export JADEVECTORDB_ENV=development
+   ./jadevectordb
+   ```
+2. Verify healthcheck:
+   ```bash
+   curl http://localhost:8080/health
+   ```
+3. Press Ctrl+C once - observe "Shutting down..." message
+4. Immediately press Ctrl+C again (within 1 second)
+5. Observe output
+
+**Expected Results:**
+- First Ctrl+C prints: `Shutting down... (press Ctrl+C again to force)`
+- Second Ctrl+C prints: `Forced shutdown.`
+- Process exits immediately (via `_exit(1)`)
+- Port is released
+
+**Note:** The force exit is a safety net for cases where graceful shutdown gets stuck. Under normal conditions, MT-17 (single Ctrl+C) should be sufficient.
 
 ---
 

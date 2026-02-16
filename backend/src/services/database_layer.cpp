@@ -851,7 +851,10 @@ Result<void> PersistentDatabasePersistence::load_databases_from_disk() {
             // Store in memory
             databases_[database_id] = *metadata_result;
             indexes_by_db_[database_id] = std::unordered_map<std::string, Index>();
-            
+
+            // Load vector metadata sidecar file
+            load_vector_metadata(database_id);
+
             loaded_count++;
             LOG_INFO(logger_, "Loaded database: " << metadata_result->name << " (ID: " << database_id << ")");
         }
@@ -863,6 +866,64 @@ Result<void> PersistentDatabasePersistence::load_databases_from_disk() {
     LOG_INFO(logger_, "Database loading complete. Loaded: " << loaded_count << ", Failed: " << failed_count);
     
     return {};
+}
+
+void PersistentDatabasePersistence::save_vector_metadata(const std::string& database_id) {
+    try {
+        std::shared_lock<std::shared_mutex> lock(vector_metadata_mutex_);
+        auto it = vector_metadata_.find(database_id);
+        if (it == vector_metadata_.end() || it->second.empty()) return;
+
+        std::string meta_file = storage_path_ + "/" + database_id + "/vector_metadata.json";
+        nlohmann::json j = nlohmann::json::object();
+        for (const auto& [vec_id, meta] : it->second) {
+            nlohmann::json m;
+            if (!meta.source.empty()) m["source"] = meta.source;
+            if (!meta.owner.empty()) m["owner"] = meta.owner;
+            if (!meta.category.empty()) m["category"] = meta.category;
+            if (!meta.status.empty()) m["status"] = meta.status;
+            for (const auto& [k, v] : meta.custom) {
+                m["_custom"][k] = v;
+            }
+            j[vec_id] = m;
+        }
+        std::ofstream file(meta_file);
+        if (file.is_open()) {
+            file << j.dump(2);
+        }
+    } catch (const std::exception& e) {
+        LOG_WARN(logger_, "Failed to save vector metadata for " << database_id << ": " << e.what());
+    }
+}
+
+void PersistentDatabasePersistence::load_vector_metadata(const std::string& database_id) {
+    try {
+        std::string meta_file = storage_path_ + "/" + database_id + "/vector_metadata.json";
+        if (!std::filesystem::exists(meta_file)) return;
+
+        std::ifstream file(meta_file);
+        if (!file.is_open()) return;
+
+        nlohmann::json j = nlohmann::json::parse(file);
+        std::unique_lock<std::shared_mutex> lock(vector_metadata_mutex_);
+        auto& db_meta = vector_metadata_[database_id];
+        for (auto& [vec_id, m] : j.items()) {
+            Vector::Metadata meta;
+            if (m.contains("source")) meta.source = m["source"].get<std::string>();
+            if (m.contains("owner")) meta.owner = m["owner"].get<std::string>();
+            if (m.contains("category")) meta.category = m["category"].get<std::string>();
+            if (m.contains("status")) meta.status = m["status"].get<std::string>();
+            if (m.contains("_custom")) {
+                for (auto& [k, v] : m["_custom"].items()) {
+                    meta.custom[k] = v;
+                }
+            }
+            db_meta[vec_id] = meta;
+        }
+        LOG_DEBUG(logger_, "Loaded " << db_meta.size() << " vector metadata entries for " << database_id);
+    } catch (const std::exception& e) {
+        LOG_WARN(logger_, "Failed to load vector metadata for " << database_id << ": " << e.what());
+    }
 }
 
 Result<std::string> PersistentDatabasePersistence::create_database(const Database& db) {
@@ -990,7 +1051,14 @@ Result<void> PersistentDatabasePersistence::store_vector(const std::string& data
     if (!vector_store_->store_vector(database_id, vector.id, vector.values)) {
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to store vector in persistent storage");
     }
-    
+
+    // Store metadata in sidecar
+    {
+        std::unique_lock<std::shared_mutex> lock(vector_metadata_mutex_);
+        vector_metadata_[database_id][vector.id] = vector.metadata;
+    }
+    save_vector_metadata(database_id);
+
     LOG_DEBUG(logger_, "Stored vector " << vector.id << " in database " << database_id);
     return {};
 }
@@ -1015,7 +1083,19 @@ Result<Vector> PersistentDatabasePersistence::retrieve_vector(const std::string&
     vec.id = vector_id;
     vec.values = *values;
     vec.databaseId = database_id;
-    
+
+    // Attach metadata from sidecar
+    {
+        std::shared_lock<std::shared_mutex> lock(vector_metadata_mutex_);
+        auto db_it = vector_metadata_.find(database_id);
+        if (db_it != vector_metadata_.end()) {
+            auto meta_it = db_it->second.find(vector_id);
+            if (meta_it != db_it->second.end()) {
+                vec.metadata = meta_it->second;
+            }
+        }
+    }
+
     return vec;
 }
 
@@ -1035,16 +1115,25 @@ Result<std::vector<Vector>> PersistentDatabasePersistence::retrieve_vectors(
     auto results = vector_store_->batch_retrieve(database_id, vector_ids);
     
     std::vector<Vector> vectors;
+    std::shared_lock<std::shared_mutex> meta_lock(vector_metadata_mutex_);
+    auto meta_db_it = vector_metadata_.find(database_id);
     for (size_t i = 0; i < results.size(); i++) {
         if (results[i].has_value()) {
             Vector vec;
             vec.id = vector_ids[i];
             vec.values = *results[i];
             vec.databaseId = database_id;
+            // Attach metadata from sidecar
+            if (meta_db_it != vector_metadata_.end()) {
+                auto meta_it = meta_db_it->second.find(vector_ids[i]);
+                if (meta_it != meta_db_it->second.end()) {
+                    vec.metadata = meta_it->second;
+                }
+            }
             vectors.push_back(vec);
         }
     }
-    
+
     return vectors;
 }
 
@@ -1065,7 +1154,17 @@ Result<void> PersistentDatabasePersistence::delete_vector(const std::string& dat
     if (!vector_store_->delete_vector(database_id, vector_id)) {
         RETURN_ERROR(ErrorCode::NOT_FOUND, "Vector not found: " + vector_id);
     }
-    
+
+    // Remove metadata from sidecar
+    {
+        std::unique_lock<std::shared_mutex> lock(vector_metadata_mutex_);
+        auto it = vector_metadata_.find(database_id);
+        if (it != vector_metadata_.end()) {
+            it->second.erase(vector_id);
+        }
+    }
+    save_vector_metadata(database_id);
+
     LOG_DEBUG(logger_, "Deleted vector " << vector_id << " from database " << database_id);
     return {};
 }
