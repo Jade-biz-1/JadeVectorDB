@@ -341,9 +341,16 @@ public:
 // IMPORTANT: This must be async-signal-safe (no I/O, no heap allocation, etc.)
 void shutdown_signal_handler(int signal) {
     if (signal == SIGINT || signal == SIGTERM) {
-        // Use write() instead of cout (async-signal-safe)
-        const char* msg = "\nReceived shutdown signal. Shutting down gracefully...\n";
-        (void)write(STDOUT_FILENO, msg, strlen(msg));  // Cast to void to ignore return value
+        if (g_shutdown_requested.load(std::memory_order_acquire)) {
+            // Second signal - force exit immediately
+            const char* msg = "\nForced shutdown.\n";
+            (void)write(STDOUT_FILENO, msg, strlen(msg));
+            _exit(1);
+        }
+
+        // First signal - graceful shutdown
+        const char* msg = "\nShutting down... (press Ctrl+C again to force)\n";
+        (void)write(STDOUT_FILENO, msg, strlen(msg));
 
         // Set atomic flag
         g_shutdown_requested.store(true, std::memory_order_release);
