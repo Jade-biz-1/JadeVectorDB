@@ -231,24 +231,21 @@ done
 - `ef_construction`: Size of dynamic candidate list (higher = better quality, slower build)
 
 ```bash
-# Create HNSW databases with different M values
-jade-db create-db \
-  --name hnsw_m_8 \
-  --dimension 8 \
-  --index-type HNSW \
-  --index-params '{"M": 8, "ef_construction": 100}'
+# Create HNSW databases and configure indexes with different M values
+jade-db create-db --name hnsw_m_8 --dimension 8 --index-type HNSW
+jade-db create-index --database-id hnsw_m_8 --index-type HNSW \
+  --name hnsw_m8 --parameters '{"M": 8, "ef_construction": 100}'
 
-jade-db create-db \
-  --name hnsw_m_16 \
-  --dimension 8 \
-  --index-type HNSW \
-  --index-params '{"M": 16, "ef_construction": 100}'
+jade-db create-db --name hnsw_m_16 --dimension 8 --index-type HNSW
+jade-db create-index --database-id hnsw_m_16 --index-type HNSW \
+  --name hnsw_m16 --parameters '{"M": 16, "ef_construction": 100}'
 
-jade-db create-db \
-  --name hnsw_m_32 \
-  --dimension 8 \
-  --index-type HNSW \
-  --index-params '{"M": 32, "ef_construction": 100}'
+jade-db create-db --name hnsw_m_32 --dimension 8 --index-type HNSW
+jade-db create-index --database-id hnsw_m_32 --index-type HNSW \
+  --name hnsw_m32 --parameters '{"M": 32, "ef_construction": 100}'
+
+# Verify indexes were created
+jade-db list-indexes --database-id hnsw_m_16
 ```
 
 **Parameter Guidelines:**
@@ -263,24 +260,21 @@ jade-db create-db \
 - `nprobe`: Number of clusters to search (higher = more accurate, slower)
 
 ```bash
-# Create IVF databases with different nlist values
-jade-db create-db \
-  --name ivf_nlist_10 \
-  --dimension 8 \
-  --index-type IVF \
-  --index-params '{"nlist": 10, "nprobe": 1}'
+# Create IVF databases and configure indexes with different nlist values
+jade-db create-db --name ivf_nlist_10 --dimension 8 --index-type IVF
+jade-db create-index --database-id ivf_nlist_10 --index-type IVF \
+  --parameters '{"nlist": 10, "nprobe": 1}'
 
-jade-db create-db \
-  --name ivf_nlist_50 \
-  --dimension 8 \
-  --index-type IVF \
-  --index-params '{"nlist": 50, "nprobe": 3}'
+jade-db create-db --name ivf_nlist_50 --dimension 8 --index-type IVF
+jade-db create-index --database-id ivf_nlist_50 --index-type IVF \
+  --parameters '{"nlist": 50, "nprobe": 3}'
 
-jade-db create-db \
-  --name ivf_nlist_100 \
-  --dimension 8 \
-  --index-type IVF \
-  --index-params '{"nlist": 100, "nprobe": 5}'
+jade-db create-db --name ivf_nlist_100 --dimension 8 --index-type IVF
+jade-db create-index --database-id ivf_nlist_100 --index-type IVF \
+  --parameters '{"nlist": 100, "nprobe": 5}'
+
+# List indexes on one database
+jade-db list-indexes --database-id ivf_nlist_50
 ```
 
 **Parameter Guidelines:**
@@ -333,10 +327,10 @@ echo "  Build time: $((end - start)) seconds"
 **Task:** Estimate memory usage for different index types.
 
 ```bash
-# Check database sizes (if exposed by API)
+# Check database info for each index type
 for db in index_flat index_hnsw index_ivf index_lsh; do
   echo "Database: $db"
-  jade-db stats --database-id "$db" | grep -i "memory\|size"
+  jade-db get-db --database-id "$db"
   echo ""
 done
 ```

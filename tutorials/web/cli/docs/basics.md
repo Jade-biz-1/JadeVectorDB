@@ -214,5 +214,8 @@ Congratulations! You've completed the basic tutorial. Now you can:
 2. Experiment with different index types (HNSW, IVF, LSH, FLAT)
 3. Explore batch operations for storing multiple vectors at once
 4. Learn about metadata filtering for more sophisticated searches
+5. Use `list-vectors` to browse vectors in a database with pagination
+6. Try `batch-get` to retrieve multiple vectors at once by ID
+7. Explore the **Advanced CLI Tutorial** for index management, API keys, hybrid search, and more
 
 For more examples, check out the examples directory in the repository.
