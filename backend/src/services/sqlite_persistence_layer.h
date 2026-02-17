@@ -116,6 +116,7 @@ public:
     Result<APIKey> get_api_key_by_id(const std::string& api_key_id);
     Result<APIKey> get_api_key_by_prefix(const std::string& key_prefix);
     Result<std::vector<APIKey>> list_user_api_keys(const std::string& user_id);
+    Result<std::vector<APIKey>> list_all_api_keys();
     Result<void> revoke_api_key(const std::string& api_key_id);
     Result<void> update_api_key_usage(const std::string& api_key_id);
     

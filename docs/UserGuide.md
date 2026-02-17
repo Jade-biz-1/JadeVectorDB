@@ -557,6 +557,8 @@ curl -X DELETE http://localhost:8080/v1/users/user_john_doe \
 
 ## API Key Management
 
+API keys are persisted in the database and survive server restarts. Each key is stored as a SHA-256 hash — the raw key value is only shown once at creation time.
+
 ### Creating API Keys
 
 **Via API**:
@@ -565,6 +567,7 @@ curl -X POST http://localhost:8080/v1/api-keys \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
+    "user_id": "user_admin_default",
     "description": "Production API Key",
     "permissions": ["read", "write"],
     "validity_days": 90
@@ -574,13 +577,15 @@ curl -X POST http://localhost:8080/v1/api-keys \
 Response:
 ```json
 {
-  "api_key": "jvdb_a1b2c3d4e5f6g7h8i9j0",
-  "key_id": "key_123456",
-  "expires_at": "2025-02-28T12:00:00Z"
+  "api_key": "jadevdb_a1b2c3d4e5f6g7h8",
+  "user_id": "user_admin_default",
+  "description": "Production API Key",
+  "message": "API key created successfully",
+  "created_at": "2026-02-16T12:00:00Z"
 }
 ```
 
-**IMPORTANT**: Save the `api_key` value immediately. You won't be able to retrieve it again!
+**IMPORTANT**: Save the `api_key` value immediately. You won't be able to retrieve it again! Subsequent list calls only return the key prefix (`jadevdb_a1b2`) for identification.
 
 **Via Web UI**:
 1. Navigate to "API Keys"
@@ -592,22 +597,67 @@ Response:
 4. Click "Create"
 5. **Copy the generated key immediately** - it won't be shown again
 
+### Listing API Keys
+
+```bash
+# List all keys
+curl http://localhost:8080/v1/api-keys \
+  -H "Authorization: Bearer $TOKEN"
+
+# List keys for a specific user
+curl "http://localhost:8080/v1/api-keys?user_id=user_admin_default" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Response:
+```json
+{
+  "api_keys": [
+    {
+      "key_id": "abc123",
+      "key_prefix": "jadevdb_a1b2",
+      "description": "Production API Key",
+      "user_id": "user_admin_default",
+      "is_active": true,
+      "created_at": 1739700000,
+      "expires_at": 1747476000,
+      "last_used_at": 0,
+      "usage_count": 0,
+      "permissions": ["read", "write"]
+    }
+  ],
+  "count": 1
+}
+```
+
 ### Using API Keys
 
 Instead of a JWT token, you can use an API key for authentication:
 
 ```bash
 curl -X GET http://localhost:8080/v1/databases \
-  -H "X-API-Key: jvdb_a1b2c3d4e5f6g7h8i9j0"
+  -H "X-API-Key: jadevdb_a1b2c3d4e5f6g7h8"
 ```
 
 ### Revoking API Keys
 
+Use the `key_id` (database ID) from the list response, not the raw key value:
+
 **Via API**:
 ```bash
-curl -X DELETE http://localhost:8080/v1/api-keys/key_123456 \
+curl -X DELETE http://localhost:8080/v1/api-keys/abc123 \
   -H "Authorization: Bearer $TOKEN"
 ```
+
+Response:
+```json
+{
+  "key_id": "abc123",
+  "message": "API key revoked successfully"
+}
+```
+
+Revoked keys remain in list results with `is_active: false` but can no longer be used for authentication.
 
 **Via Web UI**:
 1. Navigate to "API Keys"

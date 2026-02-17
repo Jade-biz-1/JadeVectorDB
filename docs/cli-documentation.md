@@ -64,24 +64,62 @@ jade-db --url http://localhost:8080 --api-key mykey123 [command] [options]
 **Database Management:**
 - `create-db` - Create a new database
 - `list-dbs` - List all databases
+- `get-db` - Get database information
+- `delete-db` - Delete a database
+- `update-db` - Update a database's name, description, dimension, or index type
 
 **Vector Operations:**
 - `store` - Store a vector
 - `retrieve` - Retrieve a vector
+- `delete` - Delete a vector
+- `list-vectors` - List/paginate vectors in a database
+- `update-vector` - Update vector values and/or metadata
+- `batch-get` - Batch retrieve vectors by IDs
 - `search` - Perform similarity search
+- `advanced-search` - Advanced filtered search with metadata/value inclusion options
+- `hybrid-search` - Hybrid search combining vector and keyword search
+
+**Search & Reranking:**
+- `rerank-search` - Search with reranking
+- `rerank` - Standalone document reranking
+
+**Index Management:**
+- `create-index` - Create an index on a database
+- `list-indexes` - List all indexes for a database
+- `delete-index` - Delete an index
+
+**Embeddings:**
+- `generate-embedding` - Generate vector embeddings from text
+
+**API Key Management:**
+- `create-api-key` - Create a new API key
+- `list-api-keys` - List API keys (optionally filtered by user)
+- `revoke-api-key` - Revoke an API key
 
 **User Management:**
-- `user-add <email> <role>` - Add a new user
+- `user-add <username> --role <role>` - Add a new user
 - `user-list` - List all users
-- `user-show <email>` - Show user details
-- `user-update <email>` - Update user information
-- `user-delete <email>` - Delete a user
-- `user-activate <email>` - Activate a user
-- `user-deactivate <email>` - Deactivate a user
+- `user-show <user_id>` - Show user details
+- `user-update <user_id>` - Update user information
+- `user-delete <user_id>` - Delete a user
+- `user-activate <user_id>` - Activate a user
+- `user-deactivate <user_id>` - Deactivate a user
+- `change-password` - Change a user's password
+
+**Security & Audit:**
+- `audit-log` - View audit log entries
+
+**Analytics:**
+- `analytics-stats` - View analytics statistics for a database
 
 **Bulk Operations:**
-- `import <database-id> <file>` - Import vectors from file (JSON/CSV)
-- `export <database-id> <file>` - Export vectors to file (JSON/CSV)
+- `import` - Import vectors from file (JSON/CSV)
+- `export` - Export vectors to file (JSON/CSV)
+
+**Hybrid Search (BM25):**
+- `hybrid-build` - Build BM25 index for hybrid search
+- `hybrid-status` - Get BM25 index build status
+- `hybrid-rebuild` - Rebuild BM25 index from scratch
 
 **System Operations:**
 - `health` - Get system health
@@ -93,6 +131,65 @@ All list and query commands support `--format` flag:
 - `--format yaml` (requires PyYAML)
 - `--format table` (requires tabulate)
 - `--format csv`
+
+#### Advanced Features
+
+**Analytics:**
+```bash
+# View analytics stats for a database
+jade-db analytics-stats --database-id my-db --granularity daily
+
+# View analytics with time range
+jade-db analytics-stats --database-id my-db --start-time 2026-01-01T00:00:00Z --end-time 2026-02-01T00:00:00Z
+```
+
+**API Key Management:**
+```bash
+# Create an API key
+jade-db create-api-key --user-id user-123 --description "Production key" --validity-days 90
+
+# List API keys for a user
+jade-db list-api-keys --user-id user-123
+
+# Revoke an API key
+jade-db revoke-api-key --key-id key-456
+```
+
+**Index Management:**
+```bash
+# Create an HNSW index
+jade-db create-index --database-id my-db --index-type HNSW --name my-index --parameters '{"M": 16}'
+
+# List indexes
+jade-db list-indexes --database-id my-db
+
+# Delete an index
+jade-db delete-index --database-id my-db --index-id idx-123
+```
+
+**Reranking:**
+```bash
+# Search with reranking
+jade-db rerank-search --database-id my-db --query-text "vector databases" --top-k 5
+
+# Standalone reranking
+jade-db rerank --query "best databases" --documents '[{"id":"1","text":"Vector DB guide"},{"id":"2","text":"SQL tutorial"}]'
+```
+
+**Embeddings:**
+```bash
+# Generate embeddings from text
+jade-db generate-embedding --text "What is a vector database?"
+```
+
+**Audit & Security:**
+```bash
+# View audit log
+jade-db audit-log --limit 50
+
+# View audit log filtered by user
+jade-db audit-log --user-id user-123 --event-type login
+```
 
 ### Shell CLI (`/cli/shell/`)
 
@@ -270,10 +367,42 @@ All CLIs interact with these API endpoints:
 - `POST /v1/databases` - Create database
 - `GET /v1/databases` - List databases
 - `GET /v1/databases/{id}` - Get database
+- `PUT /v1/databases/{id}` - Update database
+- `DELETE /v1/databases/{id}` - Delete database
 - `POST /v1/databases/{id}/vectors` - Store vector
+- `GET /v1/databases/{id}/vectors` - List vectors
 - `GET /v1/databases/{id}/vectors/{vectorId}` - Retrieve vector
+- `PUT /v1/databases/{id}/vectors/{vectorId}` - Update vector
 - `DELETE /v1/databases/{id}/vectors/{vectorId}` - Delete vector
+- `POST /v1/databases/{id}/vectors/batch` - Batch store vectors
+- `POST /v1/databases/{id}/vectors/batch-get` - Batch get vectors
 - `POST /v1/databases/{id}/search` - Search vectors
+- `POST /v1/databases/{id}/search/advanced` - Advanced search
+- `POST /v1/databases/{id}/search/hybrid` - Hybrid search
+- `POST /v1/databases/{id}/search/rerank` - Rerank search
+- `POST /v1/rerank` - Standalone reranking
+- `GET /v1/databases/{id}/reranking/config` - Get reranking config
+- `PUT /v1/databases/{id}/reranking/config` - Update reranking config
+- `POST /v1/databases/{id}/indexes` - Create index
+- `GET /v1/databases/{id}/indexes` - List indexes
+- `PUT /v1/databases/{id}/indexes/{indexId}` - Update index
+- `DELETE /v1/databases/{id}/indexes/{indexId}` - Delete index
+- `POST /v1/embeddings/generate` - Generate embeddings
+- `POST /v1/api-keys` - Create API key
+- `GET /v1/api-keys` - List API keys
+- `DELETE /v1/api-keys/{keyId}` - Revoke API key
+- `GET /v1/security/audit-log` - Get audit log
+- `GET /v1/security/sessions` - Get sessions
+- `GET /v1/security/audit-stats` - Get audit stats
+- `GET /v1/databases/{id}/analytics/stats` - Analytics stats
+- `GET /v1/databases/{id}/analytics/queries` - Analytics queries
+- `GET /v1/databases/{id}/analytics/patterns` - Analytics patterns
+- `GET /v1/databases/{id}/analytics/insights` - Analytics insights
+- `GET /v1/databases/{id}/analytics/trending` - Analytics trending
+- `POST /v1/databases/{id}/analytics/feedback` - Submit feedback
+- `GET /v1/databases/{id}/analytics/export` - Export analytics
+- `PUT /v1/users/{id}/password` - Change password
+- `PUT /v1/admin/users/{id}/reset-password` - Admin reset password
 - `GET /health` - Health check
 - `GET /status` - System status
 

@@ -5,6 +5,7 @@
 #include "lib/error_handling.h"
 #include "security_audit_logger.h"
 #include "sqlite_persistence_layer.h"
+#include "models/auth.h"
 #include <string>
 #include <memory>
 #include <unordered_map>
@@ -180,7 +181,10 @@ public:
                                const std::string& new_password);
 
     // Generate API key for user
-    Result<std::string> generate_api_key(const std::string& user_id);
+    Result<std::string> generate_api_key(const std::string& user_id,
+                                          const std::string& key_name = "",
+                                          const std::vector<std::string>& scopes = {},
+                                          int validity_days = 0);
 
     // Revoke API key
     Result<bool> revoke_api_key(const std::string& api_key);
@@ -222,10 +226,10 @@ public:
     Result<size_t> get_user_count() const;
 
     // List all API keys
-    Result<std::vector<std::pair<std::string, std::string>>> list_api_keys() const;
+    Result<std::vector<APIKey>> list_api_keys() const;
 
     // List API keys for a specific user
-    Result<std::vector<std::pair<std::string, std::string>>> list_api_keys_for_user(const std::string& user_id) const;
+    Result<std::vector<APIKey>> list_api_keys_for_user(const std::string& user_id) const;
 
 private:
     // Password hashing
@@ -250,6 +254,9 @@ private:
 
     // Generate API key
     std::string generate_api_key_value() const;
+
+    // Hash an API key (SHA-256 with no salt)
+    std::string hash_api_key(const std::string& raw_key) const;
 
     // Check if token is expired
     bool is_token_expired(const LocalAuthToken& token) const;
