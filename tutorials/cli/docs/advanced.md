@@ -83,7 +83,7 @@ Advanced index management allows you to optimize your database performance. Diff
 
 ### Creating Different Index Types
 
-While the CLI commands don't directly manage indexes after database creation, you can create databases with different index types optimized for your use case:
+You can create databases with different index types, and the Python CLI supports full index management after database creation:
 
 ```bash
 # HNSW: Good for general purpose, balanced performance
@@ -94,6 +94,24 @@ jade-db --url http://localhost:8080 --api-key mykey123 create-db --name ivf_db -
 
 # FLAT: Exact search, good for small datasets
 jade-db --url http://localhost:8080 --api-key mykey123 create-db --name flat_db --dimension 128 --index-type FLAT
+```
+
+### Managing Indexes (Python CLI)
+
+The Python CLI provides commands for creating, listing, and deleting indexes on existing databases:
+
+```bash
+# Create an index with custom parameters
+jade-db --url http://localhost:8080 --api-key mykey123 create-index \
+  --database-id hnsw_db --index-type HNSW \
+  --name my_hnsw_index --parameters '{"M": 16, "ef_construction": 200}'
+
+# List indexes on a database
+jade-db --url http://localhost:8080 --api-key mykey123 list-indexes --database-id hnsw_db
+
+# Delete an index
+jade-db --url http://localhost:8080 --api-key mykey123 delete-index \
+  --database-id hnsw_db --index-id my_hnsw_index
 ```
 
 ## Step 4: Lifecycle Management
@@ -202,7 +220,11 @@ You've now completed the advanced tutorial covering batch operations, metadata f
 
 ## Next Steps
 
-- Explore the API documentation for additional endpoints not covered in the CLI
+- Explore **API key management** (`create-api-key`, `list-api-keys`, `revoke-api-key`)
+- Try **advanced search** with metadata filtering (`advanced-search`)
+- Use **hybrid search** combining vector similarity with BM25 keyword search (`hybrid-search`)
+- Explore **reranking** for improved search quality (`rerank-search`, `rerank`)
+- Generate **embeddings** directly from text (`generate-embedding`)
+- View **analytics** and **audit logs** (`analytics-stats`, `audit-log`)
 - Set up monitoring and alerting for your production deployments
-- Consider using the client libraries directly for more complex programmatic operations
 - Implement backup and disaster recovery procedures for production use

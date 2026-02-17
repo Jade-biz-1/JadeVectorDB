@@ -52,7 +52,7 @@ def main():
             index_type="HNSW",
             description="Batch import tutorial database"
         )
-        print(f"✓ Database created: {db_response.get('databaseId', DB_NAME)}")
+        print(f"✓ Database created: {db_response}")
     except Exception as e:
         print(f"Note: Database may already exist ({e})")
     print()
@@ -117,8 +117,8 @@ def main():
             top_k=5
         )
 
-        print(f"✓ Found {len(results.get('results', []))} similar items:")
-        for idx, result in enumerate(results.get('results', [])[:5], 1):
+        print(f"✓ Found {len(results)} similar items:")
+        for idx, result in enumerate(results[:5], 1):
             metadata = result.get('metadata', {})
             score = result.get('score', 0.0)
             print(f"  {idx}. {result.get('vectorId')} - "
