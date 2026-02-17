@@ -182,14 +182,16 @@ $ curl http://localhost:8080/v1/databases \
 ```json
 {
   "user_id": "string (required)",
-  "description": "string (optional)"
+  "description": "string (optional)",
+  "permissions": ["string"] (optional, array of scopes),
+  "validity_days": 0 (optional, 0 = no expiration)
 }
 ```
 
 **Response** (201):
 ```json
 {
-  "api_key": "jadevdb_...",
+  "api_key": "jadevdb_... (raw key — only shown once)",
   "user_id": "string",
   "description": "string",
   "message": "API key created successfully",
@@ -207,23 +209,33 @@ $ curl http://localhost:8080/v1/databases \
 {
   "api_keys": [
     {
+      "key_id": "string (database ID)",
+      "key_prefix": "jadevdb_xxxx (first 12 chars)",
+      "description": "string",
       "user_id": "string",
-      "api_key": "string"
+      "is_active": true,
+      "created_at": 1234567890,
+      "expires_at": 0,
+      "last_used_at": 0,
+      "usage_count": 0,
+      "permissions": ["read", "write"]
     }
   ],
-  "count": 0
+  "count": 1
 }
 ```
 
-### DELETE /v1/api-keys/{id} - Revoke API Key
+**Note**: Full key values and hashes are never returned in list responses — only the prefix.
+
+### DELETE /v1/api-keys/{key_id} - Revoke API Key
 
 **Path Parameters**:
-- `id`: The API key to revoke
+- `key_id`: The database ID of the API key (from list response), not the raw key value
 
 **Response** (200):
 ```json
 {
-  "api_key": "string",
+  "key_id": "string",
   "message": "API key revoked successfully"
 }
 ```

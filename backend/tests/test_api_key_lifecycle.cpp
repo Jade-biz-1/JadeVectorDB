@@ -200,9 +200,9 @@ TEST_F(ApiKeyLifecycleTest, ListApiKeysForSpecificUser) {
 // INTEGRATION TESTS
 // ============================================================================
 
-TEST_F(ApiKeyLifecycleTest, CompleteApiKeyLifecycle) {
-    // 1. Generate API key
-    auto gen_result = auth_service_->generate_api_key(test_user_id_);
+TEST_F(ApiKeyLifecycleTest, CompleteApiKeyLifecycle_RevokeByKeyId) {
+    // 1. Generate API key with description
+    auto gen_result = auth_service_->generate_api_key(test_user_id_, "Integration test key");
     ASSERT_TRUE(gen_result.has_value());
     std::string api_key = gen_result.value();
 
@@ -211,18 +211,64 @@ TEST_F(ApiKeyLifecycleTest, CompleteApiKeyLifecycle) {
     ASSERT_TRUE(auth_result.has_value());
     EXPECT_EQ(auth_result.value(), test_user_id_);
 
-    // 3. List API keys
+    // 3. List API keys — verify rich data
     auto list_result = auth_service_->list_api_keys_for_user(test_user_id_);
     ASSERT_TRUE(list_result.has_value());
-    EXPECT_GE(list_result.value().size(), 1);
+    ASSERT_GE(list_result.value().size(), 1u);
 
-    // 4. Revoke API key
-    auto revoke_result = auth_service_->revoke_api_key(api_key);
+    const auto& key = list_result.value()[0];
+    EXPECT_FALSE(key.api_key_id.empty());
+    EXPECT_EQ(key.user_id, test_user_id_);
+    EXPECT_EQ(key.key_name, "Integration test key");
+    EXPECT_TRUE(key.is_active);
+    EXPECT_GT(key.created_at, 0);
+
+    // 4. Revoke by database key_id (the new flow)
+    auto revoke_result = auth_service_->revoke_api_key(key.api_key_id);
     ASSERT_TRUE(revoke_result.has_value());
 
     // 5. Verify key is revoked
     auto auth_after_revoke = auth_service_->authenticate_with_api_key(api_key);
     EXPECT_FALSE(auth_after_revoke.has_value());
+
+    // 6. Verify key shows as inactive in list
+    auto final_list = auth_service_->list_api_keys_for_user(test_user_id_);
+    ASSERT_TRUE(final_list.has_value());
+    bool found_revoked = false;
+    for (const auto& k : final_list.value()) {
+        if (k.api_key_id == key.api_key_id) {
+            EXPECT_FALSE(k.is_active);
+            found_revoked = true;
+        }
+    }
+    EXPECT_TRUE(found_revoked) << "Revoked key should still appear in list";
+}
+
+TEST_F(ApiKeyLifecycleTest, KeysPersistAcrossRestart) {
+    // Generate a key
+    auto gen_result = auth_service_->generate_api_key(test_user_id_, "Persistent key");
+    ASSERT_TRUE(gen_result.has_value());
+    std::string api_key = gen_result.value();
+
+    // Destroy and recreate the service (simulates restart)
+    auth_service_.reset();
+    auth_service_ = std::make_unique<AuthenticationService>(test_data_dir_.string());
+
+    AuthenticationConfig config;
+    config.enable_api_keys = true;
+    auth_service_->initialize(config, audit_logger_);
+
+    // Key should still appear in DB listing
+    auto list_result = auth_service_->list_api_keys_for_user(test_user_id_);
+    ASSERT_TRUE(list_result.has_value());
+    ASSERT_GE(list_result.value().size(), 1u);
+    EXPECT_EQ(list_result.value()[0].key_name, "Persistent key");
+    EXPECT_TRUE(list_result.value()[0].is_active);
+
+    // Authentication should work via DB fallback path
+    auto auth_result = auth_service_->authenticate_with_api_key(api_key);
+    ASSERT_TRUE(auth_result.has_value());
+    EXPECT_EQ(auth_result.value(), test_user_id_);
 }
 
 } // namespace jadevectordb
