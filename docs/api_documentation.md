@@ -208,61 +208,71 @@ Authorization: Bearer {api-key}
 
 ### API Key Management Endpoints
 
-#### GET /v1/apikeys
-- **Description**: List all API keys for authenticated user
+#### GET /v1/api-keys
+- **Description**: List API keys. Optionally filter by user.
 - **Authentication**: Required (Bearer token)
+- **Query Parameters**:
+  - `user_id` (optional): Filter keys by user ID
 - **Response** (200 OK):
 ```json
 {
-  "success": true,
-  "apiKeys": [
+  "api_keys": [
     {
-      "keyId": "string",
-      "name": "string",
+      "key_id": "string (database ID)",
+      "key_prefix": "jadevdb_xxxx (first 12 chars)",
       "description": "string",
-      "permissions": ["string"],
-      "createdAt": "timestamp",
-      "lastUsed": "timestamp",
-      "status": "active|revoked"
+      "user_id": "string",
+      "is_active": true,
+      "created_at": 1234567890,
+      "expires_at": 0,
+      "last_used_at": 0,
+      "usage_count": 0,
+      "permissions": ["read", "write"]
     }
   ],
-  "count": "integer"
+  "count": 1
 }
 ```
 
-#### POST /v1/apikeys
-- **Description**: Create new API key
+**Note**: The full key value and hash are never returned in list responses — only the prefix is shown for identification.
+
+#### POST /v1/api-keys
+- **Description**: Create a new API key
 - **Authentication**: Required (Bearer token)
 - **Request Body**:
 ```json
 {
-  "userId": "string",
+  "user_id": "string (required)",
   "description": "string (optional)",
-  "permissions": ["string"] (optional)
+  "permissions": ["string"] (optional, array of scopes),
+  "validity_days": 0 (optional, 0 = no expiration)
 }
 ```
 - **Response** (201 Created):
 ```json
 {
-  "success": true,
-  "apiKey": "string (the actual key - save this!)",
-  "keyId": "string",
-  "message": "API key created successfully"
+  "api_key": "jadevdb_... (the full key — save this!)",
+  "user_id": "string",
+  "description": "string",
+  "message": "API key created successfully",
+  "created_at": "ISO8601 timestamp"
 }
 ```
 
-**Note**: The API key is only returned once during creation. Store it securely.
+**Note**: The API key is only returned once during creation. Store it securely. Subsequent list calls only show the key prefix.
 
-#### DELETE /v1/apikeys/{keyId}
-- **Description**: Revoke an API key
+#### DELETE /v1/api-keys/{key_id}
+- **Description**: Revoke an API key by its database ID (soft-delete)
 - **Authentication**: Required (Bearer token or admin)
 - **Response** (200 OK):
 ```json
 {
-  "success": true,
+  "key_id": "string",
   "message": "API key revoked successfully"
 }
 ```
+
+**Note**: Revoked keys remain in list results with `is_active: false`. They can no longer be used for authentication.
 
 ## API Endpoints
 

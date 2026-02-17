@@ -28,13 +28,27 @@ crow::response RestApiImpl::handle_create_api_key_request(const crow::request& r
         }
 
         std::string user_id = body_json["user_id"].s();
-
-        // Note: AuthenticationService uses a simplified API key model without permissions,
-        // descriptions, or expiry dates. These fields are accepted but not persisted.
         std::string description = body_json.has("description") ? std::string(body_json["description"].s()) : std::string("");
 
-        // Generate API key using AuthenticationService
-        auto api_key_result = authentication_service_->generate_api_key(user_id);
+        // Parse optional scopes/permissions
+        std::vector<std::string> scopes;
+        if (body_json.has("permissions")) {
+            auto& perms = body_json["permissions"];
+            if (perms.t() == crow::json::type::List) {
+                for (size_t i = 0; i < perms.size(); i++) {
+                    scopes.push_back(std::string(perms[i].s()));
+                }
+            }
+        }
+
+        // Parse optional validity_days
+        int validity_days = 0;
+        if (body_json.has("validity_days")) {
+            validity_days = static_cast<int>(body_json["validity_days"].i());
+        }
+
+        // Generate API key using AuthenticationService (now persists to DB)
+        auto api_key_result = authentication_service_->generate_api_key(user_id, description, scopes, validity_days);
 
         if (!api_key_result.has_value()) {
             LOG_ERROR(logger_, "Failed to generate API key for user " + user_id + ": " +
@@ -61,9 +75,7 @@ crow::response RestApiImpl::handle_create_api_key_request(const crow::request& r
         crow::json::wvalue response;
         response["api_key"] = api_key;
         response["user_id"] = user_id;
-        if (!description.empty()) {
-            response["description"] = description;
-        }
+        response["description"] = description;
         response["message"] = "API key created successfully";
         response["created_at"] = to_iso_string(std::chrono::system_clock::now());
 
@@ -88,8 +100,7 @@ crow::response RestApiImpl::handle_list_api_keys_request(const crow::request& re
         // Check if filtering by user_id
         std::string user_id_filter = req.url_params.get("user_id");
 
-        // Get list of API keys from AuthenticationService
-        // Note: AuthenticationService returns simplified key data (user_id, api_key pairs)
+        // Get list of API keys from AuthenticationService (now returns vector<APIKey>)
         auto keys_result = user_id_filter.empty() ?
             authentication_service_->list_api_keys() :
             authentication_service_->list_api_keys_for_user(user_id_filter);
@@ -102,20 +113,33 @@ crow::response RestApiImpl::handle_list_api_keys_request(const crow::request& re
             return crow::response(500, error_response);
         }
 
-        auto keys = keys_result.value();  // vector<pair<string user_id, string api_key>>
+        auto keys = keys_result.value();
 
-        // Build response
+        // Build response with full APIKey data
         crow::json::wvalue response;
         response["api_keys"] = crow::json::wvalue::list();
         response["count"] = keys.size();
 
         for (size_t i = 0; i < keys.size(); i++) {
-            const auto& [user_id, api_key_hash] = keys[i];
+            const auto& key = keys[i];
             crow::json::wvalue key_obj;
-            key_obj["user_id"] = user_id;
-            key_obj["api_key"] = api_key_hash;  // This is the actual key value (for display/usage)
+            key_obj["key_id"] = key.api_key_id;
+            key_obj["key_prefix"] = key.key_prefix;
+            key_obj["description"] = key.key_name;
+            key_obj["user_id"] = key.user_id;
+            key_obj["is_active"] = key.is_active;
+            key_obj["created_at"] = key.created_at;
+            key_obj["expires_at"] = key.expires_at;
+            key_obj["last_used_at"] = key.last_used_at;
+            key_obj["usage_count"] = key.usage_count;
 
-            // Note: Simplified model - no key_id, description, permissions, expiry, or active status
+            // Add scopes/permissions
+            key_obj["permissions"] = crow::json::wvalue::list();
+            for (size_t j = 0; j < key.scopes.size(); j++) {
+                key_obj["permissions"][j] = key.scopes[j];
+            }
+
+            // Never return the full key or hash — only prefix
             response["api_keys"][i] = std::move(key_obj);
         }
 
@@ -137,8 +161,7 @@ crow::response RestApiImpl::handle_revoke_api_key_request(const crow::request& r
     try {
         LOG_INFO(logger_, "Received revoke API key request for: " + key_id);
 
-        // Note: In the simplified model, key_id IS the api_key value itself
-        // Revoke the API key using AuthenticationService
+        // key_id is now the api_key_id (database ID), not the raw key value
         auto revoke_result = authentication_service_->revoke_api_key(key_id);
 
         if (!revoke_result.has_value()) {
@@ -158,7 +181,7 @@ crow::response RestApiImpl::handle_revoke_api_key_request(const crow::request& r
         // Log audit event
         if (security_audit_logger_) {
             security_audit_logger_->log_authentication_attempt(
-                key_id,  // Use key as identifier
+                key_id,
                 req.get_header_value("X-Forwarded-For").empty() ?
                     req.remote_ip_address : req.get_header_value("X-Forwarded-For"),
                 true,
@@ -168,7 +191,7 @@ crow::response RestApiImpl::handle_revoke_api_key_request(const crow::request& r
 
         // Build success response
         crow::json::wvalue response;
-        response["api_key"] = key_id;
+        response["key_id"] = key_id;
         response["message"] = "API key revoked successfully";
 
         LOG_INFO(logger_, "Successfully revoked API key: " + key_id);

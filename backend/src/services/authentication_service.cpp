@@ -116,6 +116,10 @@ bool AuthenticationService::initialize(const AuthenticationConfig& config,
         }
 
         std::cout << "[DEBUG] Persistence initialized successfully" << std::endl;
+
+        // Load active API keys from DB into in-memory map for fast auth lookups
+        // Note: We can't reconstruct raw keys from hashes, so only keys created
+        // in this session will be in the fast-path map. DB fallback handles the rest.
         LOG_INFO(logger_, "AuthenticationService initialized successfully with SQLite persistence");
         return true;
     } catch (const std::exception& e) {
@@ -376,16 +380,42 @@ Result<std::string> AuthenticationService::authenticate_with_api_key(const std::
             RETURN_ERROR(ErrorCode::PERMISSION_DENIED, "API key authentication is disabled");
         }
 
-        std::lock_guard<std::mutex> lock(api_keys_mutex_);
+        // Fast path: in-memory lookup
+        {
+            std::lock_guard<std::mutex> lock(api_keys_mutex_);
+            auto it = api_keys_.find(api_key);
+            if (it != api_keys_.end()) {
+                std::string user_id = it->second;
+                LOG_INFO(logger_, "API key authentication successful for user: " + user_id);
+                log_auth_event(SecurityEventType::AUTHENTICATION_SUCCESS, user_id, ip_address, true,
+                              "API key authentication");
+                return user_id;
+            }
+        }
 
-        // Map is api_key -> user_id, so direct lookup
-        auto it = api_keys_.find(api_key);
-        if (it != api_keys_.end()) {
-            std::string user_id = it->second;
-            LOG_INFO(logger_, "API key authentication successful for user: " + user_id);
-            log_auth_event(SecurityEventType::AUTHENTICATION_SUCCESS, user_id, ip_address, true,
-                          "API key authentication");
-            return user_id;
+        // Slow path: DB fallback — hash the key and look up by prefix
+        if (persistence_) {
+            std::string key_hash_value = hash_api_key(api_key);
+            std::string key_prefix = api_key.substr(0, 12);
+
+            auto db_result = persistence_->get_api_key_by_prefix(key_prefix);
+            if (db_result.has_value()) {
+                const auto& db_key = db_result.value();
+                if (db_key.is_active && !db_key.is_expired() && db_key.key_hash == key_hash_value) {
+                    // Re-populate in-memory map
+                    {
+                        std::lock_guard<std::mutex> lock(api_keys_mutex_);
+                        api_keys_[api_key] = db_key.user_id;
+                    }
+                    // Update usage stats
+                    persistence_->update_api_key_usage(db_key.api_key_id);
+
+                    LOG_INFO(logger_, "API key authentication successful (DB fallback) for user: " + db_key.user_id);
+                    log_auth_event(SecurityEventType::AUTHENTICATION_SUCCESS, db_key.user_id, ip_address, true,
+                                  "API key authentication (DB fallback)");
+                    return db_key.user_id;
+                }
+            }
         }
 
         LOG_WARN(logger_, "Invalid API key used from IP: " + ip_address);
@@ -590,7 +620,10 @@ Result<bool> AuthenticationService::end_session(const std::string& session_id) {
     }
 }
 
-Result<std::string> AuthenticationService::generate_api_key(const std::string& user_id) {
+Result<std::string> AuthenticationService::generate_api_key(const std::string& user_id,
+                                                              const std::string& key_name,
+                                                              const std::vector<std::string>& scopes,
+                                                              int validity_days) {
     try {
         if (!config_.enable_api_keys) {
             RETURN_ERROR(ErrorCode::PERMISSION_DENIED, "API keys are disabled");
@@ -605,18 +638,41 @@ Result<std::string> AuthenticationService::generate_api_key(const std::string& u
             }
         }
 
-        std::string api_key = generate_api_key_value();
+        // Generate the raw key value — returned to user once
+        std::string raw_key = generate_api_key_value();
 
+        // Hash it for storage (SHA-256, no salt)
+        std::string key_hash_value = hash_api_key(raw_key);
+
+        // Extract prefix for display (first 12 chars, e.g. "jadevdb_xxxx")
+        std::string key_prefix = raw_key.substr(0, 12);
+
+        // Calculate expiration
+        int64_t expires_at = 0;
+        if (validity_days > 0) {
+            expires_at = std::time(nullptr) + (static_cast<int64_t>(validity_days) * 86400);
+        }
+
+        // Persist to database
+        if (persistence_) {
+            auto db_result = persistence_->create_api_key(user_id, key_hash_value, key_name, key_prefix, scopes, expires_at);
+            if (!db_result.has_value()) {
+                LOG_ERROR(logger_, "Failed to persist API key: " + ErrorHandler::format_error(db_result.error()));
+                RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to persist API key");
+            }
+        }
+
+        // Store in memory for fast auth lookups
         {
             std::lock_guard<std::mutex> lock(api_keys_mutex_);
-            api_keys_[api_key] = user_id;  // Map is api_key -> user_id
+            api_keys_[raw_key] = user_id;
         }
 
         LOG_INFO(logger_, "API key generated for user: " + user_id);
         log_auth_event(SecurityEventType::CONFIGURATION_CHANGE, user_id, "", true,
                       "API key generated");
 
-        return api_key;
+        return raw_key;
     } catch (const std::exception& e) {
         LOG_ERROR(logger_, "Exception in generate_api_key: " + std::string(e.what()));
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR,
@@ -730,6 +786,20 @@ std::string AuthenticationService::generate_session_id() const {
 
 std::string AuthenticationService::generate_api_key_value() const {
     return "jadevdb_" + generate_token();
+}
+
+std::string AuthenticationService::hash_api_key(const std::string& raw_key) const {
+    // SHA-256 with no salt — used for API key storage
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256(reinterpret_cast<const unsigned char*>(raw_key.c_str()),
+           raw_key.length(), hash);
+
+    std::stringstream ss;
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
+        ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(hash[i]);
+    }
+
+    return ss.str();
 }
 
 bool AuthenticationService::is_token_expired(const LocalAuthToken& token) const {
@@ -1157,20 +1227,67 @@ Result<bool> AuthenticationService::set_user_active_status(const std::string& us
     return true;
 }
 
-Result<bool> AuthenticationService::revoke_api_key(const std::string& api_key) {
-    std::lock_guard<std::mutex> lock(api_keys_mutex_);
+Result<bool> AuthenticationService::revoke_api_key(const std::string& api_key_id) {
+    // Try to revoke in DB by api_key_id (the database primary key)
+    if (persistence_) {
+        auto db_key_result = persistence_->get_api_key_by_id(api_key_id);
+        if (db_key_result.has_value()) {
+            auto& db_key = db_key_result.value();
+            std::string user_id = db_key.user_id;
 
-    // Map is api_key -> user_id, so direct lookup
-    auto it = api_keys_.find(api_key);
-    if (it == api_keys_.end()) {
-        RETURN_ERROR(ErrorCode::NOT_FOUND, "API key not found");
+            // Revoke in DB (soft-delete)
+            auto revoke_result = persistence_->revoke_api_key(api_key_id);
+            if (!revoke_result.has_value()) {
+                LOG_ERROR(logger_, "Failed to revoke API key in DB: " + ErrorHandler::format_error(revoke_result.error()));
+                RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to revoke API key");
+            }
+
+            // Remove matching entries from in-memory map by comparing hashes
+            {
+                std::lock_guard<std::mutex> lock(api_keys_mutex_);
+                for (auto it = api_keys_.begin(); it != api_keys_.end();) {
+                    if (it->second == user_id && hash_api_key(it->first) == db_key.key_hash) {
+                        it = api_keys_.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+            }
+
+            LOG_INFO(logger_, "API key revoked for user: " + user_id);
+            return true;
+        }
     }
 
-    std::string user_id = it->second;
-    api_keys_.erase(it);
-    LOG_INFO(logger_, "API key revoked for user: " + user_id);
+    // Fallback: try in-memory lookup (treats api_key_id as the raw key value)
+    {
+        std::lock_guard<std::mutex> lock(api_keys_mutex_);
+        auto it = api_keys_.find(api_key_id);
+        if (it != api_keys_.end()) {
+            std::string user_id = it->second;
+            api_keys_.erase(it);
 
-    return true;
+            // Also revoke in DB by finding the key via hash
+            if (persistence_) {
+                std::string key_hash = hash_api_key(api_key_id);
+                std::string key_prefix = api_key_id.substr(0, std::min(api_key_id.size(), size_t(12)));
+                auto db_keys = persistence_->list_user_api_keys(user_id);
+                if (db_keys.has_value()) {
+                    for (const auto& k : db_keys.value()) {
+                        if (k.key_hash == key_hash && k.is_active) {
+                            persistence_->revoke_api_key(k.api_key_id);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            LOG_INFO(logger_, "API key revoked (in-memory + DB) for user: " + user_id);
+            return true;
+        }
+    }
+
+    RETURN_ERROR(ErrorCode::NOT_FOUND, "API key not found");
 }
 
 Result<std::vector<UserCredentials>> AuthenticationService::list_users() const {
@@ -1233,35 +1350,32 @@ Result<size_t> AuthenticationService::get_user_count() const {
     }
 }
 
-Result<std::vector<std::pair<std::string, std::string>>> AuthenticationService::list_api_keys() const {
-    std::lock_guard<std::mutex> lock(api_keys_mutex_);
-
-    std::vector<std::pair<std::string, std::string>> api_keys;
-    api_keys.reserve(api_keys_.size());
-
-    // Map is api_key -> user_id
-    for (const auto& [api_key, user_id] : api_keys_) {
-        api_keys.push_back({user_id, api_key});
+Result<std::vector<APIKey>> AuthenticationService::list_api_keys() const {
+    if (persistence_) {
+        auto result = persistence_->list_all_api_keys();
+        if (result.has_value()) {
+            LOG_INFO(logger_, "Listed " + std::to_string(result.value().size()) + " API keys from DB");
+            return result.value();
+        }
+        LOG_ERROR(logger_, "Failed to list API keys from DB: " + ErrorHandler::format_error(result.error()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to list API keys");
     }
 
-    LOG_INFO(logger_, "Listed " + std::to_string(api_keys.size()) + " API keys");
-    return api_keys;
+    RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Persistence layer not initialized");
 }
 
-Result<std::vector<std::pair<std::string, std::string>>> AuthenticationService::list_api_keys_for_user(const std::string& user_id) const {
-    std::lock_guard<std::mutex> lock(api_keys_mutex_);
-
-    std::vector<std::pair<std::string, std::string>> user_api_keys;
-
-    // Map is api_key -> user_id, so iterate and filter by user_id
-    for (const auto& [api_key, uid] : api_keys_) {
-        if (uid == user_id) {
-            user_api_keys.push_back({uid, api_key});
+Result<std::vector<APIKey>> AuthenticationService::list_api_keys_for_user(const std::string& user_id) const {
+    if (persistence_) {
+        auto result = persistence_->list_user_api_keys(user_id);
+        if (result.has_value()) {
+            LOG_INFO(logger_, "Listed " + std::to_string(result.value().size()) + " API keys for user: " + user_id);
+            return result.value();
         }
+        LOG_ERROR(logger_, "Failed to list API keys for user from DB: " + ErrorHandler::format_error(result.error()));
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to list API keys for user");
     }
 
-    LOG_INFO(logger_, "Listed " + std::to_string(user_api_keys.size()) + " API keys for user: " + user_id);
-    return user_api_keys;
+    RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Persistence layer not initialized");
 }
 
 Result<bool> AuthenticationService::update_email(const std::string& user_id, const std::string& new_email) {

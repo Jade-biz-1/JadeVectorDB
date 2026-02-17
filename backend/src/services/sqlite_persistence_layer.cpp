@@ -1986,6 +1986,43 @@ Result<std::vector<APIKey>> SQLitePersistenceLayer::list_user_api_keys(const std
     return api_keys;
 }
 
+Result<std::vector<APIKey>> SQLitePersistenceLayer::list_all_api_keys() {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+
+    const char* sql = R"(
+        SELECT api_key_id, user_id, key_hash, key_name, key_prefix, scopes, is_active,
+               created_at, expires_at, last_used_at, usage_count
+        FROM api_keys
+        ORDER BY created_at DESC
+    )";
+
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to prepare statement: " + std::string(sqlite3_errmsg(db_)));
+    }
+
+    std::vector<APIKey> api_keys;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        APIKey api_key;
+        api_key.api_key_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        api_key.user_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        api_key.key_hash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        api_key.key_name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        api_key.key_prefix = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+        // TODO: Parse JSON scopes from column 5 - skipped for now
+        api_key.is_active = sqlite3_column_int(stmt, 6) != 0;
+        api_key.created_at = sqlite3_column_int64(stmt, 7);
+        api_key.expires_at = sqlite3_column_int64(stmt, 8);
+        api_key.last_used_at = sqlite3_column_int64(stmt, 9);
+        api_key.usage_count = sqlite3_column_int(stmt, 10);
+        api_keys.push_back(api_key);
+    }
+
+    sqlite3_finalize(stmt);
+    return api_keys;
+}
+
 Result<void> SQLitePersistenceLayer::revoke_api_key(const std::string& api_key_id) {
     std::lock_guard<std::mutex> lock(db_mutex_);
     
