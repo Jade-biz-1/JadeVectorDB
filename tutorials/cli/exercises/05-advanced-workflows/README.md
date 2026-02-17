@@ -279,7 +279,7 @@ cleanup_test_databases() {
   log_message "Cleaning up test databases..."
 
   # List all databases
-  databases=$(jade-db list-db 2>/dev/null | jq -r '.[].id' 2>/dev/null)
+  databases=$(jade-db list-dbs 2>/dev/null | jq -r '.[].id' 2>/dev/null)
 
   for db in $databases; do
     # Delete test/temporary databases
@@ -326,9 +326,9 @@ generate_report() {
     echo "Database Statistics:"
 
     # List all databases with stats
-    jade-db list-db 2>/dev/null | jq -r '.[].id' | while read db; do
+    jade-db list-dbs 2>/dev/null | jq -r '.[].id' | while read db; do
       echo "  $db:"
-      jade-db stats --database-id "$db" 2>/dev/null | grep -E "vectors|size|queries"
+      jade-db get-db --database-id "$db" 2>/dev/null
     done
   } > "$report_file"
 
@@ -571,9 +571,9 @@ deploy() {
 
   # 5. Verify deployment
   echo "Step 5: Verifying deployment..."
-  vector_count=$(jade-db --url "$JADE_DB_URL" stats \
-    --database-id "$DATABASE_ID" | jq -r '.vector_count')
-  echo "  Vectors in database: $vector_count"
+  db_info=$(jade-db --url "$JADE_DB_URL" get-db \
+    --database-id "$DATABASE_ID")
+  echo "  Database info: $db_info"
 
   # 6. Run smoke tests
   echo "Step 6: Running smoke tests..."

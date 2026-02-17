@@ -60,12 +60,19 @@ python cli/distributed/cluster_cli.py --host localhost --port 8080 status
 - Integration with Jupyter notebooks
 
 **Features:**
-- ✅ Full API coverage
+- ✅ Full API coverage (50+ client methods)
 - ✅ Python client library included
 - ✅ Hybrid search support (vector + BM25 keyword search)
-- ✅ cURL command generation
+- ✅ Advanced search, reranking, and standalone reranking
+- ✅ Index management (create, list, delete)
+- ✅ API key management (create, list, revoke)
+- ✅ Analytics and audit log queries
+- ✅ Embedding generation
+- ✅ cURL command generation (`--curl-only`)
+- ✅ Multiple output formats (JSON, YAML, table, CSV)
 - ✅ Rich error messages
-- ✅ Batch operations support
+- ✅ Batch operations support (store, get)
+- ✅ Import/export (JSON, CSV)
 
 **Installation:**
 
@@ -186,12 +193,19 @@ python cli/distributed/cluster_cli.py --host localhost --port 8080 status
 | **Vector Operations** | ✅ | ✅ | ✅ | ❌ |
 | **Search Operations** | ✅ | ✅ | ✅ | ❌ |
 | **Hybrid Search** | ✅ | ❌ | ❌ | ❌ |
+| **Advanced/Rerank Search** | ✅ | ❌ | ❌ | ❌ |
+| **Index Management** | ✅ | ❌ | ❌ | ❌ |
+| **API Key Management** | ✅ | ❌ | ❌ | ❌ |
+| **Analytics & Audit** | ✅ | ❌ | ❌ | ❌ |
+| **Embedding Generation** | ✅ | ❌ | ❌ | ❌ |
+| **User Management** | ✅ | ✅ | ✅ | ❌ |
+| **Import/Export** | ✅ | ✅ | ❌ | ❌ |
 | **Cluster Management** | ❌ | ❌ | ❌ | ✅ |
 | **cURL Generation** | ✅ | ✅ | ❌ | ❌ |
 | **Installation Required** | Yes (pip) | No | Yes (npm) | Yes (pip) |
 | **Dependencies** | Python 3.8+ | bash, curl | Node.js 14+ | Python 3.8+ |
 | **Client Library** | ✅ Included | ❌ | ❌ | ❌ |
-| **Output Formats** | JSON | JSON | JSON | JSON/Table/Compact |
+| **Output Formats** | JSON/YAML/Table/CSV | JSON/YAML/Table/CSV | JSON/YAML/Table/CSV | JSON/Table/Compact |
 
 ## Common Operations
 
