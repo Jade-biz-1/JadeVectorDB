@@ -27,11 +27,21 @@ npm install
 node bin/jade-db.js --url http://localhost:8080 --api-key mykey123 database create --name my_database
 ```
 
-All implementations provide the same core functionality:
-- Database management (create, list, get, delete)
-- Vector operations (store, retrieve, delete)
-- Search operations (similarity search with filters)
-- System operations (health and status checks)
+All implementations provide core functionality:
+- Database management (create, list, get, update, delete)
+- Vector operations (store, retrieve, update, delete, list, batch get)
+- Search operations (similarity, advanced filtered, hybrid, rerank)
+- Index management (create, list, delete)
+- User management (create, list, update, delete, activate/deactivate)
+- API key management (create, list, revoke)
+- System operations (health, status, audit log, analytics)
+- Embedding generation
+- Import/export (JSON, CSV)
+
+The **Python CLI** additionally supports:
+- `--curl-only` flag to generate equivalent cURL commands
+- Multiple output formats (`--format json|yaml|table|csv`)
+- Password management and analytics commands
 
 For detailed documentation, see [CLI Documentation](docs/cli-documentation.md).
 For examples, see [CLI Examples](examples/cli/README.md).
