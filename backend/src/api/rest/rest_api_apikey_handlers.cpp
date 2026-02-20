@@ -4,6 +4,20 @@
 #include "api/rest/rest_api.h"
 #include <crow/json.h>
 #include <chrono>
+#include <iomanip>
+#include <sstream>
+
+namespace {
+// Convert Unix timestamp (seconds) to ISO 8601 string
+std::string unix_to_iso_string(int64_t timestamp) {
+    if (timestamp <= 0) return "";
+    std::time_t t = static_cast<std::time_t>(timestamp);
+    std::tm tm = *std::gmtime(&t);
+    std::stringstream ss;
+    ss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+    return ss.str();
+}
+} // anonymous namespace
 
 namespace jadevectordb {
 
@@ -128,9 +142,9 @@ crow::response RestApiImpl::handle_list_api_keys_request(const crow::request& re
             key_obj["description"] = key.key_name;
             key_obj["user_id"] = key.user_id;
             key_obj["is_active"] = key.is_active;
-            key_obj["created_at"] = key.created_at;
-            key_obj["expires_at"] = key.expires_at;
-            key_obj["last_used_at"] = key.last_used_at;
+            key_obj["created_at"] = unix_to_iso_string(key.created_at);
+            key_obj["expires_at"] = unix_to_iso_string(key.expires_at);
+            key_obj["last_used_at"] = unix_to_iso_string(key.last_used_at);
             key_obj["usage_count"] = key.usage_count;
 
             // Add scopes/permissions

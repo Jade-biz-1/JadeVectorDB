@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
-import { monitoringApi, databaseApi } from '../lib/api';
+import { monitoringApi, databaseApi, vectorApi } from '../lib/api';
 
 export default function MonitoringDashboard() {
   const [systemStatus, setSystemStatus] = useState(null);
@@ -35,17 +35,17 @@ export default function MonitoringDashboard() {
         timestamp: response.timestamp || new Date().toISOString()
       });
 
-      // Extract metrics from response
-      if (response.metrics) {
-        setMetrics({
-          totalDatabases: response.metrics.totalDatabases || 0,
-          totalVectors: response.metrics.totalVectors || 0,
-          qps: response.metrics.queriesPerSecond || 0,
-          avgQueryTime: response.metrics.avgQueryLatencyMs || 0,
-          storageUsed: response.metrics.storageUtilizationPercent || 0,
-          uptime: response.metrics.uptime || '0 minutes'
-        });
-      }
+      // Extract metrics from response - map backend field names to frontend state
+      const perf = response.performance || {};
+      const sys = response.system || {};
+      setMetrics({
+        totalDatabases: perf.database_count || 0,
+        totalVectors: perf.total_vectors || 0,
+        qps: perf.active_connections || 0,
+        avgQueryTime: perf.avg_query_time_ms || 0,
+        storageUsed: Math.round(sys.disk_usage_percent || 0),
+        uptime: response.uptime || '0 minutes'
+      });
 
       setLastUpdated(new Date());
     } catch (error) {
@@ -66,14 +66,42 @@ export default function MonitoringDashboard() {
       const response = await databaseApi.listDatabases();
       const databasesData = response.databases || [];
 
-      // Transform database data for display
-      const formattedDbs = databasesData.map(db => ({
-        id: db.databaseId || db.id,
-        name: db.name,
-        status: db.status || 'online',
-        vectors: db.stats?.vectorCount || 0,
-        indexes: db.stats?.indexCount || 0,
-        storage: db.stats?.storageSize || '0 GB'
+      // Fetch per-database vector counts in parallel
+      const formattedDbs = await Promise.all(databasesData.map(async (db) => {
+        const dbId = db.databaseId || db.id;
+        let vectorCount = db.stats?.vectorCount || 0;
+        let indexCount = db.stats?.indexCount || 0;
+        let storageSize = db.stats?.storageSize || '0 KB';
+
+        // If stats not included in list response, fetch vector count directly
+        if (!db.stats) {
+          try {
+            const vecResponse = await vectorApi.listVectors(dbId, 1, 0);
+            vectorCount = vecResponse.total || 0;
+            indexCount = 1; // Each database has its configured index
+            // Estimate storage: vectors * dimension * 4 bytes (float32)
+            const dim = db.vectorDimension || 0;
+            const bytes = vectorCount * dim * 4;
+            if (bytes >= 1024 * 1024) {
+              storageSize = (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+            } else if (bytes >= 1024) {
+              storageSize = (bytes / 1024).toFixed(1) + ' KB';
+            } else {
+              storageSize = bytes + ' B';
+            }
+          } catch (e) {
+            // Silently fall back to defaults
+          }
+        }
+
+        return {
+          id: dbId,
+          name: db.name,
+          status: db.status || 'online',
+          vectors: vectorCount,
+          indexes: indexCount,
+          storage: storageSize
+        };
       }));
 
       setDatabases(formattedDbs);
