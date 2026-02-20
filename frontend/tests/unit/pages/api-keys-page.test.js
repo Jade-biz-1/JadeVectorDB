@@ -389,6 +389,53 @@ describe('API Key Management Page', () => {
     });
   });
 
+  describe('Date Formatting', () => {
+    test('displays API keys with Unix timestamp 0 as Never for last_used_at', async () => {
+      apiKeysApi.listApiKeys.mockResolvedValue({
+        api_keys: [
+          {
+            key_id: 'key-ts',
+            description: 'Timestamp Key',
+            is_active: true,
+            created_at: 1704067200, // Unix timestamp in seconds
+            expires_at: '2026-06-01T00:00:00Z',
+            last_used_at: 0, // Should show 'Never'
+            permissions: ['read']
+          }
+        ]
+      });
+
+      render(<ApiKeyManagement />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Timestamp Key')).toBeInTheDocument();
+        expect(screen.getByText('Never')).toBeInTheDocument();
+      });
+    });
+
+    test('displays API keys with ISO string timestamps', async () => {
+      apiKeysApi.listApiKeys.mockResolvedValue({
+        api_keys: [
+          {
+            key_id: 'key-iso',
+            description: 'ISO Key',
+            is_active: true,
+            created_at: '2026-01-01T00:00:00Z',
+            expires_at: '2026-06-01T00:00:00Z',
+            last_used_at: '',
+            permissions: ['read']
+          }
+        ]
+      });
+
+      render(<ApiKeyManagement />);
+
+      await waitFor(() => {
+        expect(screen.getByText('ISO Key')).toBeInTheDocument();
+      });
+    });
+  });
+
   describe('Form Validation', () => {
     test('default validity days is 30', async () => {
       render(<ApiKeyManagement />);

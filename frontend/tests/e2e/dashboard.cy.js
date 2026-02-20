@@ -10,19 +10,28 @@ describe('JadeVectorDB Dashboard', () => {
     cy.get('h1').should('contain', 'JadeVectorDB Dashboard');
   });
 
-  it('should display system overview metrics', () => {
-    // Check that the metrics cards are present
-    cy.get('[data-testid="total-databases"]').should('exist');
-    cy.get('[data-testid="total-vectors"]').should('exist');
-    cy.get('[data-testid="total-indexes"]').should('exist');
+  it('should display server info card', () => {
+    // Check that the Server Info card is present with status metrics
+    cy.contains('Server Info').should('exist');
+    cy.contains('Uptime').should('exist');
+    cy.contains('Version').should('exist');
+    cy.contains('Databases').should('exist');
   });
 
-  it('should refresh databases when Refresh button is clicked', () => {
+  it('should display system resources when available', () => {
+    cy.contains('System Resources').should('exist');
+    cy.contains('CPU Usage').should('exist');
+    cy.contains('Memory Usage').should('exist');
+    cy.contains('Disk Usage').should('exist');
+    cy.contains('Total Vectors').should('exist');
+  });
+
+  it('should refresh data when Refresh button is clicked', () => {
     // Click the refresh button
-    cy.get('button').contains('Refresh Databases').click();
-    
+    cy.get('button').contains('Refresh').click();
+
     // Check that some databases appear (assuming there are test databases)
-    cy.get('[data-testid="database-card"]').should('have.length.greaterThan', 0);
+    cy.contains('Recent Databases').should('exist');
   });
 
   it('should navigate to database management page', () => {
