@@ -12,6 +12,9 @@ export default function DatabaseDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedVectorId, setExpandedVectorId] = useState(null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -40,6 +43,18 @@ export default function DatabaseDetails() {
       setVectors(response.vectors || []);
     } catch (error) {
       console.error('Error fetching vectors:', error);
+    }
+  };
+
+  const handleDeleteDatabase = async () => {
+    setDeleting(true);
+    try {
+      await databaseApi.deleteDatabase(id);
+      router.push('/databases');
+    } catch (error) {
+      alert('Failed to delete database: ' + error.message);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -137,6 +152,76 @@ export default function DatabaseDetails() {
 
         .btn-secondary:hover {
           background: #7f8c8d;
+        }
+
+        .btn-danger {
+          background: #e74c3c;
+          color: white;
+        }
+
+        .btn-danger:hover {
+          background: #c0392b;
+        }
+
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+        }
+
+        .modal {
+          background: white;
+          border-radius: 8px;
+          padding: 30px;
+          max-width: 480px;
+          width: 90%;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+          font-size: 20px;
+          font-weight: 600;
+          color: #e74c3c;
+          margin: 0 0 15px 0;
+        }
+
+        .delete-warning {
+          color: #2c3e50;
+          margin-bottom: 20px;
+          line-height: 1.5;
+        }
+
+        .delete-input {
+          width: 100%;
+          padding: 10px 12px;
+          border: 1px solid #ddd;
+          border-radius: 6px;
+          font-size: 14px;
+          margin-bottom: 20px;
+          box-sizing: border-box;
+        }
+
+        .delete-input:focus {
+          outline: none;
+          border-color: #e74c3c;
+        }
+
+        .modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+        }
+
+        .btn-danger:disabled {
+          background: #f5b7b1;
+          cursor: not-allowed;
         }
 
         .info-section {
@@ -384,6 +469,9 @@ export default function DatabaseDetails() {
             <button onClick={() => router.push(`/search?databaseId=${id}`)} className="btn btn-primary">
               Search Vectors
             </button>
+            <button onClick={() => setDeleteModalOpen(true)} className="btn btn-danger">
+              Delete Database
+            </button>
           </div>
         </div>
 
@@ -514,6 +602,46 @@ export default function DatabaseDetails() {
           )}
         </div>
       </div>
+
+      {deleteModalOpen && (
+        <div className="modal-overlay" onClick={() => setDeleteModalOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modal-header">Delete Database</h3>
+            <p className="delete-warning">
+              This will permanently delete <strong>{database.name}</strong> and all its vectors. This action cannot be undone.
+            </p>
+            <p className="delete-warning">
+              Type <strong>{database.name}</strong> to confirm:
+            </p>
+            <input
+              type="text"
+              className="delete-input"
+              placeholder="Enter database name"
+              value={deleteConfirmName}
+              onChange={(e) => setDeleteConfirmName(e.target.value)}
+              autoFocus
+            />
+            <div className="modal-actions">
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setDeleteModalOpen(false);
+                  setDeleteConfirmName('');
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-danger"
+                disabled={deleteConfirmName !== database.name || deleting}
+                onClick={handleDeleteDatabase}
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }
