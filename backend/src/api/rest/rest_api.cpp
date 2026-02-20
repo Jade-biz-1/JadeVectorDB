@@ -125,7 +125,8 @@ void RestApiService::run_server() {
 RestApiImpl::RestApiImpl(std::shared_ptr<DistributedServiceManager> distributed_service_manager, std::shared_ptr<DatabaseLayer> db_layer) 
     : distributed_service_manager_(distributed_service_manager), 
       db_layer_(db_layer),
-      server_stopped_(false) {
+      server_stopped_(false),
+      server_start_time_(std::chrono::steady_clock::now()) {
     logger_ = logging::LoggerManager::get_logger("RestApiImpl");
 }
 
@@ -173,6 +174,7 @@ bool RestApiImpl::initialize(int port) {
     SecurityAuditConfig audit_config;
     audit_config.log_file_path = "./logs/security_audit.log";
     audit_config.enabled = true;
+    audit_config.log_all_operations = true;
     if (!security_audit_logger_->initialize(audit_config)) {
         LOG_WARN(logger_, "Failed to initialize security audit logger");
     }
@@ -741,11 +743,10 @@ void RestApiImpl::handle_system_status() {
                 std::chrono::system_clock::now().time_since_epoch()).count();
             response["version"] = "1.0.0";
 
-            // Calculate uptime
-            static auto start_time = std::chrono::steady_clock::now();
+            // Calculate uptime from server construction time
             auto current_time = std::chrono::steady_clock::now();
             auto uptime_seconds = std::chrono::duration_cast<std::chrono::seconds>(
-                current_time - start_time).count();
+                current_time - server_start_time_).count();
 
             // Format uptime as human-readable string
             int days = uptime_seconds / 86400;
@@ -1051,6 +1052,14 @@ crow::response RestApiImpl::handle_store_vector_request(const crow::request& req
             resp.set_header("Content-Type", "application/json");
 
             LOG_DEBUG(logger_, "Stored vector: " << vector_data.id << " in database: " << database_id);
+
+            // Audit log the vector storage
+            if (security_audit_logger_) {
+                security_audit_logger_->log_data_modification(
+                    "api_user", "", database_id, vector_data.id,
+                    true, "Stored vector");
+            }
+
             return resp;
         } else {
             return crow::response(400, "{\"error\":\"" + ErrorHandler::format_error(result.error()) + "\"}");
@@ -1636,6 +1645,14 @@ crow::response RestApiImpl::handle_similarity_search_request(const crow::request
             resp.set_header("Content-Type", "application/json");
 
             LOG_DEBUG(logger_, "Similarity search completed: found " << search_results.size() << " results in database: " << database_id);
+
+            // Audit log the search operation
+            if (security_audit_logger_) {
+                security_audit_logger_->log_data_access(
+                    "api_user", "", database_id, "",
+                    true, "Similarity search: " + std::to_string(search_results.size()) + " results");
+            }
+
             return resp;
         } else {
             return crow::response(400, "{\"error\":\"Search failed\"}");
@@ -2977,6 +2994,14 @@ crow::response RestApiImpl::handle_create_database_request(const crow::request& 
             resp.set_header("Content-Type", "application/json");
 
             LOG_INFO(logger_, "Created database: " << database_id << " (Name: " << db_config.name << ")");
+
+            // Audit log the database creation
+            if (security_audit_logger_) {
+                security_audit_logger_->log_data_modification(
+                    "api_user", "", database_id, "",
+                    true, "Created database: " + db_config.name);
+            }
+
             return resp;
         } else {
             // Log detailed service error for debugging
@@ -3037,6 +3062,21 @@ crow::response RestApiImpl::handle_list_databases_request(const crow::request& r
                 db_obj["indexType"] = db.indexType;
                 db_obj["created_at"] = db.created_at;
                 db_obj["updated_at"] = db.updated_at;
+
+                // Include per-database stats for monitoring
+                size_t vec_count = 0;
+                if (vector_storage_service_) {
+                    auto vc = vector_storage_service_->get_vector_count(db.databaseId);
+                    if (vc.has_value()) {
+                        vec_count = vc.value();
+                    }
+                }
+                crow::json::wvalue stats_obj;
+                stats_obj["vectorCount"] = static_cast<int64_t>(vec_count);
+                stats_obj["indexCount"] = 1; // Each database has at least one index (its configured indexType)
+                stats_obj["storageSize"] = vec_count > 0 ?
+                    std::to_string((vec_count * db.vectorDimension * 4) / 1024) + " KB" : "0 KB";
+                db_obj["stats"] = std::move(stats_obj);
 
                 response["databases"][idx++] = std::move(db_obj);
             }
@@ -3203,6 +3243,14 @@ crow::response RestApiImpl::handle_delete_database_request(const crow::request& 
             resp.set_header("Content-Type", "application/json");
 
             LOG_INFO(logger_, "Deleted database: " << database_id);
+
+            // Audit log the database deletion
+            if (security_audit_logger_) {
+                security_audit_logger_->log_data_deletion(
+                    "api_user", "", database_id, "",
+                    true, "Deleted database");
+            }
+
             return resp;
         } else {
             return crow::response(400, "{\"error\":\"Failed to delete database\"}");

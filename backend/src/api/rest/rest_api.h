@@ -201,6 +201,7 @@ private:
     std::future<void> server_future_;  // Holds the async server thread for proper join on shutdown
     int server_port_;
     bool server_stopped_;  // Track if stop() has been called
+    std::chrono::steady_clock::time_point server_start_time_;  // Track server uptime
 
     // Shutdown callback for admin endpoint
     std::function<void()> shutdown_callback_;
