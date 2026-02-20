@@ -10,10 +10,13 @@ jest.mock('@/lib/api', () => ({
   },
   databaseApi: {
     listDatabases: jest.fn(),
+  },
+  vectorApi: {
+    listVectors: jest.fn(),
   }
 }));
 
-import { monitoringApi, databaseApi } from '@/lib/api';
+import { monitoringApi, databaseApi, vectorApi } from '@/lib/api';
 
 // Mock localStorage
 Object.defineProperty(window, 'localStorage', {
@@ -41,14 +44,16 @@ describe('Monitoring Dashboard Page', () => {
       memory: 'ok',
       cpu: 'ok'
     },
-    metrics: {
-      totalDatabases: 5,
-      totalVectors: 150000,
-      queriesPerSecond: 42,
-      avgQueryLatencyMs: 15,
-      storageUtilizationPercent: 35,
-      uptime: '5 days'
+    performance: {
+      database_count: 5,
+      total_vectors: 150000,
+      active_connections: 42,
+      avg_query_time_ms: 15
     },
+    system: {
+      disk_usage_percent: 35
+    },
+    uptime: '5 days',
     timestamp: '2026-01-20T10:00:00Z'
   };
 
@@ -74,6 +79,7 @@ describe('Monitoring Dashboard Page', () => {
     // Mock successful API responses
     monitoringApi.systemStatus.mockResolvedValue(mockSystemStatus);
     databaseApi.listDatabases.mockResolvedValue({ databases: mockDatabases });
+    vectorApi.listVectors.mockResolvedValue({ vectors: [], total: 0 });
   });
 
   afterEach(() => {
@@ -264,6 +270,28 @@ describe('Monitoring Dashboard Page', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/No databases found/)).toBeInTheDocument();
+      });
+    });
+
+    test('falls back to vectorApi when db.stats is missing', async () => {
+      databaseApi.listDatabases.mockResolvedValue({
+        databases: [
+          {
+            databaseId: 'db-no-stats',
+            name: 'No Stats DB',
+            status: 'online',
+            vectorDimension: 128
+            // no stats field
+          }
+        ]
+      });
+      vectorApi.listVectors.mockResolvedValue({ vectors: [], total: 500 });
+
+      render(<MonitoringDashboard />);
+
+      await waitFor(() => {
+        expect(screen.getByText('No Stats DB')).toBeInTheDocument();
+        expect(vectorApi.listVectors).toHaveBeenCalledWith('db-no-stats', 1, 0);
       });
     });
   });
