@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
-import { clusterApi, databaseApi, monitoringApi, securityApi, adminApi, authApi, usersApi } from '../lib/api';
+import { databaseApi, monitoringApi, securityApi, adminApi, authApi, usersApi } from '../lib/api';
 
 export default function Dashboard() {
-  const [nodes, setNodes] = useState([]);
   const [databases, setDatabases] = useState([]);
   const [systemStatus, setSystemStatus] = useState(null);
   const [recentLogs, setRecentLogs] = useState([]);
@@ -37,17 +36,15 @@ export default function Dashboard() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const [nodesRes, dbRes, statusRes, logsRes] = await Promise.all([
-        clusterApi.listNodes().catch(() => ({ nodes: [] })),
+      const [dbRes, statusRes, logsRes] = await Promise.all([
         databaseApi.listDatabases(5, 0).catch(() => ({ databases: [] })),
         monitoringApi.systemStatus().catch(() => null),
-        securityApi.listAuditLogs(5, 0).catch(() => ({ logs: [] }))
+        securityApi.listAuditLogs(5, 0).catch(() => ({ events: [] }))
       ]);
 
-      setNodes(nodesRes.nodes || []);
       setDatabases(dbRes.databases || []);
       setSystemStatus(statusRes || null);
-      setRecentLogs(logsRes.logs || []);
+      setRecentLogs(logsRes.events || []);
       setLastUpdated(new Date());
     } catch (error) {
       console.error('Error loading dashboard:', error);
@@ -278,34 +275,30 @@ export default function Dashboard() {
 
         <div className="grid">
           <div className="card">
-            <h2>Cluster Status ({nodes.length} nodes)</h2>
-            {loading && nodes.length === 0 ? (
-              <div className="empty-state">Loading...</div>
-            ) : nodes.length === 0 ? (
-              <div className="empty-state">No cluster nodes found</div>
+            <h2>Server Info</h2>
+            {systemStatus ? (
+              <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px' }}>
+                <div>
+                  <div className="stat-value" style={{ fontSize: '22px' }}>
+                    <span className="badge badge-success">{systemStatus.status || 'unknown'}</span>
+                  </div>
+                  <div className="stat-label">Status</div>
+                </div>
+                <div>
+                  <div className="stat-value" style={{ fontSize: '22px' }}>{systemStatus.uptime || 'N/A'}</div>
+                  <div className="stat-label">Uptime</div>
+                </div>
+                <div>
+                  <div className="stat-value" style={{ fontSize: '22px' }}>{systemStatus.version || 'N/A'}</div>
+                  <div className="stat-label">Version</div>
+                </div>
+                <div>
+                  <div className="stat-value" style={{ fontSize: '22px' }}>{systemStatus.performance?.database_count ?? 0}</div>
+                  <div className="stat-label">Databases</div>
+                </div>
+              </div>
             ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Node ID</th>
-                    <th>Role</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {nodes.map(node => (
-                    <tr key={node.id}>
-                      <td>{node.id}</td>
-                      <td>{node.role || 'worker'}</td>
-                      <td>
-                        <span className={`badge ${node.status === 'active' ? 'badge-success' : 'badge-error'}`}>
-                          {node.status || 'unknown'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="empty-state">{loading ? 'Loading...' : 'Server status unavailable'}</div>
             )}
           </div>
 
@@ -346,23 +339,23 @@ export default function Dashboard() {
 
         {systemStatus && (
           <div className="card">
-            <h2>System Status</h2>
+            <h2>System Resources</h2>
             <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
               <div>
-                <div className="stat-value">{systemStatus.uptime || 'N/A'}</div>
-                <div className="stat-label">Uptime</div>
-              </div>
-              <div>
-                <div className="stat-value">{systemStatus.cpu || 'N/A'}</div>
+                <div className="stat-value">{systemStatus.system?.cpu_usage_percent != null ? `${Math.round(systemStatus.system.cpu_usage_percent)}%` : 'N/A'}</div>
                 <div className="stat-label">CPU Usage</div>
               </div>
               <div>
-                <div className="stat-value">{systemStatus.memory || 'N/A'}</div>
+                <div className="stat-value">{systemStatus.system?.memory_usage_percent != null ? `${Math.round(systemStatus.system.memory_usage_percent)}%` : 'N/A'}</div>
                 <div className="stat-label">Memory Usage</div>
               </div>
               <div>
-                <div className="stat-value">{systemStatus.requests || '0'}</div>
-                <div className="stat-label">Total Requests</div>
+                <div className="stat-value">{systemStatus.system?.disk_usage_percent != null ? `${Math.round(systemStatus.system.disk_usage_percent)}%` : 'N/A'}</div>
+                <div className="stat-label">Disk Usage</div>
+              </div>
+              <div>
+                <div className="stat-value">{systemStatus.performance?.total_vectors ?? 0}</div>
+                <div className="stat-label">Total Vectors</div>
               </div>
             </div>
           </div>
@@ -378,8 +371,14 @@ export default function Dashboard() {
             <div>
               {recentLogs.map((log, index) => (
                 <div key={index} className="log-entry">
-                  <div className="log-time">{log.timestamp || new Date().toLocaleString()}</div>
-                  <div className="log-message">{log.message || log.action || 'Log entry'}</div>
+                  <div className="log-time">
+                    {log.timestamp ? new Date(log.timestamp).toLocaleString() : new Date().toLocaleString()}
+                    {log.user_id ? ` — ${log.user_id}` : ''}
+                  </div>
+                  <div className="log-message">
+                    {log.event_type || log.action || 'Log entry'}
+                    {log.details ? `: ${log.details}` : ''}
+                  </div>
                 </div>
               ))}
             </div>

@@ -97,6 +97,8 @@ private:
     std::ofstream log_file_;
     mutable std::mutex log_mutex_;
     size_t current_log_size_;
+    std::vector<SecurityEvent> recent_events_;  // In-memory ring buffer for recent events
+    static constexpr size_t MAX_RECENT_EVENTS = 500;
     
 public:
     explicit SecurityAuditLogger();

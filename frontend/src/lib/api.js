@@ -314,7 +314,7 @@ export const userApi = {
 // API Service for Security Monitoring (Audit Logs)
 export const securityApi = {
   listAuditLogs: async (limit = 50, offset = 0) => {
-    const response = await fetch(`${API_BASE_URL}/audit/logs?limit=${limit}&offset=${offset}`, {
+    const response = await fetch(`${API_BASE_URL}/security/audit-log?limit=${limit}`, {
       method: 'GET',
       headers: getAuthHeaders(),
     });
