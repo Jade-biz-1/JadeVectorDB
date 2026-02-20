@@ -112,12 +112,20 @@ export default function ApiKeyManagement() {
     setSuccess('Copied to clipboard!');
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
+  const formatDate = (value) => {
+    if (!value && value !== 0) return 'N/A';
     try {
-      return new Date(dateString).toLocaleString();
+      // Backend may send Unix timestamps (seconds) as integers, or ISO 8601 strings.
+      // If it's a number, convert seconds to milliseconds for JavaScript's Date constructor.
+      if (typeof value === 'number') {
+        if (value === 0) return 'Never';
+        // Unix timestamps in seconds are > 1e9; in milliseconds they'd be > 1e12
+        const ms = value < 1e12 ? value * 1000 : value;
+        return new Date(ms).toLocaleString();
+      }
+      return new Date(value).toLocaleString();
     } catch {
-      return dateString;
+      return String(value);
     }
   };
 

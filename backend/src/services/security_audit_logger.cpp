@@ -54,7 +54,13 @@ Result<bool> SecurityAuditLogger::log_security_event(const SecurityEvent& event)
         }
         
         std::lock_guard<std::mutex> lock(log_mutex_);
-        
+
+        // Store in recent events ring buffer
+        if (recent_events_.size() >= MAX_RECENT_EVENTS) {
+            recent_events_.erase(recent_events_.begin());
+        }
+        recent_events_.push_back(event);
+
         auto result = write_log_entry(event);
         if (!result.has_value()) {
             LOG_ERROR(logger_, "Failed to write security event to log: " + ErrorHandler::format_error(result.error()));
@@ -336,13 +342,26 @@ Result<std::vector<SecurityEvent>> SecurityAuditLogger::search_audit_log(
     int limit) const {
     try {
         LOG_DEBUG(logger_, "Searching security audit log with filters");
-        
-        // Note: In a real implementation, this would search the actual log file
-        // For now, we'll return an empty result since we don't have a search mechanism
-        // in the current implementation
-        
+
+        std::lock_guard<std::mutex> lock(log_mutex_);
         std::vector<SecurityEvent> results;
-        
+
+        // Search recent events in reverse order (newest first)
+        for (auto it = recent_events_.rbegin(); it != recent_events_.rend(); ++it) {
+            if (static_cast<int>(results.size()) >= limit) break;
+
+            const auto& event = *it;
+
+            // Filter by user_id if specified
+            if (!user_id.empty() && event.user_id != user_id) continue;
+
+            // Filter by time range if specified
+            if (start_time.time_since_epoch().count() > 0 && event.timestamp < start_time) continue;
+            if (end_time.time_since_epoch().count() > 0 && event.timestamp > end_time) continue;
+
+            results.push_back(event);
+        }
+
         LOG_DEBUG(logger_, "Found " + std::to_string(results.size()) + " events in audit log search");
         return results;
     } catch (const std::exception& e) {
