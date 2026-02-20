@@ -1,5 +1,5 @@
 // frontend/tests/unit/services/api.test.js
-import { databaseApi, searchApi, vectorApi, indexApi, monitoringApi, embeddingApi, lifecycleApi } from '@/lib/api';
+import { databaseApi, searchApi, vectorApi, indexApi, monitoringApi, embeddingApi, lifecycleApi, securityApi } from '@/lib/api';
 
 // Mock the fetch API for testing
 global.fetch = jest.fn();
@@ -240,6 +240,47 @@ describe('API Service Unit Tests', () => {
         })
       );
       expect(response).toEqual(mockResponse);
+    });
+  });
+
+  describe('securityApi', () => {
+    test('listAuditLogs calls correct endpoint with limit param', async () => {
+      const mockResponse = { events: [] };
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(mockResponse)
+      });
+
+      const response = await securityApi.listAuditLogs(10);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/security/audit-log?limit=10',
+        expect.objectContaining({
+          method: 'GET',
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer test-auth-token'
+          })
+        })
+      );
+      expect(response).toEqual(mockResponse);
+    });
+
+    test('listAuditLogs uses default limit of 50', async () => {
+      const mockResponse = { events: [] };
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(mockResponse)
+      });
+
+      await securityApi.listAuditLogs();
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/security/audit-log?limit=50',
+        expect.objectContaining({
+          method: 'GET'
+        })
+      );
     });
   });
 

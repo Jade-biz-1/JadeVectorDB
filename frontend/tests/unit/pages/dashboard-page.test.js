@@ -5,9 +5,6 @@ import Dashboard from '@/pages/dashboard';
 
 // Mock the API functions
 jest.mock('@/lib/api', () => ({
-  clusterApi: {
-    listNodes: jest.fn(),
-  },
   databaseApi: {
     listDatabases: jest.fn(),
   },
@@ -28,7 +25,7 @@ jest.mock('@/lib/api', () => ({
   },
 }));
 
-import { clusterApi, databaseApi, monitoringApi, securityApi, adminApi, authApi, usersApi } from '@/lib/api';
+import { databaseApi, monitoringApi, securityApi, adminApi, authApi, usersApi } from '@/lib/api';
 
 // Mock localStorage
 Object.defineProperty(window, 'localStorage', {
@@ -58,13 +55,6 @@ describe('Dashboard Page', () => {
     jest.useFakeTimers();
 
     // Mock successful API responses
-    clusterApi.listNodes.mockResolvedValue({
-      nodes: [
-        { id: 'node-1', role: 'leader', status: 'active' },
-        { id: 'node-2', role: 'worker', status: 'active' },
-      ]
-    });
-
     databaseApi.listDatabases.mockResolvedValue({
       databases: [
         {
@@ -85,16 +75,24 @@ describe('Dashboard Page', () => {
     });
 
     monitoringApi.systemStatus.mockResolvedValue({
+      status: 'operational',
       uptime: '5 days',
-      cpu: '45%',
-      memory: '2.1 GB',
-      requests: '15,234'
+      version: '1.0.0',
+      performance: {
+        database_count: 2,
+        total_vectors: 100000
+      },
+      system: {
+        cpu_usage_percent: 45,
+        memory_usage_percent: 60,
+        disk_usage_percent: 35
+      }
     });
 
     securityApi.listAuditLogs.mockResolvedValue({
-      logs: [
-        { timestamp: '2026-01-19T10:00:00Z', message: 'User login successful' },
-        { timestamp: '2026-01-19T09:30:00Z', action: 'Database created' },
+      events: [
+        { timestamp: '2026-01-19T10:00:00Z', event_type: 'AUTH_SUCCESS', details: 'User login successful', user_id: 'user-1' },
+        { timestamp: '2026-01-19T09:30:00Z', event_type: 'DATA_MODIFICATION', details: 'Database created', user_id: 'user-1' },
       ]
     });
 
@@ -128,17 +126,6 @@ describe('Dashboard Page', () => {
   });
 
   describe('Data Fetching', () => {
-    test('fetches and displays cluster nodes', async () => {
-      render(<Dashboard />);
-
-      await waitFor(() => {
-        expect(screen.getByText('node-1')).toBeInTheDocument();
-        expect(screen.getByText('node-2')).toBeInTheDocument();
-      });
-
-      expect(clusterApi.listNodes).toHaveBeenCalled();
-    });
-
     test('fetches and displays databases', async () => {
       render(<Dashboard />);
 
@@ -150,13 +137,12 @@ describe('Dashboard Page', () => {
       expect(databaseApi.listDatabases).toHaveBeenCalledWith(5, 0);
     });
 
-    test('fetches and displays system status', async () => {
+    test('fetches and displays server info', async () => {
       render(<Dashboard />);
 
       await waitFor(() => {
         expect(screen.getByText('5 days')).toBeInTheDocument();
-        expect(screen.getByText('45%')).toBeInTheDocument();
-        expect(screen.getByText('2.1 GB')).toBeInTheDocument();
+        expect(screen.getByText('1.0.0')).toBeInTheDocument();
       });
 
       expect(monitoringApi.systemStatus).toHaveBeenCalled();
@@ -166,18 +152,18 @@ describe('Dashboard Page', () => {
       render(<Dashboard />);
 
       await waitFor(() => {
-        expect(screen.getByText('User login successful')).toBeInTheDocument();
-        expect(screen.getByText('Database created')).toBeInTheDocument();
+        expect(screen.getByText(/AUTH_SUCCESS/)).toBeInTheDocument();
+        expect(screen.getByText(/DATA_MODIFICATION/)).toBeInTheDocument();
       });
 
       expect(securityApi.listAuditLogs).toHaveBeenCalledWith(5, 0);
     });
 
-    test('displays cluster status with node count', async () => {
+    test('displays server info card', async () => {
       render(<Dashboard />);
 
       await waitFor(() => {
-        expect(screen.getByText(/Cluster Status \(2 nodes\)/)).toBeInTheDocument();
+        expect(screen.getByText('Server Info')).toBeInTheDocument();
       });
     });
 
@@ -191,16 +177,6 @@ describe('Dashboard Page', () => {
   });
 
   describe('Empty States', () => {
-    test('shows empty state when no nodes found', async () => {
-      clusterApi.listNodes.mockResolvedValue({ nodes: [] });
-
-      render(<Dashboard />);
-
-      await waitFor(() => {
-        expect(screen.getByText('No cluster nodes found')).toBeInTheDocument();
-      });
-    });
-
     test('shows empty state when no databases found', async () => {
       databaseApi.listDatabases.mockResolvedValue({ databases: [] });
 
@@ -212,7 +188,7 @@ describe('Dashboard Page', () => {
     });
 
     test('shows empty state when no logs found', async () => {
-      securityApi.listAuditLogs.mockResolvedValue({ logs: [] });
+      securityApi.listAuditLogs.mockResolvedValue({ events: [] });
 
       render(<Dashboard />);
 
@@ -220,20 +196,19 @@ describe('Dashboard Page', () => {
         expect(screen.getByText('No recent logs')).toBeInTheDocument();
       });
     });
-  });
 
-  describe('Error Handling', () => {
-    test('handles cluster API error gracefully', async () => {
-      clusterApi.listNodes.mockRejectedValue(new Error('Network error'));
+    test('shows server status unavailable when systemStatus is null', async () => {
+      monitoringApi.systemStatus.mockResolvedValue(null);
 
       render(<Dashboard />);
 
-      // Should still render the page without crashing
       await waitFor(() => {
-        expect(screen.getByText('JadeVectorDB Dashboard')).toBeInTheDocument();
+        expect(screen.getByText('Server status unavailable')).toBeInTheDocument();
       });
     });
+  });
 
+  describe('Error Handling', () => {
     test('handles database API error gracefully', async () => {
       databaseApi.listDatabases.mockRejectedValue(new Error('Network error'));
 
@@ -245,7 +220,6 @@ describe('Dashboard Page', () => {
     });
 
     test('handles all APIs failing gracefully', async () => {
-      clusterApi.listNodes.mockRejectedValue(new Error('Network error'));
       databaseApi.listDatabases.mockRejectedValue(new Error('Network error'));
       monitoringApi.systemStatus.mockRejectedValue(new Error('Network error'));
       securityApi.listAuditLogs.mockRejectedValue(new Error('Network error'));
@@ -276,8 +250,8 @@ describe('Dashboard Page', () => {
 
       // Verify APIs were called again
       await waitFor(() => {
-        expect(clusterApi.listNodes).toHaveBeenCalled();
         expect(databaseApi.listDatabases).toHaveBeenCalled();
+        expect(monitoringApi.systemStatus).toHaveBeenCalled();
       });
     });
 
@@ -365,14 +339,14 @@ describe('Dashboard Page', () => {
       });
 
       // Initial calls
-      expect(clusterApi.listNodes).toHaveBeenCalledTimes(1);
+      expect(databaseApi.listDatabases).toHaveBeenCalledTimes(1);
 
       // Advance timer by 30 seconds (auto-refresh interval)
       jest.advanceTimersByTime(30000);
 
       // Should have called APIs again
       await waitFor(() => {
-        expect(clusterApi.listNodes).toHaveBeenCalledTimes(2);
+        expect(databaseApi.listDatabases).toHaveBeenCalledTimes(2);
       });
     });
   });
@@ -400,27 +374,7 @@ describe('Dashboard Page', () => {
     });
   });
 
-  describe('Node Status Display', () => {
-    test('displays node roles correctly', async () => {
-      render(<Dashboard />);
-
-      await waitFor(() => {
-        expect(screen.getByText('leader')).toBeInTheDocument();
-        expect(screen.getByText('worker')).toBeInTheDocument();
-      });
-    });
-
-    test('displays node status badges', async () => {
-      render(<Dashboard />);
-
-      await waitFor(() => {
-        const activeBadges = screen.getAllByText('active');
-        expect(activeBadges.length).toBe(2);
-      });
-    });
-  });
-
-  describe('System Status Metrics', () => {
+  describe('System Resources Metrics', () => {
     test('displays uptime metric', async () => {
       render(<Dashboard />);
 
@@ -443,17 +397,45 @@ describe('Dashboard Page', () => {
       render(<Dashboard />);
 
       await waitFor(() => {
-        expect(screen.getByText('2.1 GB')).toBeInTheDocument();
+        expect(screen.getByText('60%')).toBeInTheDocument();
         expect(screen.getByText('Memory Usage')).toBeInTheDocument();
       });
     });
 
-    test('displays total requests metric', async () => {
+    test('displays total vectors metric', async () => {
       render(<Dashboard />);
 
       await waitFor(() => {
-        expect(screen.getByText('15,234')).toBeInTheDocument();
-        expect(screen.getByText('Total Requests')).toBeInTheDocument();
+        expect(screen.getByText('100000')).toBeInTheDocument();
+        expect(screen.getByText('Total Vectors')).toBeInTheDocument();
+      });
+    });
+
+    test('displays disk usage metric', async () => {
+      render(<Dashboard />);
+
+      await waitFor(() => {
+        expect(screen.getByText('35%')).toBeInTheDocument();
+        expect(screen.getByText('Disk Usage')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Audit Log Display', () => {
+    test('displays event_type and details in log entries', async () => {
+      render(<Dashboard />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/AUTH_SUCCESS.*User login successful/)).toBeInTheDocument();
+        expect(screen.getByText(/DATA_MODIFICATION.*Database created/)).toBeInTheDocument();
+      });
+    });
+
+    test('displays user_id in log time', async () => {
+      render(<Dashboard />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/user-1/)).toBeInTheDocument();
       });
     });
   });
