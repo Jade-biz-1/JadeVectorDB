@@ -390,7 +390,7 @@ describe('API Key Management Page', () => {
   });
 
   describe('Date Formatting', () => {
-    test('displays API keys with Unix timestamp 0 as Never for last_used_at', async () => {
+    test('displays API keys with expires_at 0 as Never', async () => {
       apiKeysApi.listApiKeys.mockResolvedValue({
         api_keys: [
           {
@@ -398,8 +398,7 @@ describe('API Key Management Page', () => {
             description: 'Timestamp Key',
             is_active: true,
             created_at: 1704067200, // Unix timestamp in seconds
-            expires_at: '2026-06-01T00:00:00Z',
-            last_used_at: 0, // Should show 'Never'
+            expires_at: 0, // Should show 'Never'
             permissions: ['read']
           }
         ]
