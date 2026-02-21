@@ -25,7 +25,20 @@ class JadeVectorDB:
     """
     Python client for JadeVectorDB
     """
-    
+
+    @staticmethod
+    def _sanitize_metadata(metadata: Optional[Dict]) -> Optional[Dict[str, str]]:
+        """
+        Convert metadata values to strings.
+
+        The backend requires all metadata values to be strings. This helper
+        transparently converts int, float, and bool values so callers can
+        pass natural Python types (e.g. ``{"price": 9.99, "in_stock": True}``).
+        """
+        if metadata is None:
+            return None
+        return {k: str(v) if not isinstance(v, str) else v for k, v in metadata.items()}
+
     def __init__(self, base_url: str, api_key: Optional[str] = None):
         """
         Initialize the JadeVectorDB client
@@ -154,12 +167,12 @@ class JadeVectorDB:
             "id": vector_id,
             "values": values
         }
-        
+
         if metadata:
-            payload["metadata"] = metadata
-            
+            payload["metadata"] = self._sanitize_metadata(metadata)
+
         response = self.session.post(url, json=payload)
-        
+
         if response.status_code == 201:
             return True
         else:
@@ -184,7 +197,7 @@ class JadeVectorDB:
                 {
                     "id": v.id,
                     "values": v.values,
-                    **({"metadata": v.metadata} if v.metadata else {})
+                    **({"metadata": self._sanitize_metadata(v.metadata)} if v.metadata else {})
                 }
                 for v in vectors
             ]
@@ -482,7 +495,7 @@ class JadeVectorDB:
         :param query_text: Query text for BM25 search (optional if query_vector provided)
         :param query_vector: Query vector for similarity search (optional if query_text provided)
         :param top_k: Number of results to return
-        :param fusion_method: Fusion method ("rrf" or "weighted_linear")
+        :param fusion_method: Fusion method ("rrf" or "linear")
         :param alpha: Weight for weighted linear fusion (0.0-1.0, default 0.7)
         :param filters: Optional metadata filters
         :return: List of hybrid search results with scores
@@ -692,7 +705,7 @@ class JadeVectorDB:
 
         payload = {"values": values}
         if metadata is not None:
-            payload["metadata"] = metadata
+            payload["metadata"] = self._sanitize_metadata(metadata)
 
         response = self.session.put(url, json=payload)
 
@@ -919,7 +932,7 @@ class JadeVectorDB:
         """
         url = f"{self.base_url}/v1/databases/{database_id}/indexes"
 
-        payload = {"indexType": index_type}
+        payload = {"type": index_type}
         if name:
             payload["name"] = name
         if parameters:
@@ -944,7 +957,10 @@ class JadeVectorDB:
         response = self.session.get(url)
 
         if response.status_code == 200:
-            return response.json().get('indexes', [])
+            data = response.json()
+            if isinstance(data, list):
+                return data
+            return data.get('indexes', [])
         else:
             raise JadeVectorDBError(f"Failed to list indexes: {response.text}")
 
@@ -1047,9 +1063,9 @@ class JadeVectorDB:
         url = f"{self.base_url}/v1/api-keys"
 
         payload = {
-            "userId": user_id,
+            "user_id": user_id,
             "description": description,
-            "validityDays": validity_days
+            "validity_days": validity_days
         }
 
         if permissions:
@@ -1078,7 +1094,8 @@ class JadeVectorDB:
         response = self.session.get(url, params=params)
 
         if response.status_code == 200:
-            return response.json().get('keys', [])
+            data = response.json()
+            return data.get('api_keys', data.get('keys', []))
         else:
             raise JadeVectorDBError(f"Failed to list API keys: {response.text}")
 
@@ -1416,8 +1433,8 @@ class JadeVectorDB:
         url = f"{self.base_url}/v1/users/{user_id}/password"
 
         payload = {
-            "oldPassword": old_password,
-            "newPassword": new_password
+            "old_password": old_password,
+            "new_password": new_password
         }
 
         response = self.session.put(url, json=payload)
@@ -1441,7 +1458,7 @@ class JadeVectorDB:
         """
         url = f"{self.base_url}/v1/admin/users/{user_id}/reset-password"
 
-        payload = {"newPassword": new_password}
+        payload = {"new_password": new_password}
 
         response = self.session.put(url, json=payload)
 
