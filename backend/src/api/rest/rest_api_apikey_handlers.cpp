@@ -112,7 +112,8 @@ crow::response RestApiImpl::handle_list_api_keys_request(const crow::request& re
         LOG_INFO(logger_, "Received list API keys request");
 
         // Check if filtering by user_id
-        std::string user_id_filter = req.url_params.get("user_id");
+        auto user_id_param = req.url_params.get("user_id");
+        std::string user_id_filter = user_id_param ? user_id_param : "";
 
         // Get list of API keys from AuthenticationService (now returns vector<APIKey>)
         auto keys_result = user_id_filter.empty() ?
