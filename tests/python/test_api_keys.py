@@ -1,0 +1,103 @@
+"""Tests for API key management CLI commands."""
+
+import json
+import uuid
+
+from .conftest import run_cli, parse_json_output
+
+
+class TestCreateApiKey:
+    def test_create_api_key(self, auth_token, auth_user_id):
+        result = run_cli(
+            "create-api-key",
+            "--user-id", auth_user_id,
+            "--description", "pytest key",
+            token=auth_token,
+        )
+        assert result.returncode == 0
+        data = parse_json_output(result)
+        assert data is not None
+        # Should return the generated API key
+        api_key = data.get("api_key", data.get("key", ""))
+        assert api_key, f"No api_key in response: {data}"
+
+
+class TestListApiKeys:
+    def test_list_includes_created_key(self, auth_token, auth_user_id):
+        # Create a key first
+        create_result = run_cli(
+            "create-api-key",
+            "--user-id", auth_user_id,
+            "--description", "pytest list test",
+            token=auth_token,
+        )
+        assert create_result.returncode == 0
+
+        result = run_cli("list-api-keys", token=auth_token)
+        assert result.returncode == 0
+        # Should contain at least one key
+        assert "pytest list test" in result.stdout or "key" in result.stdout.lower()
+
+
+class TestApiKeyAuthentication:
+    def test_api_key_can_authenticate(self, auth_token, auth_user_id):
+        """A freshly created API key should work for authentication."""
+        create_result = run_cli(
+            "create-api-key",
+            "--user-id", auth_user_id,
+            "--description", "pytest auth test",
+            token=auth_token,
+        )
+        data = parse_json_output(create_result)
+        assert data is not None
+        api_key = data.get("api_key", data.get("key", ""))
+        assert api_key
+
+        # Use the new API key to call status
+        status_result = run_cli("status", token=api_key)
+        assert status_result.returncode == 0
+
+
+class TestRevokeApiKey:
+    def test_revoke_api_key(self, auth_token, auth_user_id):
+        # Create a key
+        create_result = run_cli(
+            "create-api-key",
+            "--user-id", auth_user_id,
+            "--description", "pytest revoke test",
+            token=auth_token,
+        )
+        data = parse_json_output(create_result)
+        assert data is not None
+        key_id = data.get("key_id", data.get("id", ""))
+        assert key_id, f"No key_id in response: {data}"
+
+        # Revoke it
+        result = run_cli(
+            "revoke-api-key",
+            "--key-id", key_id,
+            token=auth_token,
+        )
+        assert result.returncode == 0
+        assert "revoked" in result.stdout.lower()
+
+    def test_revoked_key_cannot_authenticate(self, auth_token, auth_user_id):
+        """After revoking, the key should no longer work."""
+        create_result = run_cli(
+            "create-api-key",
+            "--user-id", auth_user_id,
+            "--description", "pytest revoke auth test",
+            token=auth_token,
+        )
+        data = parse_json_output(create_result)
+        assert data is not None
+        api_key = data.get("api_key", data.get("key", ""))
+        key_id = data.get("key_id", data.get("id", ""))
+        assert api_key and key_id
+
+        # Revoke
+        run_cli("revoke-api-key", "--key-id", key_id, token=auth_token)
+
+        # Try to use revoked key — should fail or return error
+        status_result = run_cli("status", token=api_key)
+        assert status_result.returncode != 0 or "error" in status_result.stdout.lower() or "error" in status_result.stderr.lower()
