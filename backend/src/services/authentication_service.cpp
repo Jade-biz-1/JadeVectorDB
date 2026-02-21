@@ -237,7 +237,31 @@ Result<bool> AuthenticationService::update_username(const std::string& user_id,
 
         auto it = users_.find(user_id);
         if (it == users_.end()) {
-            RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
+            // Try loading from database into memory
+            if (persistence_) {
+                auto db_result = persistence_->get_user(user_id);
+                if (db_result.has_value()) {
+                    const auto& db_user = db_result.value();
+                    UserCredentials creds;
+                    creds.user_id = db_user.user_id;
+                    creds.username = db_user.username;
+                    creds.email = db_user.email;
+                    creds.password_hash = db_user.password_hash;
+                    creds.salt = db_user.salt;
+                    creds.is_active = db_user.is_active;
+                    creds.must_change_password = db_user.must_change_password;
+                    creds.failed_login_attempts = db_user.failed_login_attempts;
+                    creds.created_at = std::chrono::system_clock::time_point(
+                        std::chrono::milliseconds(db_user.created_at));
+                    creds.last_login = std::chrono::system_clock::time_point(
+                        std::chrono::milliseconds(db_user.last_login));
+                    users_[user_id] = creds;
+                    it = users_.find(user_id);
+                }
+            }
+            if (it == users_.end()) {
+                RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
+            }
         }
 
         for (const auto& entry : users_) {
@@ -1383,7 +1407,31 @@ Result<bool> AuthenticationService::update_email(const std::string& user_id, con
 
     auto it = users_.find(user_id);
     if (it == users_.end()) {
-        RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
+        // Try loading from database into memory
+        if (persistence_) {
+            auto db_result = persistence_->get_user(user_id);
+            if (db_result.has_value()) {
+                const auto& db_user = db_result.value();
+                UserCredentials creds;
+                creds.user_id = db_user.user_id;
+                creds.username = db_user.username;
+                creds.email = db_user.email;
+                creds.password_hash = db_user.password_hash;
+                creds.salt = db_user.salt;
+                creds.is_active = db_user.is_active;
+                creds.must_change_password = db_user.must_change_password;
+                creds.failed_login_attempts = db_user.failed_login_attempts;
+                creds.created_at = std::chrono::system_clock::time_point(
+                    std::chrono::milliseconds(db_user.created_at));
+                creds.last_login = std::chrono::system_clock::time_point(
+                    std::chrono::milliseconds(db_user.last_login));
+                users_[user_id] = creds;
+                it = users_.find(user_id);
+            }
+        }
+        if (it == users_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
+        }
     }
 
     it->second.email = new_email;
@@ -1397,7 +1445,31 @@ Result<bool> AuthenticationService::update_roles(const std::string& user_id, con
 
     auto it = users_.find(user_id);
     if (it == users_.end()) {
-        RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
+        // Try loading from database into memory
+        if (persistence_) {
+            auto db_result = persistence_->get_user(user_id);
+            if (db_result.has_value()) {
+                const auto& db_user = db_result.value();
+                UserCredentials creds;
+                creds.user_id = db_user.user_id;
+                creds.username = db_user.username;
+                creds.email = db_user.email;
+                creds.password_hash = db_user.password_hash;
+                creds.salt = db_user.salt;
+                creds.is_active = db_user.is_active;
+                creds.must_change_password = db_user.must_change_password;
+                creds.failed_login_attempts = db_user.failed_login_attempts;
+                creds.created_at = std::chrono::system_clock::time_point(
+                    std::chrono::milliseconds(db_user.created_at));
+                creds.last_login = std::chrono::system_clock::time_point(
+                    std::chrono::milliseconds(db_user.last_login));
+                users_[user_id] = creds;
+                it = users_.find(user_id);
+            }
+        }
+        if (it == users_.end()) {
+            RETURN_ERROR(ErrorCode::NOT_FOUND, "User not found: " + user_id);
+        }
     }
 
     it->second.roles = new_roles;

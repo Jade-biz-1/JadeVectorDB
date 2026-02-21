@@ -58,19 +58,42 @@ class TestApiKeyAuthentication:
         assert status_result.returncode == 0
 
 
+def _find_key_id(auth_token, description):
+    """List API keys and find the key_id by description."""
+    list_result = run_cli("list-api-keys", token=auth_token)
+    if list_result.returncode != 0:
+        return None
+    # Parse JSON output — may be a list or contain an api_keys array
+    try:
+        idx = list_result.stdout.find("[")
+        if idx == -1:
+            idx = list_result.stdout.find("{")
+        if idx != -1:
+            data = json.loads(list_result.stdout[idx:])
+            keys = data if isinstance(data, list) else data.get("api_keys", data.get("keys", []))
+            for k in keys:
+                if k.get("description", "") == description:
+                    return k.get("key_id", k.get("id"))
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return None
+
+
 class TestRevokeApiKey:
     def test_revoke_api_key(self, auth_token, auth_user_id):
-        # Create a key
+        # Create a key with unique description
+        desc = f"pytest revoke test {uuid.uuid4().hex[:6]}"
         create_result = run_cli(
             "create-api-key",
             "--user-id", auth_user_id,
-            "--description", "pytest revoke test",
+            "--description", desc,
             token=auth_token,
         )
-        data = parse_json_output(create_result)
-        assert data is not None
-        key_id = data.get("key_id", data.get("id", ""))
-        assert key_id, f"No key_id in response: {data}"
+        assert create_result.returncode == 0
+
+        # Find the key_id by listing keys
+        key_id = _find_key_id(auth_token, desc)
+        assert key_id, f"Could not find key_id for description: {desc}"
 
         # Revoke it
         result = run_cli(
@@ -83,17 +106,21 @@ class TestRevokeApiKey:
 
     def test_revoked_key_cannot_authenticate(self, auth_token, auth_user_id):
         """After revoking, the key should no longer work."""
+        desc = f"pytest revoke auth test {uuid.uuid4().hex[:6]}"
         create_result = run_cli(
             "create-api-key",
             "--user-id", auth_user_id,
-            "--description", "pytest revoke auth test",
+            "--description", desc,
             token=auth_token,
         )
         data = parse_json_output(create_result)
         assert data is not None
         api_key = data.get("api_key", data.get("key", ""))
-        key_id = data.get("key_id", data.get("id", ""))
-        assert api_key and key_id
+        assert api_key
+
+        # Find the key_id by listing keys
+        key_id = _find_key_id(auth_token, desc)
+        assert key_id, f"Could not find key_id for description: {desc}"
 
         # Revoke
         run_cli("revoke-api-key", "--key-id", key_id, token=auth_token)
