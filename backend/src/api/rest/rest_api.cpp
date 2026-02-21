@@ -1319,6 +1319,7 @@ crow::response RestApiImpl::handle_batch_store_vectors_request(const crow::reque
             auto vec_json = vectors_array[i];
             Vector vector_data;
             vector_data.id = vec_json["id"].s();
+            vector_data.databaseId = database_id;
 
             if (vec_json["values"].t() != crow::json::type::List) {
                 return crow::response(400, "{\"error\":\"Vector values must be an array\"}");
@@ -1337,6 +1338,18 @@ crow::response RestApiImpl::handle_batch_store_vectors_request(const crow::reque
                 if (meta.has("owner")) vector_data.metadata.owner = meta["owner"].s();
                 if (meta.has("category")) vector_data.metadata.category = meta["category"].s();
                 if (meta.has("status")) vector_data.metadata.status = meta["status"].s();
+                // Store unrecognized fields in custom metadata map
+                for (auto& key : meta.keys()) {
+                    std::string k = key;
+                    if (k != "source" && k != "owner" && k != "category" && k != "status") {
+                        vector_data.metadata.custom[k] = nlohmann::json(meta[k].s());
+                    }
+                }
+            }
+
+            // Set default status if not provided
+            if (vector_data.metadata.status.empty()) {
+                vector_data.metadata.status = "active";
             }
 
             vectors.push_back(vector_data);
