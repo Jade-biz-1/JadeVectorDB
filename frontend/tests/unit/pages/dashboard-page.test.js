@@ -435,7 +435,8 @@ describe('Dashboard Page', () => {
       render(<Dashboard />);
 
       await waitFor(() => {
-        expect(screen.getByText(/user-1/)).toBeInTheDocument();
+        const matches = screen.getAllByText(/user-1/);
+        expect(matches.length).toBeGreaterThan(0);
       });
     });
   });
