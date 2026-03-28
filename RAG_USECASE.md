@@ -2793,6 +2793,8 @@ echo ""
    - [ ] Track processing status (pending/processing/complete/failed)
    - [ ] Implement error handling and retry logic
    - [ ] Add ingestion statistics (chunks created, time taken)
+   - [ ] Implement document deletion with vector cleanup
+   - [ ] Add background index compaction for optimization
 
 3. **Day 3: Frontend Document Management UI**
    - [ ] Create `/admin/documents` page in React
@@ -2804,6 +2806,8 @@ echo ""
    - [ ] Add search/filter for document list
    - [ ] Show processing status and error messages
    - [ ] Add admin authentication/authorization check
+   - [ ] Add deletion confirmation dialog with chunk count
+   - [ ] Show system stats (total docs, total chunks, deletion percentage)
 
 **Code Example - Backend Upload Endpoint:**
 ```python
@@ -2894,6 +2898,170 @@ async def process_document_async(doc_id: str, file_path: str, device_type: str):
     except Exception as e:
         documents_db[doc_id]["status"] = "failed"
         documents_db[doc_id]["error"] = str(e)
+
+@app.delete("/api/admin/documents/{doc_id}")
+async def delete_document(doc_id: str, background_tasks: BackgroundTasks):
+    """
+    Delete document and all its vector chunks from JadeVectorDB
+
+    This function:
+    1. Finds all chunks belonging to this document
+    2. Deletes each vector from JadeVectorDB (index updated automatically)
+    3. Removes document metadata
+    4. Triggers background index compaction if needed
+
+    **Important:** Deletion does NOT require immediate reindexing.
+    - HNSW indexes update incrementally
+    - Deleted vectors are marked and skipped in searches
+    - Background compaction runs if >10% of vectors are deleted
+    """
+    try:
+        # Verify document exists
+        if doc_id not in documents_db:
+            raise HTTPException(404, f"Document {doc_id} not found")
+
+        doc = documents_db[doc_id]
+
+        # 1. Find all chunk IDs for this document using metadata filter
+        all_chunks = []
+        offset = 0
+        batch_size = 100
+
+        while True:
+            batch = jadevectordb.list_vectors(
+                database_id="maintenance_docs",
+                filter={"doc_id": doc_id},
+                limit=batch_size,
+                offset=offset
+            )
+
+            if not batch:
+                break
+
+            all_chunks.extend(batch)
+            offset += batch_size
+
+        chunk_count = len(all_chunks)
+
+        # 2. Delete each vector from JadeVectorDB
+        # Index entries are automatically updated (no manual reindex needed)
+        deleted_count = 0
+        failed_chunks = []
+
+        for chunk in all_chunks:
+            try:
+                jadevectordb.delete_vector(
+                    database_id="maintenance_docs",
+                    vector_id=chunk['id']
+                )
+                deleted_count += 1
+            except Exception as e:
+                print(f"Failed to delete chunk {chunk['id']}: {e}")
+                failed_chunks.append(chunk['id'])
+
+        # 3. Remove document from metadata store
+        del documents_db[doc_id]
+
+        # 4. Schedule background index compaction check
+        # This runs asynchronously and doesn't block the response
+        background_tasks.add_task(
+            check_and_compact_index,
+            database_id="maintenance_docs"
+        )
+
+        return {
+            "success": True,
+            "doc_id": doc_id,
+            "doc_name": doc['filename'],
+            "chunks_found": chunk_count,
+            "chunks_deleted": deleted_count,
+            "chunks_failed": len(failed_chunks),
+            "message": f"Document deleted: {deleted_count}/{chunk_count} chunks removed. Index updated automatically.",
+            "note": "Background compaction scheduled if needed (happens automatically)"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Deletion failed: {str(e)}")
+
+
+async def check_and_compact_index(database_id: str):
+    """
+    Background task: Check if index needs compaction after deletions
+
+    **What is Compaction?**
+    - Physically removes deleted vector nodes from index
+    - Rebuilds index structure for efficiency
+    - Reclaims storage space
+
+    **When Does It Run?**
+    - Only if >10% of vectors have been deleted
+    - Runs in background (doesn't block queries)
+    - Takes 5-30 minutes depending on dataset size
+
+    **Is Reindexing Required?**
+    - NO for immediate deletions (index updates incrementally)
+    - YES for optimization after many deletions (this function)
+    - Searches work normally during compaction
+    """
+    try:
+        # Get database statistics
+        stats = jadevectordb.get_database_stats(database_id)
+
+        total_vectors = stats['total_vectors']
+        deleted_vectors = stats.get('deleted_vectors', 0)
+
+        # Calculate deletion percentage
+        deletion_ratio = deleted_vectors / total_vectors if total_vectors > 0 else 0
+
+        # Trigger compaction if >10% deleted
+        if deletion_ratio > 0.1:
+            print(f"Index compaction starting: {deleted_vectors} deleted out of {total_vectors} ({deletion_ratio:.1%})")
+
+            # This rebuilds the index, physically removing deleted nodes
+            # Queries continue to work during this process
+            jadevectordb.compact_index(
+                database_id=database_id,
+                index_type="HNSW"
+            )
+
+            print(f"Index compaction complete. Space reclaimed, index optimized.")
+
+            # Update stats
+            new_stats = jadevectordb.get_database_stats(database_id)
+            print(f"New vector count: {new_stats['total_vectors']} (freed {deleted_vectors} slots)")
+        else:
+            print(f"Compaction not needed: only {deletion_ratio:.1%} deleted")
+
+    except Exception as e:
+        print(f"Index compaction failed: {e}")
+        # Non-critical error - log but don't crash
+```
+
+**Key Implementation Notes:**
+
+1. **No Immediate Reindexing Required:**
+   - Vector deletion updates index incrementally
+   - Deleted vectors are marked and skipped in searches
+   - No query interruption or delay for users
+
+2. **Background Compaction (Automatic):**
+   - Runs only if >10% of vectors are deleted
+   - Physically removes deleted nodes
+   - Reclaims storage space
+   - Optimizes search performance
+
+3. **User Experience:**
+   - Click "Delete" → Immediate response
+   - Document and chunks removed instantly
+   - Searches exclude deleted content immediately
+   - Compaction happens silently in background
+
+4. **When Compaction Runs:**
+   - After deleting 10+ documents from 100-doc library (10%)
+   - After deleting 100+ documents from 1000-doc library (10%)
+   - Can be scheduled as nightly maintenance task
 ```
 
 **Code Example - Frontend Upload Component:**
@@ -2935,13 +3103,36 @@ function AdminDocuments() {
   }
 
   const handleDelete = async (docId) => {
-    if (!confirm('Delete this document and all its chunks?')) return
+    const doc = documents.find(d => d.id === docId)
+    const chunkCount = doc.chunk_count || 'unknown'
 
-    await fetch(`/api/admin/documents/${docId}`, {
-      method: 'DELETE'
-    })
+    if (!confirm(
+      `Delete "${doc.filename}"?\n\n` +
+      `This will permanently remove:\n` +
+      `• Document metadata\n` +
+      `• ${chunkCount} vector chunks from JadeVectorDB\n` +
+      `• All index entries\n\n` +
+      `This action cannot be undone.`
+    )) return
 
-    loadDocuments()
+    try {
+      const response = await fetch(`/api/admin/documents/${docId}`, {
+        method: 'DELETE'
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        alert(
+          `✅ ${result.message}\n\n` +
+          `Deleted: ${result.chunks_deleted}/${result.chunks_found} chunks\n` +
+          `${result.note}`
+        )
+        loadDocuments() // Refresh list
+      }
+    } catch (error) {
+      alert(`❌ Deletion failed: ${error.message}`)
+    }
   }
 
   return (
@@ -3005,11 +3196,17 @@ function AdminDocuments() {
 ```
 
 **Deliverables (Days 1-3):**
-- Working document upload endpoint
-- Background processing pipeline
+- Working document upload endpoint with validation
+- Background processing pipeline with status tracking
 - Admin UI for document management
-- Document listing with status tracking
-- Delete and reprocess functionality
+- Document listing with filtering and search
+- **Production-ready deletion with:**
+  - Complete vector cleanup (all chunks removed)
+  - Automatic index updates (no manual reindex needed)
+  - Background compaction for optimization (>10% deletions)
+  - User-friendly confirmation dialogs
+- Reprocess functionality for updated documents
+- System statistics dashboard
 
 ---
 
