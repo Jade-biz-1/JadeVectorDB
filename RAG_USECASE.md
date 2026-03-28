@@ -591,12 +591,19 @@ answer = response['message']['content']
 
 ### 6. User Interface
 
-#### Option 1: Streamlit Web UI (Recommended)
+#### FastAPI + React Web UI (Production-Grade)
+
+**Architecture:**
+- **Backend**: FastAPI REST API (Python)
+- **Frontend**: React SPA (JavaScript)
+- **Deployment**: Single server with static file serving
 
 **Advantages:**
-- Rapid development (< 100 lines of code)
-- Professional-looking interface
-- Easy to deploy locally
+- Professional, modern interface
+- Clear separation of concerns (API + UI)
+- Auto-generated API documentation
+- Mobile-responsive design
+- Reusable API for future integrations
 - Supports history, file upload for new docs
 
 **Example Interface:**
@@ -2695,8 +2702,9 @@ echo ""
 ### Phase 4: User Interface (Week 4)
 
 **Goals:**
-- Build Streamlit web UI
-- Add filtering and configuration
+- Build FastAPI REST API backend
+- Create React frontend
+- Integrate and deploy as single server
 - Implement feedback collection
 
 **Tasks:**
