@@ -591,12 +591,19 @@ answer = response['message']['content']
 
 ### 6. User Interface
 
-#### Option 1: Streamlit Web UI (Recommended)
+#### FastAPI + React Web UI (Production-Grade)
+
+**Architecture:**
+- **Backend**: FastAPI REST API (Python)
+- **Frontend**: React SPA (JavaScript)
+- **Deployment**: Single server with static file serving
 
 **Advantages:**
-- Rapid development (< 100 lines of code)
-- Professional-looking interface
-- Easy to deploy locally
+- Professional, modern interface
+- Clear separation of concerns (API + UI)
+- Auto-generated API documentation
+- Mobile-responsive design
+- Reusable API for future integrations
 - Supports history, file upload for new docs
 
 **Example Interface:**
@@ -2564,6 +2571,23 @@ echo ""
 
 ## Implementation Roadmap
 
+### Overview
+
+| Phase | Duration | Focus | Key Deliverable |
+|-------|----------|-------|-----------------|
+| **Phase 1** | Week 1 | Foundation setup | Working JadeVectorDB + validation |
+| **Phase 2** | Week 2 | Document processing | Ingestion pipeline + 100+ chunks |
+| **Phase 3** | Week 3 | RAG core | End-to-end query pipeline |
+| **Phase 4** | Week 4 | Query UI (FastAPI + React) | Production web interface |
+| **Phase 5** | Week 5 | **Document management + optimization** | **Admin panel + tuning** |
+| **Phase 6** | Week 6 | Production deployment | Trained users + full launch |
+
+**Total Timeline:** 6 weeks (42 days)
+
+**Critical Path:** Phase 1 → Phase 2 → Phase 3 → Phase 4 (Query UI) → Phase 5 (Admin UI) → Phase 6
+
+---
+
 ### Phase 1: Foundation (Week 1)
 
 **Goals:**
@@ -2695,8 +2719,9 @@ echo ""
 ### Phase 4: User Interface (Week 4)
 
 **Goals:**
-- Build Streamlit web UI
-- Add filtering and configuration
+- Build FastAPI REST API backend
+- Create React frontend
+- Integrate and deploy as single server
 - Implement feedback collection
 
 **Tasks:**
@@ -2735,90 +2760,558 @@ echo ""
 
 ---
 
-### Phase 5: Optimization & Polish (Week 5)
+### Phase 5: Document Management & Optimization (Week 5)
 
 **Goals:**
+- Add document management UI for admins
 - Improve retrieval accuracy
 - Optimize performance
 - Add monitoring
 
+---
+
+#### Days 1-3: Document Management UI ⏱️ 3 days
+
+**Goal:** Enable admins to upload, manage, and delete documents without CLI
+
 **Tasks:**
 
-1. **Retrieval Tuning**
-   - [ ] Experiment with chunk sizes
-   - [ ] Test different top-k values
-   - [ ] Add re-ranking (optional)
+1. **Day 1: Backend API for Document Management**
+   - [ ] Create upload endpoint (`POST /api/admin/documents/upload`)
+   - [ ] Implement file validation (PDF/DOCX only, size limits)
+   - [ ] Add background task processing with progress tracking
+   - [ ] Create document metadata storage (track uploaded docs)
+   - [ ] Implement document listing endpoint (`GET /api/admin/documents`)
+   - [ ] Add document deletion endpoint (`DELETE /api/admin/documents/{id}`)
+   - [ ] Add reprocess endpoint (`POST /api/admin/documents/{id}/reprocess`)
+
+2. **Day 2: Document Processing Pipeline Integration**
+   - [ ] Integrate PDF/DOCX extraction in upload handler
+   - [ ] Add chunking logic to background task
+   - [ ] Generate embeddings for uploaded documents
+   - [ ] Store vectors in JadeVectorDB with proper metadata
+   - [ ] Track processing status (pending/processing/complete/failed)
+   - [ ] Implement error handling and retry logic
+   - [ ] Add ingestion statistics (chunks created, time taken)
+   - [ ] Implement document deletion with vector cleanup
+   - [ ] Add background index compaction for optimization
+
+3. **Day 3: Frontend Document Management UI**
+   - [ ] Create `/admin/documents` page in React
+   - [ ] Build file upload component with drag-and-drop
+   - [ ] Add upload progress bar with real-time updates
+   - [ ] Create document list table (name, type, chunks, date, status)
+   - [ ] Add action buttons (reprocess, delete) per document
+   - [ ] Implement filtering by device type
+   - [ ] Add search/filter for document list
+   - [ ] Show processing status and error messages
+   - [ ] Add admin authentication/authorization check
+   - [ ] Add deletion confirmation dialog with chunk count
+   - [ ] Show system stats (total docs, total chunks, deletion percentage)
+
+**Code Example - Backend Upload Endpoint:**
+```python
+from fastapi import UploadFile, BackgroundTasks, HTTPException
+import shutil
+from pathlib import Path
+
+@app.post("/api/admin/documents/upload")
+async def upload_document(
+    file: UploadFile,
+    device_type: str,
+    background_tasks: BackgroundTasks
+):
+    # Validate file type
+    if not file.filename.endswith(('.pdf', '.docx')):
+        raise HTTPException(400, "Only PDF and DOCX files supported")
+
+    # Save uploaded file
+    upload_dir = Path("uploads")
+    upload_dir.mkdir(exist_ok=True)
+    file_path = upload_dir / file.filename
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # Create document record
+    doc_id = str(uuid.uuid4())
+    document = {
+        "id": doc_id,
+        "filename": file.filename,
+        "device_type": device_type,
+        "status": "pending",
+        "uploaded_at": datetime.now().isoformat()
+    }
+
+    # Store in database
+    documents_db[doc_id] = document
+
+    # Process in background
+    background_tasks.add_task(
+        process_document_async,
+        doc_id=doc_id,
+        file_path=str(file_path),
+        device_type=device_type
+    )
+
+    return {
+        "id": doc_id,
+        "status": "processing",
+        "message": f"Document {file.filename} uploaded successfully"
+    }
+
+async def process_document_async(doc_id: str, file_path: str, device_type: str):
+    """Background task to process uploaded document"""
+    try:
+        documents_db[doc_id]["status"] = "processing"
+
+        # 1. Extract text from PDF/DOCX
+        text = extract_text(file_path)
+
+        # 2. Chunk document semantically
+        chunks = chunk_document(text, chunk_size=512, overlap=50)
+
+        # 3. Generate embeddings
+        embeddings = generate_embeddings([c.text for c in chunks])
+
+        # 4. Store in JadeVectorDB
+        for chunk, embedding in zip(chunks, embeddings):
+            jadevectordb.store_vector(
+                database_id="maintenance_docs",
+                vector_id=f"{doc_id}_{chunk.id}",
+                values=embedding,
+                metadata={
+                    "doc_id": doc_id,
+                    "doc_name": Path(file_path).name,
+                    "device_type": device_type,
+                    "text": chunk.text,
+                    "page_numbers": chunk.pages,
+                    "section": chunk.section
+                }
+            )
+
+        # Update status
+        documents_db[doc_id]["status"] = "complete"
+        documents_db[doc_id]["chunk_count"] = len(chunks)
+        documents_db[doc_id]["processed_at"] = datetime.now().isoformat()
+
+    except Exception as e:
+        documents_db[doc_id]["status"] = "failed"
+        documents_db[doc_id]["error"] = str(e)
+
+@app.delete("/api/admin/documents/{doc_id}")
+async def delete_document(doc_id: str, background_tasks: BackgroundTasks):
+    """
+    Delete document and all its vector chunks from JadeVectorDB
+
+    This function:
+    1. Finds all chunks belonging to this document
+    2. Deletes each vector from JadeVectorDB (index updated automatically)
+    3. Removes document metadata
+    4. Triggers background index compaction if needed
+
+    **Important:** Deletion does NOT require immediate reindexing.
+    - HNSW indexes update incrementally
+    - Deleted vectors are marked and skipped in searches
+    - Background compaction runs if >10% of vectors are deleted
+    """
+    try:
+        # Verify document exists
+        if doc_id not in documents_db:
+            raise HTTPException(404, f"Document {doc_id} not found")
+
+        doc = documents_db[doc_id]
+
+        # 1. Find all chunk IDs for this document using metadata filter
+        all_chunks = []
+        offset = 0
+        batch_size = 100
+
+        while True:
+            batch = jadevectordb.list_vectors(
+                database_id="maintenance_docs",
+                filter={"doc_id": doc_id},
+                limit=batch_size,
+                offset=offset
+            )
+
+            if not batch:
+                break
+
+            all_chunks.extend(batch)
+            offset += batch_size
+
+        chunk_count = len(all_chunks)
+
+        # 2. Delete each vector from JadeVectorDB
+        # Index entries are automatically updated (no manual reindex needed)
+        deleted_count = 0
+        failed_chunks = []
+
+        for chunk in all_chunks:
+            try:
+                jadevectordb.delete_vector(
+                    database_id="maintenance_docs",
+                    vector_id=chunk['id']
+                )
+                deleted_count += 1
+            except Exception as e:
+                print(f"Failed to delete chunk {chunk['id']}: {e}")
+                failed_chunks.append(chunk['id'])
+
+        # 3. Remove document from metadata store
+        del documents_db[doc_id]
+
+        # 4. Schedule background index compaction check
+        # This runs asynchronously and doesn't block the response
+        background_tasks.add_task(
+            check_and_compact_index,
+            database_id="maintenance_docs"
+        )
+
+        return {
+            "success": True,
+            "doc_id": doc_id,
+            "doc_name": doc['filename'],
+            "chunks_found": chunk_count,
+            "chunks_deleted": deleted_count,
+            "chunks_failed": len(failed_chunks),
+            "message": f"Document deleted: {deleted_count}/{chunk_count} chunks removed. Index updated automatically.",
+            "note": "Background compaction scheduled if needed (happens automatically)"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Deletion failed: {str(e)}")
+
+
+async def check_and_compact_index(database_id: str):
+    """
+    Background task: Check if index needs compaction after deletions
+
+    **What is Compaction?**
+    - Physically removes deleted vector nodes from index
+    - Rebuilds index structure for efficiency
+    - Reclaims storage space
+
+    **When Does It Run?**
+    - Only if >10% of vectors have been deleted
+    - Runs in background (doesn't block queries)
+    - Takes 5-30 minutes depending on dataset size
+
+    **Is Reindexing Required?**
+    - NO for immediate deletions (index updates incrementally)
+    - YES for optimization after many deletions (this function)
+    - Searches work normally during compaction
+    """
+    try:
+        # Get database statistics
+        stats = jadevectordb.get_database_stats(database_id)
+
+        total_vectors = stats['total_vectors']
+        deleted_vectors = stats.get('deleted_vectors', 0)
+
+        # Calculate deletion percentage
+        deletion_ratio = deleted_vectors / total_vectors if total_vectors > 0 else 0
+
+        # Trigger compaction if >10% deleted
+        if deletion_ratio > 0.1:
+            print(f"Index compaction starting: {deleted_vectors} deleted out of {total_vectors} ({deletion_ratio:.1%})")
+
+            # This rebuilds the index, physically removing deleted nodes
+            # Queries continue to work during this process
+            jadevectordb.compact_index(
+                database_id=database_id,
+                index_type="HNSW"
+            )
+
+            print(f"Index compaction complete. Space reclaimed, index optimized.")
+
+            # Update stats
+            new_stats = jadevectordb.get_database_stats(database_id)
+            print(f"New vector count: {new_stats['total_vectors']} (freed {deleted_vectors} slots)")
+        else:
+            print(f"Compaction not needed: only {deletion_ratio:.1%} deleted")
+
+    except Exception as e:
+        print(f"Index compaction failed: {e}")
+        # Non-critical error - log but don't crash
+```
+
+**Key Implementation Notes:**
+
+1. **No Immediate Reindexing Required:**
+   - Vector deletion updates index incrementally
+   - Deleted vectors are marked and skipped in searches
+   - No query interruption or delay for users
+
+2. **Background Compaction (Automatic):**
+   - Runs only if >10% of vectors are deleted
+   - Physically removes deleted nodes
+   - Reclaims storage space
+   - Optimizes search performance
+
+3. **User Experience:**
+   - Click "Delete" → Immediate response
+   - Document and chunks removed instantly
+   - Searches exclude deleted content immediately
+   - Compaction happens silently in background
+
+4. **When Compaction Runs:**
+   - After deleting 10+ documents from 100-doc library (10%)
+   - After deleting 100+ documents from 1000-doc library (10%)
+   - Can be scheduled as nightly maintenance task
+```
+
+**Code Example - Frontend Upload Component:**
+```jsx
+// src/pages/AdminDocuments.jsx
+import { useState, useEffect } from 'react'
+
+function AdminDocuments() {
+  const [documents, setDocuments] = useState([])
+  const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+
+  useEffect(() => {
+    loadDocuments()
+  }, [])
+
+  const loadDocuments = async () => {
+    const response = await fetch('/api/admin/documents')
+    const data = await response.json()
+    setDocuments(data)
+  }
+
+  const handleUpload = async (file, deviceType) => {
+    setUploading(true)
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('device_type', deviceType)
+
+    const response = await fetch('/api/admin/documents/upload', {
+      method: 'POST',
+      body: formData
+    })
+
+    const result = await response.json()
+    alert(`Upload started: ${result.message}`)
+
+    setUploading(false)
+    loadDocuments() // Refresh list
+  }
+
+  const handleDelete = async (docId) => {
+    const doc = documents.find(d => d.id === docId)
+    const chunkCount = doc.chunk_count || 'unknown'
+
+    if (!confirm(
+      `Delete "${doc.filename}"?\n\n` +
+      `This will permanently remove:\n` +
+      `• Document metadata\n` +
+      `• ${chunkCount} vector chunks from JadeVectorDB\n` +
+      `• All index entries\n\n` +
+      `This action cannot be undone.`
+    )) return
+
+    try {
+      const response = await fetch(`/api/admin/documents/${docId}`, {
+        method: 'DELETE'
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        alert(
+          `✅ ${result.message}\n\n` +
+          `Deleted: ${result.chunks_deleted}/${result.chunks_found} chunks\n` +
+          `${result.note}`
+        )
+        loadDocuments() // Refresh list
+      }
+    } catch (error) {
+      alert(`❌ Deletion failed: ${error.message}`)
+    }
+  }
+
+  return (
+    <div className="admin-documents">
+      <h1>📚 Document Management</h1>
+
+      {/* Upload Section */}
+      <div className="upload-section">
+        <h2>Upload New Document</h2>
+        <FileUploadDropzone
+          onUpload={handleUpload}
+          uploading={uploading}
+          accept=".pdf,.docx"
+        />
+      </div>
+
+      {/* Document List */}
+      <div className="document-list">
+        <h2>Indexed Documents ({documents.length})</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Document Name</th>
+              <th>Device Type</th>
+              <th>Chunks</th>
+              <th>Status</th>
+              <th>Uploaded</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {documents.map(doc => (
+              <tr key={doc.id}>
+                <td>{doc.filename}</td>
+                <td>{doc.device_type}</td>
+                <td>{doc.chunk_count || '-'}</td>
+                <td>
+                  <StatusBadge status={doc.status} />
+                </td>
+                <td>{new Date(doc.uploaded_at).toLocaleDateString()}</td>
+                <td>
+                  {doc.status === 'complete' && (
+                    <>
+                      <button onClick={() => handleReprocess(doc.id)}>
+                        🔄 Reprocess
+                      </button>
+                      <button onClick={() => handleDelete(doc.id)}>
+                        🗑️ Delete
+                      </button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+```
+
+**Deliverables (Days 1-3):**
+- Working document upload endpoint with validation
+- Background processing pipeline with status tracking
+- Admin UI for document management
+- Document listing with filtering and search
+- **Production-ready deletion with:**
+  - Complete vector cleanup (all chunks removed)
+  - Automatic index updates (no manual reindex needed)
+  - Background compaction for optimization (>10% deletions)
+  - User-friendly confirmation dialogs
+- Reprocess functionality for updated documents
+- System statistics dashboard
+
+---
+
+#### Days 4-7: Optimization & Monitoring ⏱️ 4 days
+
+**Tasks:**
+
+1. **Day 4: Retrieval Tuning**
+   - [ ] Experiment with chunk sizes (256, 512, 1024 tokens)
+   - [ ] Test different top-k values (3, 5, 10, 15)
+   - [ ] Add re-ranking for better results (optional)
    - [ ] Implement hybrid search (optional)
+   - [ ] Compare retrieval quality across configurations
 
-2. **Performance Optimization**
+2. **Day 5: Performance Optimization**
    - [ ] Cache embeddings for common queries
-   - [ ] Optimize batch processing
-   - [ ] Reduce LLM latency (quantization?)
-   - [ ] Monitor memory usage
+   - [ ] Optimize batch processing for uploads
+   - [ ] Reduce LLM latency with prompt optimization
+   - [ ] Monitor memory usage during document processing
+   - [ ] Add connection pooling for JadeVectorDB
 
-3. **Quality Improvements**
-   - [ ] Refine system prompt
-   - [ ] Add query preprocessing
-   - [ ] Handle abbreviations
-   - [ ] Improve source formatting
-
-4. **Monitoring**
+3. **Day 6: Quality Improvements & Monitoring**
+   - [ ] Refine system prompt based on test queries
+   - [ ] Add query preprocessing (lowercase, strip, etc.)
+   - [ ] Handle technical abbreviations
+   - [ ] Improve source citation formatting
    - [ ] Log all queries and responses
-   - [ ] Track answer quality metrics
-   - [ ] Monitor system performance
+   - [ ] Track answer quality metrics (feedback scores)
+   - [ ] Monitor system performance (latency, throughput)
    - [ ] Set up alerts for errors
 
-5. **Documentation**
-   - [ ] Write admin guide
+4. **Day 7: Documentation & Testing**
+   - [ ] Write admin guide for document management
    - [ ] Create troubleshooting FAQ
-   - [ ] Document common queries
-   - [ ] Identify documentation gaps
+   - [ ] Document common queries and expected answers
+   - [ ] Identify documentation gaps in source materials
+   - [ ] Test with 50+ real-world questions
+   - [ ] User acceptance testing with field engineers
 
-**Deliverables:**
-- Optimized system
+**Deliverables (Days 4-7):**
+- Optimized retrieval configuration
+- Performance benchmarks
 - Monitoring dashboard
-- Complete documentation
+- Complete admin documentation
+- User testing results
 
 ---
 
 ### Phase 6: Production Deployment (Week 6)
 
 **Goals:**
-- Full document ingestion
-- User training
+- Full document ingestion via UI
+- User training (query interface + admin tools)
 - Production launch
 
 **Tasks:**
 
-1. **Full Ingestion**
-   - [ ] Ingest all 100-1000 documents
-   - [ ] Validate completeness
-   - [ ] Create document index
+1. **Days 1-2: Full Document Ingestion**
+   - [ ] Use document management UI to upload all 100-1000 PDFs/DOCX
+   - [ ] Monitor ingestion progress and errors
+   - [ ] Validate completeness (all documents processed)
+   - [ ] Create document inventory/index
    - [ ] Backup vector database
+   - [ ] Test random sample queries across all documents
 
-2. **User Training**
-   - [ ] Create training materials
-   - [ ] Run pilot with 5-10 engineers
-   - [ ] Collect feedback
-   - [ ] Refine based on feedback
+2. **Days 3-4: User Training**
+   - [ ] Create training materials for end users (field engineers)
+     - How to ask effective questions
+     - Understanding source citations
+     - When to trust vs. verify answers
+   - [ ] Create admin training materials
+     - How to upload new documents
+     - How to manage document library
+     - How to interpret system stats
+   - [ ] Run pilot sessions with 5-10 engineers
+   - [ ] Collect feedback on usability
+   - [ ] Refine UI based on feedback
 
-3. **Production Launch**
+3. **Day 5: Production Launch Preparation**
    - [ ] Deploy to production server/workstation
-   - [ ] Set up automatic backups
-   - [ ] Configure monitoring
-   - [ ] Create support process
+   - [ ] Set up automatic backups (daily vector DB snapshots)
+   - [ ] Configure monitoring and alerting
+   - [ ] Create support process documentation
+   - [ ] Set up issue tracking system
+   - [ ] Prepare rollback plan
 
-4. **Iteration Plan**
-   - [ ] Weekly review of query logs
-   - [ ] Monthly documentation updates
-   - [ ] Quarterly system optimization
-   - [ ] Continuous feedback collection
+4. **Day 6-7: Launch & Iteration Planning**
+   - [ ] Go-live announcement and rollout
+   - [ ] Monitor first 24-48 hours closely
+   - [ ] Address any critical issues immediately
+   - [ ] Establish feedback collection process
+   - [ ] Create maintenance schedule:
+     - Weekly: Review query logs, identify gaps
+     - Monthly: Update/add documentation based on gaps
+     - Quarterly: System optimization and re-tuning
+     - Continuous: User feedback collection and response
 
 **Deliverables:**
-- Production system
-- Trained users
-- Support documentation
-- Maintenance plan
+- Production-deployed RAG system
+  - Query interface (port 8000)
+  - Admin panel (port 8000/admin)
+- Fully indexed document library (100-1000 docs)
+- Trained users (engineers + admins)
+- Support documentation and processes
+- Maintenance and iteration plan
 
 ---
 
