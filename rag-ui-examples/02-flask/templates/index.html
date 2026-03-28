@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maintenance Documentation Q&A</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text: #1e293b;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            background: var(--surface);
+            border-bottom: 2px solid var(--border);
+            padding: 1.5rem 0;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-top: 0.5rem;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr;
+            gap: 2rem;
+        }
+
+        .card {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--text);
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: var(--text);
+            font-size: 0.9rem;
+        }
+
+        textarea, select, input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        textarea:focus, select:focus, input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        button {
+            width: 100%;
+            padding: 0.875rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover:not(:disabled) {
+            background: var(--primary-dark);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .results {
+            min-height: 400px;
+        }
+
+        .result-content {
+            display: none;
+        }
+
+        .result-content.visible {
+            display: block;
+        }
+
+        .answer {
+            background: #f0f9ff;
+            border-left: 4px solid var(--primary);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            white-space: pre-wrap;
+            line-height: 1.7;
+        }
+
+        .sources {
+            margin-top: 1.5rem;
+        }
+
+        .source-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .source-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 0.75rem;
+        }
+
+        .source-title {
+            font-weight: 600;
+            color: var(--text);
+            font-size: 0.95rem;
+        }
+
+        .relevance {
+            background: var(--success);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .source-meta {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        .source-excerpt {
+            font-size: 0.9rem;
+            color: var(--text);
+            font-style: italic;
+            padding-left: 1rem;
+            border-left: 2px solid var(--border);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-muted);
+        }
+
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 3rem 1rem;
+        }
+
+        .spinner {
+            border: 4px solid var(--border);
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .examples {
+            margin-top: 1rem;
+        }
+
+        .example-btn {
+            background: var(--bg);
+            color: var(--text);
+            border: 2px solid var(--border);
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+            display: inline-block;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .example-btn:hover {
+            border-color: var(--primary);
+            background: white;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            padding: 1rem;
+            background: var(--bg);
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            margin-right: 0.5rem;
+        }
+
+        footer {
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border);
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 968px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>
+                🔧 Maintenance Documentation Q&A
+            </h1>
+            <div class="subtitle">
+                <span class="status-indicator"></span>
+                Ask questions about equipment maintenance, troubleshooting, and technical procedures
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="main-grid">
+            <!-- Left: Query Input -->
+            <div class="card">
+                <h2 class="card-title">Ask a Question</h2>
+
+                <form id="queryForm">
+                    <div class="form-group">
+                        <label for="question">Your Question</label>
+                        <textarea
+                            id="question"
+                            name="question"
+                            placeholder="Example: How do I perform routine maintenance on the hydraulic pump?"
+                            required
+                        ></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="device_type">Device Type</label>
+                        <select id="device_type" name="device_type">
+                            <option value="all">All Devices</option>
+                            <option value="hydraulic_pump">Hydraulic Pump</option>
+                            <option value="air_compressor">Air Compressor</option>
+                            <option value="generator">Generator</option>
+                            <option value="cnc_machine">CNC Machine</option>
+                            <option value="conveyor_belt">Conveyor Belt</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="top_k">Number of Sources (1-15)</label>
+                        <input type="range" id="top_k" name="top_k" min="1" max="15" value="5">
+                        <span id="top_k_value">5</span>
+                    </div>
+
+                    <button type="submit" id="submitBtn">
+                        🔍 Search Documentation
+                    </button>
+                </form>
+
+                <div class="examples">
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.5rem;">Try these examples:</p>
+                    <button type="button" class="example-btn" onclick="setExample('How do I replace the air filter?', 'air_compressor')">
+                        Air filter replacement
+                    </button>
+                    <button type="button" class="example-btn" onclick="setExample('What are the safety precautions for hydraulic systems?', 'hydraulic_pump')">
+                        Safety precautions
+                    </button>
+                    <button type="button" class="example-btn" onclick="setExample('Troubleshooting steps for error code E47', 'cnc_machine')">
+                        Error code E47
+                    </button>
+                </div>
+
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-value" id="stat-queries">0</div>
+                        <div class="stat-label">Queries</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="stat-docs">127</div>
+                        <div class="stat-label">Documents</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="stat-chunks">3.8K</div>
+                        <div class="stat-label">Chunks</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Results -->
+            <div class="card results">
+                <h2 class="card-title">Answer</h2>
+
+                <div id="emptyState" class="empty-state">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path>
+                    </svg>
+                    <p>Ask a question to get started</p>
+                    <p style="font-size: 0.9rem; margin-top: 0.5rem;">Your answer will appear here with relevant source citations</p>
+                </div>
+
+                <div id="loadingState" class="loading" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>Searching documentation...</p>
+                </div>
+
+                <div id="resultContent" class="result-content">
+                    <div class="answer" id="answerText"></div>
+
+                    <div class="sources">
+                        <h3 style="margin-bottom: 1rem; font-size: 1.05rem;">📚 Source Documents</h3>
+                        <div id="sourcesList"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p><strong>Status:</strong> <span class="status-indicator"></span> Connected to JadeVectorDB | 🤖 Ollama LLM: llama3.2:3b | 🔌 Offline Mode</p>
+        <p style="margin-top: 0.5rem;">Powered by JadeVectorDB + Ollama</p>
+    </footer>
+
+    <script>
+        // Update top_k display
+        document.getElementById('top_k').addEventListener('input', (e) => {
+            document.getElementById('top_k_value').textContent = e.target.value;
+        });
+
+        // Set example question
+        function setExample(question, deviceType) {
+            document.getElementById('question').value = question;
+            document.getElementById('device_type').value = deviceType;
+        }
+
+        // Handle form submission
+        document.getElementById('queryForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const question = document.getElementById('question').value.trim();
+            const deviceType = document.getElementById('device_type').value;
+            const topK = parseInt(document.getElementById('top_k').value);
+
+            if (!question) return;
+
+            // Show loading state
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('resultContent').classList.remove('visible');
+            document.getElementById('loadingState').style.display = 'block';
+            document.getElementById('submitBtn').disabled = true;
+
+            try {
+                // Call API
+                const response = await fetch('/api/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        question: question,
+                        device_type: deviceType,
+                        top_k: topK
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Display answer
+                    document.getElementById('answerText').textContent = data.answer;
+
+                    // Display sources
+                    const sourcesList = document.getElementById('sourcesList');
+                    sourcesList.innerHTML = '';
+
+                    data.sources.forEach((source, index) => {
+                        const sourceCard = document.createElement('div');
+                        sourceCard.className = 'source-card';
+                        sourceCard.innerHTML = `
+                            <div class="source-header">
+                                <div class="source-title">${index + 1}. ${source.doc_name}</div>
+                                <div class="relevance">${Math.round(source.relevance * 100)}%</div>
+                            </div>
+                            <div class="source-meta">
+                                📄 Pages: ${source.page_numbers} | 📑 ${source.section}
+                            </div>
+                            <div class="source-excerpt">"${source.excerpt}"</div>
+                        `;
+                        sourcesList.appendChild(sourceCard);
+                    });
+
+                    // Update stats
+                    document.getElementById('stat-queries').textContent = data.query_number;
+
+                    // Show results
+                    document.getElementById('loadingState').style.display = 'none';
+                    document.getElementById('resultContent').classList.add('visible');
+                } else {
+                    throw new Error(data.error || 'Query failed');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('loadingState').innerHTML = `
+                    <p style="color: var(--danger);">❌ Error: ${error.message}</p>
+                    <p style="font-size: 0.9rem; margin-top: 0.5rem;">Please try again</p>
+                `;
+            } finally {
+                document.getElementById('submitBtn').disabled = false;
+            }
+        });
+
+        // Load stats on page load
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+                document.getElementById('stat-docs').textContent = data.total_documents;
+                document.getElementById('stat-chunks').textContent = (data.total_chunks / 1000).toFixed(1) + 'K';
+            } catch (error) {
+                console.error('Failed to load stats:', error);
+            }
+        }
+
+        loadStats();
+    </script>
+</body>
+</html>
