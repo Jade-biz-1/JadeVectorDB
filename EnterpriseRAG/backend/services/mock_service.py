@@ -8,6 +8,7 @@ import asyncio
 import uuid
 from datetime import datetime
 from typing import List, Optional
+from ..logging_config import get_logger
 from ..models.schemas import (
     QueryResponse,
     SourceDocument,
@@ -18,6 +19,8 @@ from ..models.schemas import (
 )
 from ..utils.config import settings
 from .metadata_db import MetadataDB
+
+log = get_logger(__name__)
 
 # Pre-loaded demo documents seeded on first run
 _SEED_DOCUMENTS = [
@@ -93,6 +96,7 @@ class MockRAGService:
     ) -> QueryResponse:
         """Simulate RAG query with realistic responses."""
         self.db.increment_query_count()
+        log.info("mock_query", question=question[:120], device_type=device_type)
         await asyncio.sleep(0.3)
 
         answer = self._generate_mock_answer(question, device_type)
@@ -116,6 +120,7 @@ class MockRAGService:
         """Simulate document upload and schedule simulated processing."""
         doc_id = f"doc_{str(uuid.uuid4())[:8]}"
         uploaded_at = datetime.utcnow().isoformat() + "Z"
+        log.info("mock_upload", doc_id=doc_id, filename=filename, device_type=device_type)
 
         self.db.insert({
             "id": doc_id,
@@ -185,9 +190,11 @@ class MockRAGService:
             total_chunks=total_chunks,
         )
 
-    async def list_documents(self) -> List[DocumentInfo]:
-        """List all documents."""
-        return [
+    async def list_documents(self, offset: int = 0, limit: int = 100) -> tuple[List[DocumentInfo], int]:
+        """List documents with pagination."""
+        total = self.db.count_all()
+        rows = self.db.list_all(offset=offset, limit=limit)
+        docs = [
             DocumentInfo(
                 id=doc["doc_id"],
                 filename=doc["filename"],
@@ -198,8 +205,9 @@ class MockRAGService:
                 chunk_count=doc.get("chunk_count"),
                 error=doc.get("error"),
             )
-            for doc in self.db.list_all()
+            for doc in rows
         ]
+        return docs, total
 
     async def reprocess_document(self, doc_id: str) -> dict:
         """Simulate reprocessing (mock mode)."""
@@ -226,6 +234,7 @@ class MockRAGService:
 
     async def delete_document(self, doc_id: str) -> DocumentDeleteResponse:
         """Delete document from persistent store."""
+        log.info("mock_delete", doc_id=doc_id)
         doc = self.db.get(doc_id)
         if not doc:
             return DocumentDeleteResponse(
