@@ -82,6 +82,15 @@ class ProductionRAGService:
                 confidence=confidence,
                 sources=len(sources),
             )
+            self.db.log_query(
+                question=question,
+                device_type=device_type or "all",
+                mode="production",
+                confidence=confidence,
+                processing_time_ms=processing_time,
+                sources_count=len(sources),
+                success=True,
+            )
             return QueryResponse(
                 success=True,
                 answer=answer,
@@ -96,6 +105,15 @@ class ProductionRAGService:
 
         except Exception as e:
             log.error("query_failed", error=str(e), question=question[:120])
+            self.db.log_query(
+                question=question,
+                device_type=device_type or "all",
+                mode="production",
+                confidence=0.0,
+                processing_time_ms=0,
+                sources_count=0,
+                success=False,
+            )
             return QueryResponse(
                 success=False,
                 answer=f"Error processing query: {str(e)}",
@@ -303,6 +321,9 @@ class ProductionRAGService:
                 chunks_found=chunk_count, chunks_deleted=0, chunks_failed=chunk_count,
                 message=f"Error deleting document: {str(e)}",
             )
+
+    def get_analytics(self, recent_limit: int = 20) -> dict:
+        return self.db.get_analytics(recent_limit=recent_limit)
 
     async def get_stats(self) -> SystemStats:
         all_docs = self.db.list_all(limit=10_000)

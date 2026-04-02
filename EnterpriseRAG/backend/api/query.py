@@ -2,8 +2,8 @@
 Query API endpoints
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from ..models.schemas import QueryRequest, QueryResponse, SystemStats, HealthResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from ..models.schemas import AnalyticsResponse, QueryRecord, QueryRequest, QueryResponse, SystemStats, HealthResponse
 from ..utils.config import is_mock_mode
 from ..services.mock_service import mock_service
 from ..services.rag_service import production_service
@@ -46,6 +46,42 @@ async def get_stats():
     except Exception as e:
         log.error("stats_endpoint_error", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
+
+
+@router.get("/analytics", response_model=AnalyticsResponse, dependencies=_protected)
+async def get_analytics(
+    recent: int = Query(20, ge=1, le=100, description="Number of recent queries to return"),
+):
+    """Query analytics: totals, averages, device breakdown, and recent query log."""
+    try:
+        svc = mock_service if is_mock_mode() else production_service
+        data = svc.get_analytics(recent_limit=recent)
+        # Coerce recent_queries rows to QueryRecord (success is stored as int)
+        records = [
+            QueryRecord(
+                id=r["id"],
+                question=r["question"],
+                device_type=r["device_type"],
+                mode=r["mode"],
+                confidence=r["confidence"] or 0,
+                processing_time_ms=r["processing_time_ms"] or 0,
+                sources_count=r["sources_count"] or 0,
+                success=bool(r["success"]),
+                timestamp=r["timestamp"],
+            )
+            for r in data["recent_queries"]
+        ]
+        return AnalyticsResponse(
+            total_queries=data["total_queries"],
+            avg_confidence=data["avg_confidence"],
+            avg_processing_time_ms=data["avg_processing_time_ms"],
+            success_rate=data["success_rate"],
+            device_type_breakdown=data["device_type_breakdown"],
+            recent_queries=records,
+        )
+    except Exception as e:
+        log.error("analytics_endpoint_error", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to get analytics: {str(e)}")
 
 
 @router.get("/health", response_model=HealthResponse)

@@ -65,6 +65,104 @@ services:
       - jadevectordb
     restart: unless-stopped
 
+  # ── Ollama (LLM + embeddings for EnterpriseRAG) ─────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "ollama serve &
+       sleep 5 &&
+       ollama pull ${OLLAMA_LLM_MODEL:-llama3.2:3b} &&
+       ollama pull ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text} &&
+       wait"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+    networks:
+      - jadevectordb_network
+    # Uncomment for GPU support (requires nvidia-container-toolkit):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # ── EnterpriseRAG Backend ────────────────────────────────────
+  rag-backend:
+    build:
+      context: ./EnterpriseRAG
+      dockerfile: Dockerfile.backend
+    image: enterpriserag-backend:latest
+    container_name: rag-backend
+    restart: unless-stopped
+    ports:
+      - "${RAG_BACKEND_PORT:-8000}:8000"
+    volumes:
+      - rag_data:/app/data
+      - rag_uploads:/app/uploads
+    environment:
+      MODE: ${MODE:-mock}
+      DEBUG: ${DEBUG:-false}
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      FRONTEND_URL: http://localhost:${RAG_FRONTEND_PORT:-3002}
+      JADEVECTORDB_URL: http://jadevectordb:8080
+      JADEVECTORDB_API_KEY: ${JADEVECTORDB_API_KEY:-}
+      JADEVECTORDB_DATABASE_ID: ${JADEVECTORDB_DATABASE_ID:-maintenance_docs}
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_LLM_MODEL: ${OLLAMA_LLM_MODEL:-llama3.2:3b}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      CHUNK_SIZE: ${CHUNK_SIZE:-512}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-50}
+      TOP_K: ${TOP_K:-5}
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-50}
+      RAG_API_KEY: ${RAG_API_KEY:-}
+      EMBEDDING_TIMEOUT: ${EMBEDDING_TIMEOUT:-30}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-60}
+      SEARCH_TIMEOUT: ${SEARCH_TIMEOUT:-10}
+      METADATA_DB_PATH: /app/data/rag_metadata.db
+      UPLOAD_DIR: /app/uploads
+    depends_on:
+      jadevectordb:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 20s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - jadevectordb_network
+
+  # ── EnterpriseRAG Frontend ───────────────────────────────────
+  rag-frontend:
+    build:
+      context: ./EnterpriseRAG
+      dockerfile: Dockerfile.frontend
+    image: enterpriserag-frontend:latest
+    container_name: rag-frontend
+    restart: unless-stopped
+    ports:
+      - "${RAG_FRONTEND_PORT:-3002}:80"
+    depends_on:
+      rag-backend:
+        condition: service_healthy
+    networks:
+      - jadevectordb_network
+
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
@@ -106,6 +204,12 @@ volumes:
   jadevectordb_data:
     driver: local
   jadevectordb_config:
+    driver: local
+  ollama_data:
+    driver: local
+  rag_data:
+    driver: local
+  rag_uploads:
     driver: local
   prometheus_data:
     driver: local
