@@ -134,3 +134,6 @@ backend/src/lib/expected.hpp
 # SQLite temporary files
 *.db-shm
 *.db-wal
+
+# Generated test reports
+TestResult*.md
