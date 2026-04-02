@@ -72,6 +72,8 @@ class DocumentListResponse(BaseModel):
     """List of documents"""
     documents: List[DocumentInfo]
     total: int
+    offset: int = 0
+    limit: int = 100
 
 
 class DocumentDeleteResponse(BaseModel):

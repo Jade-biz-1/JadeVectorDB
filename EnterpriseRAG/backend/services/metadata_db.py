@@ -112,10 +112,18 @@ class MetadataDB:
             row = cur.fetchone()
             return dict(row) if row else None
 
-    def list_all(self) -> List[Dict[str, Any]]:
+    def list_all(self, offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
         with self._cursor() as cur:
-            cur.execute("SELECT * FROM documents ORDER BY uploaded_at DESC")
+            cur.execute(
+                "SELECT * FROM documents ORDER BY uploaded_at DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
             return [dict(row) for row in cur.fetchall()]
+
+    def count_all(self) -> int:
+        with self._cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM documents")
+            return cur.fetchone()[0]
 
     def delete(self, doc_id: str):
         with self._cursor() as cur:

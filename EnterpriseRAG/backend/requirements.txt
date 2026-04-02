@@ -46,6 +46,9 @@ aiofiles==23.2.1
 # Logging
 structlog==24.1.0
 
+# Rate limiting
+slowapi==0.1.9
+
 # Optional: JadeVectorDB client (local)
 # Install from ../cli/python if available
 # pip install -e ../cli/python
