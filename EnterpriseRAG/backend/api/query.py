@@ -2,17 +2,21 @@
 Query API endpoints
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from ..models.schemas import QueryRequest, QueryResponse, SystemStats, HealthResponse
 from ..utils.config import is_mock_mode
 from ..services.mock_service import mock_service
 from ..services.rag_service import production_service
+from ..security import verify_api_key
 from datetime import datetime
 
 router = APIRouter(prefix="/api", tags=["query"])
 
+# /api/health is public; /api/query and /api/stats require auth
+_protected = [Depends(verify_api_key)]
 
-@router.post("/query", response_model=QueryResponse)
+
+@router.post("/query", response_model=QueryResponse, dependencies=_protected)
 async def query_documents(request: QueryRequest):
     """
     Query maintenance documentation
@@ -38,7 +42,7 @@ async def query_documents(request: QueryRequest):
         raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
 
 
-@router.get("/stats", response_model=SystemStats)
+@router.get("/stats", response_model=SystemStats, dependencies=_protected)
 async def get_stats():
     """
     Get system statistics
