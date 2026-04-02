@@ -56,9 +56,15 @@ class MetadataDB:
                     processed_at TEXT,
                     chunk_count  INTEGER,
                     chunks_done  INTEGER NOT NULL DEFAULT 0,
+                    file_path    TEXT,
                     error        TEXT
                 )
             """)
+            # Migration: add file_path if upgrading from an older schema
+            try:
+                cur.execute("ALTER TABLE documents ADD COLUMN file_path TEXT")
+            except Exception:
+                pass  # Column already exists
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS stats (
                     key   TEXT PRIMARY KEY,

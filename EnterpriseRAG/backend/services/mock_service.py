@@ -201,6 +201,29 @@ class MockRAGService:
             for doc in self.db.list_all()
         ]
 
+    async def reprocess_document(self, doc_id: str) -> dict:
+        """Simulate reprocessing (mock mode)."""
+        doc = self.db.get(doc_id)
+        if not doc:
+            raise ValueError(f"Document {doc_id} not found")
+
+        self.db.update(doc_id, {
+            "status": "processing",
+            "processed_at": None,
+            "chunk_count": None,
+            "chunks_done": 0,
+            "error": None,
+        })
+        asyncio.create_task(self._simulate_processing(doc_id))
+
+        return {
+            "success": True,
+            "doc_id": doc_id,
+            "filename": doc["filename"],
+            "status": "processing",
+            "message": f"Document '{doc['filename']}' is being reprocessed (mock mode)",
+        }
+
     async def delete_document(self, doc_id: str) -> DocumentDeleteResponse:
         """Delete document from persistent store."""
         doc = self.db.get(doc_id)

@@ -6,6 +6,7 @@ import asyncio
 import httpx
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional, Dict, Any
 from ..models.schemas import (
     QueryResponse,
@@ -24,12 +25,15 @@ class ProductionRAGService:
     """Production RAG service with JadeVectorDB and Ollama"""
 
     def __init__(self):
-        self.jadevectordb_url = settings.jadevectordb_url
+        self.jadevectordb_url = settings.jadevectordb_url.rstrip("/")
         self.ollama_url = settings.ollama_url
         self.database_id = settings.jadevectordb_database_id
         self.doc_processor = DocumentProcessor()
         self.start_time = datetime.utcnow()
         self.db = MetadataDB(settings.metadata_db_path)
+        settings.upload_dir.mkdir(parents=True, exist_ok=True)
+
+    # ── Public API ────────────────────────────────────────────
 
     async def query(
         self,
@@ -39,7 +43,7 @@ class ProductionRAGService:
     ) -> QueryResponse:
         """Execute RAG query pipeline"""
         start_time = datetime.utcnow()
-        query_count = self.db.increment_query_count()
+        self.db.increment_query_count()
 
         try:
             question_embedding = await self._generate_embedding(question)
@@ -81,6 +85,11 @@ class ProductionRAGService:
         doc_id = f"doc_{str(uuid.uuid4())[:12]}"
         uploaded_at = datetime.utcnow().isoformat() + "Z"
 
+        # Persist the file so reprocessing is possible later
+        suffix = Path(filename).suffix
+        file_path = settings.upload_dir / f"{doc_id}{suffix}"
+        file_path.write_bytes(file_content)
+
         self.db.insert({
             "id": doc_id,
             "filename": filename,
@@ -88,6 +97,7 @@ class ProductionRAGService:
             "status": "processing",
             "uploaded_at": uploaded_at,
         })
+        self.db.update(doc_id, {"file_path": str(file_path)})
 
         asyncio.create_task(self._process_document(doc_id, filename, device_type, file_content))
 
@@ -99,26 +109,62 @@ class ProductionRAGService:
             "message": f"Document '{filename}' is being processed",
         }
 
+    async def reprocess_document(self, doc_id: str) -> dict:
+        """
+        Delete existing vectors for a document and reprocess from the saved file.
+        Only works if the file was persisted on upload.
+        """
+        meta = self.db.get(doc_id)
+        if not meta:
+            raise ValueError(f"Document {doc_id} not found")
+
+        file_path = meta.get("file_path")
+        if not file_path or not Path(file_path).exists():
+            raise FileNotFoundError(
+                f"Original file not found for document '{meta['filename']}'. "
+                "Delete and re-upload to reprocess."
+            )
+
+        # Delete existing vectors
+        await self._delete_vectors(doc_id)
+
+        # Reset status and kick off processing again
+        self.db.update(doc_id, {
+            "status": "processing",
+            "processed_at": None,
+            "chunk_count": None,
+            "chunks_done": 0,
+            "error": None,
+        })
+
+        file_content = Path(file_path).read_bytes()
+        asyncio.create_task(
+            self._process_document(doc_id, meta["filename"], meta["device_type"], file_content)
+        )
+
+        return {
+            "success": True,
+            "doc_id": doc_id,
+            "filename": meta["filename"],
+            "status": "processing",
+            "message": f"Document '{meta['filename']}' is being reprocessed",
+        }
+
     async def _process_document(
         self, doc_id: str, filename: str, device_type: str, file_content: bytes
     ):
         """
-        Process document: extract text, chunk, embed, and store.
-        Updates progress in the DB after each chunk so the status endpoint
-        reflects real progress rather than a stuck 50%.
+        Process document: extract → chunk → embed → store.
+        Updates chunk progress in DB after each embedding so the status
+        endpoint reflects real progress.
         """
         try:
-            # Step 1: Extract text
             text = await self.doc_processor.extract_text(filename, file_content)
-
-            # Step 2: Chunk
             chunks = await self.doc_processor.chunk_text(text)
             total_chunks = len(chunks)
 
-            # Record total so the status endpoint can show X/Y progress
             self.db.update(doc_id, {"chunk_count": total_chunks, "chunks_done": 0})
 
-            # Step 3: Embed and store each chunk, updating progress as we go
             embeddings = []
             for i, chunk in enumerate(chunks):
                 try:
@@ -131,10 +177,8 @@ class ProductionRAGService:
                 embeddings.append(embedding)
                 self.db.update(doc_id, {"chunks_done": i + 1})
 
-            # Step 4: Store all vectors in JadeVectorDB
             await self._store_vectors(doc_id, chunks, embeddings, device_type)
 
-            # Step 5: Mark complete
             self.db.update(doc_id, {
                 "status": "complete",
                 "processed_at": datetime.utcnow().isoformat() + "Z",
@@ -144,10 +188,7 @@ class ProductionRAGService:
             })
 
         except Exception as e:
-            self.db.update(doc_id, {
-                "status": "failed",
-                "error": str(e),
-            })
+            self.db.update(doc_id, {"status": "failed", "error": str(e)})
 
     async def get_processing_status(self, doc_id: str) -> ProcessingStatus:
         """Get document processing status with real progress"""
@@ -166,21 +207,18 @@ class ProductionRAGService:
         elif total_chunks:
             progress = min(int(chunks_done / total_chunks * 100), 99)
         else:
-            progress = 5  # Just started
-
-        message = self._get_status_message(status, meta.get("error"))
+            progress = 5
 
         return ProcessingStatus(
             doc_id=doc_id,
             status=status,
             progress=progress,
-            message=message,
+            message=self._get_status_message(status, meta.get("error")),
             chunks_processed=chunks_done,
             total_chunks=total_chunks,
         )
 
     async def list_documents(self) -> List[DocumentInfo]:
-        """List all documents"""
         return [
             DocumentInfo(
                 id=meta["doc_id"],
@@ -196,7 +234,6 @@ class ProductionRAGService:
         ]
 
     async def delete_document(self, doc_id: str) -> DocumentDeleteResponse:
-        """Delete document and all associated vectors"""
         meta = self.db.get(doc_id)
         if not meta:
             return DocumentDeleteResponse(
@@ -214,6 +251,15 @@ class ProductionRAGService:
 
         try:
             deleted_count = await self._delete_vectors(doc_id)
+
+            # Remove uploaded file from disk
+            file_path = meta.get("file_path")
+            if file_path:
+                try:
+                    Path(file_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
+
             self.db.delete(doc_id)
             asyncio.create_task(self._check_and_compact())
 
@@ -240,7 +286,6 @@ class ProductionRAGService:
             )
 
     async def get_stats(self) -> SystemStats:
-        """Get system statistics"""
         all_docs = self.db.list_all()
         total_docs = len(all_docs)
         total_chunks = sum(
@@ -263,7 +308,7 @@ class ProductionRAGService:
             llm_status=llm_status,
         )
 
-    # ==================== Private Methods ====================
+    # ── Private: JadeVectorDB calls ───────────────────────────
 
     async def _generate_embedding(self, text: str) -> List[float]:
         async with httpx.AsyncClient(timeout=settings.embedding_timeout) as client:
@@ -277,23 +322,41 @@ class ProductionRAGService:
     async def _search_vectors(
         self, query_embedding: List[float], device_type: Optional[str], top_k: int
     ) -> List[Dict[str, Any]]:
+        """
+        Use /search for unfiltered queries and /search/advanced when a
+        device_type filter is requested.
+        JadeVectorDB filter format: {"combination":"AND","conditions":[{"field":"metadata.<key>","op":"EQUALS","value":"..."}]}
+        Response shape: results[].vectorId / similarityScore / vector.metadata
+        """
         async with httpx.AsyncClient(timeout=settings.search_timeout) as client:
-            filter_query = None
             if device_type and device_type != "all":
-                filter_query = {"device_type": {"$eq": device_type}}
+                endpoint = f"{self.jadevectordb_url}/v1/databases/{self.database_id}/search/advanced"
+                payload = {
+                    "queryVector": query_embedding,
+                    "topK": top_k,
+                    "includeMetadata": True,
+                    "filters": {
+                        "combination": "AND",
+                        "conditions": [
+                            {
+                                "field": "metadata.device_type",
+                                "op": "EQUALS",
+                                "value": device_type,
+                            }
+                        ],
+                    },
+                }
+            else:
+                endpoint = f"{self.jadevectordb_url}/v1/databases/{self.database_id}/search"
+                payload = {
+                    "queryVector": query_embedding,
+                    "topK": top_k,
+                    "includeMetadata": True,
+                }
 
-            response = await client.post(
-                f"{self.jadevectordb_url}/api/v1/databases/{self.database_id}/search",
-                json={
-                    "vector": query_embedding,
-                    "top_k": top_k,
-                    "filter": filter_query,
-                    "include_metadata": True,
-                },
-                headers=self._get_auth_headers(),
-            )
+            response = await client.post(endpoint, json=payload, headers=self._get_auth_headers())
             response.raise_for_status()
-            return response.json()["results"]
+            return response.json().get("results", [])
 
     async def _generate_answer(self, question: str, context: str) -> str:
         prompt = f"""You are a maintenance documentation assistant. Answer the question based ONLY on the provided context.
@@ -335,10 +398,14 @@ Answer:"""
         embeddings: List[List[float]],
         device_type: str,
     ):
+        """
+        Batch insert vectors. JadeVectorDB batch body:
+        {"vectors": [{"id": "...", "values": [...], "metadata": {...}}]}
+        """
         vectors = [
             {
                 "id": f"{doc_id}_chunk_{i}",
-                "vector": embedding,
+                "values": embedding,          # ← "values", not "vector"
                 "metadata": {
                     "doc_id": doc_id,
                     "chunk_index": i,
@@ -353,71 +420,82 @@ Answer:"""
 
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
-                f"{self.jadevectordb_url}/api/v1/databases/{self.database_id}/vectors/batch",
+                f"{self.jadevectordb_url}/v1/databases/{self.database_id}/vectors/batch",
                 json={"vectors": vectors},
                 headers=self._get_auth_headers(),
             )
             response.raise_for_status()
 
     async def _delete_vectors(self, doc_id: str) -> int:
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                f"{self.jadevectordb_url}/api/v1/databases/{self.database_id}/query",
-                json={"filter": {"doc_id": {"$eq": doc_id}}, "limit": 10000},
-                headers=self._get_auth_headers(),
-            )
-            response.raise_for_status()
-            vector_ids = [result["id"] for result in response.json()["results"]]
+        """
+        Delete all chunk vectors for a document using known IDs
+        (format: {doc_id}_chunk_{i}).  We know chunk_count from metadata.
+        Falls back to 0 deleted if the document was never fully processed.
+        """
+        meta = self.db.get(doc_id)
+        chunk_count = (meta.get("chunk_count") or 0) if meta else 0
+        if chunk_count == 0:
+            return 0
 
-            for i in range(0, len(vector_ids), 100):
-                batch = vector_ids[i : i + 100]
-                await client.post(
-                    f"{self.jadevectordb_url}/api/v1/databases/{self.database_id}/vectors/delete-batch",
-                    json={"ids": batch},
+        deleted = 0
+        async with httpx.AsyncClient(timeout=30) as client:
+            for i in range(chunk_count):
+                vector_id = f"{doc_id}_chunk_{i}"
+                resp = await client.delete(
+                    f"{self.jadevectordb_url}/v1/databases/{self.database_id}/vectors/{vector_id}",
                     headers=self._get_auth_headers(),
                 )
+                if resp.status_code in (200, 204):
+                    deleted += 1
 
-            return len(vector_ids)
+        return deleted
 
     async def _check_and_compact(self):
+        """Best-effort: trigger compaction if >10% of vectors are deleted."""
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                response = await client.get(
-                    f"{self.jadevectordb_url}/api/v1/databases/{self.database_id}/stats",
+                resp = await client.get(
+                    f"{self.jadevectordb_url}/v1/databases/{self.database_id}/stats",
                     headers=self._get_auth_headers(),
                 )
-                response.raise_for_status()
-                stats = response.json()
+                resp.raise_for_status()
+                stats = resp.json()
                 total = stats.get("total_vectors", 0)
                 deleted = stats.get("deleted_vectors", 0)
                 if total > 0 and (deleted / total) > 0.10:
                     await client.post(
-                        f"{self.jadevectordb_url}/api/v1/databases/{self.database_id}/compact",
+                        f"{self.jadevectordb_url}/v1/databases/{self.database_id}/compact",
                         headers=self._get_auth_headers(),
                     )
         except Exception:
-            pass  # Compaction is best-effort
+            pass
 
     async def _check_jadevectordb_health(self) -> str:
         try:
             async with httpx.AsyncClient(timeout=5) as client:
-                response = await client.get(f"{self.jadevectordb_url}/health")
-                return "healthy" if response.status_code == 200 else "degraded"
+                resp = await client.get(
+                    f"{self.jadevectordb_url}/health",
+                    headers=self._get_auth_headers(),
+                )
+                return "healthy" if resp.status_code == 200 else "degraded"
         except Exception:
             return "unavailable"
 
     async def _check_ollama_health(self) -> str:
         try:
             async with httpx.AsyncClient(timeout=5) as client:
-                response = await client.get(f"{self.ollama_url}/api/tags")
-                return "healthy" if response.status_code == 200 else "degraded"
+                resp = await client.get(f"{self.ollama_url}/api/tags")
+                return "healthy" if resp.status_code == 200 else "degraded"
         except Exception:
             return "unavailable"
+
+    # ── Private: response helpers ─────────────────────────────
 
     def _build_context(self, search_results: List[Dict[str, Any]]) -> str:
         parts = []
         for i, result in enumerate(search_results):
-            meta = result.get("metadata", {})
+            # JadeVectorDB response: result.vector.metadata
+            meta = result.get("vector", {}).get("metadata", {})
             parts.append(
                 f"[Source {i+1} - Page {meta.get('page', 'unknown')}, "
                 f"{meta.get('section', '')}]\n{meta.get('text', '')}\n"
@@ -426,9 +504,9 @@ Answer:"""
 
     def _extract_sources(self, search_results: List[Dict[str, Any]]) -> List[SourceDocument]:
         sources = []
-        seen_docs = set()
+        seen_docs: set = set()
         for result in search_results:
-            meta = result.get("metadata", {})
+            meta = result.get("vector", {}).get("metadata", {})
             doc_id = meta.get("doc_id")
             if doc_id in seen_docs:
                 continue
@@ -439,7 +517,7 @@ Answer:"""
                     doc_name=doc_meta.get("filename", "unknown"),
                     page_numbers=str(meta.get("page", "unknown")),
                     section=meta.get("section", ""),
-                    relevance=result.get("score", 0.0),
+                    relevance=result.get("similarityScore", 0.0),   # ← correct field
                     excerpt=meta.get("text", "")[:200] + "...",
                 )
             )
@@ -448,7 +526,7 @@ Answer:"""
     def _calculate_confidence(self, search_results: List[Dict[str, Any]]) -> float:
         if not search_results:
             return 0.0
-        top_scores = [r.get("score", 0.0) for r in search_results[:3]]
+        top_scores = [r.get("similarityScore", 0.0) for r in search_results[:3]]
         return round(sum(top_scores) / len(top_scores), 2)
 
     def _get_auth_headers(self) -> Dict[str, str]:
