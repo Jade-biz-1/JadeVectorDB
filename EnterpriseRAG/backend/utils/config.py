@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     allowed_extensions: list[str] = [".pdf", ".docx"]
     upload_dir: Path = Path("uploads")
 
+    # Persistent metadata database
+    metadata_db_path: Path = Path("data/rag_metadata.db")
+
     # Processing
     batch_size: int = 100
     max_concurrent_uploads: int = 3
