@@ -6,6 +6,7 @@ Replaces the in-memory dict so state survives restarts.
 import sqlite3
 import threading
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -74,6 +75,19 @@ class MetadataDB:
             cur.execute(
                 "INSERT OR IGNORE INTO stats (key, value) VALUES ('query_count', 0)"
             )
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS queries (
+                    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                    question           TEXT NOT NULL,
+                    device_type        TEXT NOT NULL DEFAULT 'all',
+                    mode               TEXT NOT NULL DEFAULT 'mock',
+                    confidence         REAL DEFAULT 0,
+                    processing_time_ms INTEGER DEFAULT 0,
+                    sources_count      INTEGER DEFAULT 0,
+                    success            INTEGER NOT NULL DEFAULT 1,
+                    timestamp          TEXT NOT NULL
+                )
+            """)
             # Any document stuck in 'processing' or 'pending' at startup means
             # the server was killed mid-flight — mark them failed so users know.
             cur.execute(
@@ -147,3 +161,73 @@ class MetadataDB:
             cur.execute("SELECT value FROM stats WHERE key = 'query_count'")
             row = cur.fetchone()
             return row[0] if row else 0
+
+    # ── Query analytics ───────────────────────────────────────
+
+    def log_query(
+        self,
+        question: str,
+        device_type: str,
+        mode: str,
+        confidence: float,
+        processing_time_ms: int,
+        sources_count: int,
+        success: bool,
+    ) -> None:
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO queries
+                    (question, device_type, mode, confidence,
+                     processing_time_ms, sources_count, success, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    question[:500],  # cap length
+                    device_type,
+                    mode,
+                    confidence,
+                    processing_time_ms,
+                    sources_count,
+                    1 if success else 0,
+                    datetime.utcnow().isoformat() + "Z",
+                ),
+            )
+
+    def get_analytics(self, recent_limit: int = 20) -> Dict[str, Any]:
+        with self._cursor() as cur:
+            # Aggregate stats
+            cur.execute("""
+                SELECT
+                    COUNT(*)                        AS total,
+                    AVG(confidence)                 AS avg_confidence,
+                    AVG(processing_time_ms)         AS avg_processing_time_ms,
+                    SUM(CASE WHEN success=1 THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS success_rate
+                FROM queries
+            """)
+            agg = dict(cur.fetchone())
+
+            # Device-type breakdown
+            cur.execute("""
+                SELECT device_type, COUNT(*) AS cnt
+                FROM queries
+                GROUP BY device_type
+                ORDER BY cnt DESC
+            """)
+            device_breakdown = {row["device_type"]: row["cnt"] for row in cur.fetchall()}
+
+            # Recent queries
+            cur.execute(
+                "SELECT * FROM queries ORDER BY id DESC LIMIT ?",
+                (recent_limit,),
+            )
+            recent = [dict(row) for row in cur.fetchall()]
+
+        return {
+            "total_queries": agg["total"] or 0,
+            "avg_confidence": round(agg["avg_confidence"] or 0, 3),
+            "avg_processing_time_ms": round(agg["avg_processing_time_ms"] or 0, 1),
+            "success_rate": round(agg["success_rate"] or 0, 3),
+            "device_type_breakdown": device_breakdown,
+            "recent_queries": recent,
+        }

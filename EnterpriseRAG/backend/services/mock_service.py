@@ -102,6 +102,16 @@ class MockRAGService:
         answer = self._generate_mock_answer(question, device_type)
         sources = self._generate_mock_sources(question, device_type, top_k)
 
+        self.db.log_query(
+            question=question,
+            device_type=device_type or "all",
+            mode="mock",
+            confidence=0.87,
+            processing_time_ms=320,
+            sources_count=len(sources),
+            success=True,
+        )
+
         return QueryResponse(
             success=True,
             answer=answer,
@@ -262,6 +272,9 @@ class MockRAGService:
             chunks_failed=0,
             message=f"Document '{doc_name}' deleted successfully (mock mode)",
         )
+
+    def get_analytics(self, recent_limit: int = 20) -> dict:
+        return self.db.get_analytics(recent_limit=recent_limit)
 
     async def get_stats(self) -> SystemStats:
         """Get system statistics."""

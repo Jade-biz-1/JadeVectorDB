@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import QueryPage from './pages/QueryPage';
 import AdminPage from './pages/AdminPage';
+import AnalyticsPage from './pages/AnalyticsPage';
 import './styles/App.css';
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
             <div className="nav-links">
               <Link to="/" className="nav-link">Query</Link>
               <Link to="/admin/documents" className="nav-link">Documents</Link>
+              <Link to="/analytics" className="nav-link">Analytics</Link>
             </div>
           </div>
         </nav>
@@ -21,6 +23,7 @@ function App() {
           <Routes>
             <Route path="/" element={<QueryPage />} />
             <Route path="/admin/documents" element={<AdminPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
           </Routes>
         </main>
 
