@@ -1,0 +1,19 @@
+# Production-only dependencies (not needed for mock mode)
+# Install with: pip install -r requirements.txt -r requirements.prod.txt
+
+# Document Processing
+pymupdf>=1.23.8           # PDF processing
+python-docx>=1.1.0        # DOCX processing
+
+# Text Processing / Chunking
+langchain>=0.1.0
+langchain-community>=0.0.13
+
+# Embeddings & LLM (Ollama client)
+ollama>=0.1.6
+
+# Progress bars
+tqdm>=4.66.1
+
+# Date/time utilities
+python-dateutil>=2.8.2
