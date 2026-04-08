@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y \
     libboost-all-dev \
     libssl-dev \
     libsqlite3-dev \
+    libasio-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Verify installations
@@ -86,6 +87,7 @@ LABEL version="1.0.0"
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libstdc++6 \
+    libsqlite3-0 \
     curl \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean

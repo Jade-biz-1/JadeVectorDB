@@ -44,6 +44,14 @@ export const queryAPI = {
     const response = await api.get('/api/health');
     return response.data;
   },
+
+  /**
+   * Get query analytics
+   */
+  async getAnalytics(recent = 20) {
+    const response = await api.get('/api/analytics', { params: { recent } });
+    return response.data;
+  },
 };
 
 /**

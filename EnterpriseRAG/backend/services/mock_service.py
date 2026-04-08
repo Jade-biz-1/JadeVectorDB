@@ -1,12 +1,14 @@
 """
-Mock RAG service for demo/testing without external dependencies
-Returns realistic but simulated responses
+Mock RAG service for demo/testing without external dependencies.
+Returns realistic but simulated responses.
+Uses the same MetadataDB so uploaded documents persist across restarts.
 """
 
 import asyncio
 import uuid
 from datetime import datetime
 from typing import List, Optional
+from ..logging_config import get_logger
 from ..models.schemas import (
     QueryResponse,
     SourceDocument,
@@ -15,43 +17,76 @@ from ..models.schemas import (
     DocumentDeleteResponse,
     ProcessingStatus,
 )
+from ..utils.config import settings
+from .metadata_db import MetadataDB
+
+log = get_logger(__name__)
+
+# Pre-loaded demo documents seeded on first run
+_SEED_DOCUMENTS = [
+    {
+        "id": "doc_001",
+        "filename": "hydraulic_pump_manual.pdf",
+        "device_type": "hydraulic_pump",
+        "status": "complete",
+        "uploaded_at": "2026-03-20T10:30:00Z",
+        "processed_at": "2026-03-20T10:31:45Z",
+        "chunk_count": 156,
+        "chunks_done": 156,
+        "error": None,
+    },
+    {
+        "id": "doc_002",
+        "filename": "air_compressor_guide.pdf",
+        "device_type": "air_compressor",
+        "status": "complete",
+        "uploaded_at": "2026-03-21T14:20:00Z",
+        "processed_at": "2026-03-21T14:22:10Z",
+        "chunk_count": 203,
+        "chunks_done": 203,
+        "error": None,
+    },
+    {
+        "id": "doc_003",
+        "filename": "conveyor_system_manual.pdf",
+        "device_type": "conveyor",
+        "status": "complete",
+        "uploaded_at": "2026-03-22T09:15:00Z",
+        "processed_at": "2026-03-22T09:17:30Z",
+        "chunk_count": 178,
+        "chunks_done": 178,
+        "error": None,
+    },
+]
 
 
 class MockRAGService:
-    """Mock RAG service with simulated responses"""
+    """Mock RAG service with simulated responses and persistent metadata."""
 
     def __init__(self):
-        self.mock_documents = {
-            "doc_001": {
-                "id": "doc_001",
-                "filename": "hydraulic_pump_manual.pdf",
-                "device_type": "hydraulic_pump",
-                "status": "complete",
-                "uploaded_at": "2026-03-20T10:30:00Z",
-                "processed_at": "2026-03-20T10:31:45Z",
-                "chunk_count": 156,
-            },
-            "doc_002": {
-                "id": "doc_002",
-                "filename": "air_compressor_guide.pdf",
-                "device_type": "air_compressor",
-                "status": "complete",
-                "uploaded_at": "2026-03-21T14:20:00Z",
-                "processed_at": "2026-03-21T14:22:10Z",
-                "chunk_count": 203,
-            },
-            "doc_003": {
-                "id": "doc_003",
-                "filename": "conveyor_system_manual.pdf",
-                "device_type": "conveyor",
-                "status": "complete",
-                "uploaded_at": "2026-03-22T09:15:00Z",
-                "processed_at": "2026-03-22T09:17:30Z",
-                "chunk_count": 178,
-            },
-        }
-        self.query_count = 0
         self.start_time = datetime.utcnow()
+        self.db = MetadataDB(settings.metadata_db_path)
+        self._seed_demo_documents()
+
+    def _seed_demo_documents(self):
+        """Insert demo documents on first run if the DB is empty."""
+        if not self.db.list_all():
+            for doc in _SEED_DOCUMENTS:
+                # MetadataDB.insert() only uses id/filename/device_type/status/uploaded_at,
+                # so we call update() afterwards for the remaining fields.
+                self.db.insert({
+                    "id": doc["id"],
+                    "filename": doc["filename"],
+                    "device_type": doc["device_type"],
+                    "status": doc["status"],
+                    "uploaded_at": doc["uploaded_at"],
+                })
+                self.db.update(doc["id"], {
+                    "processed_at": doc["processed_at"],
+                    "chunk_count": doc["chunk_count"],
+                    "chunks_done": doc["chunks_done"],
+                    "error": doc["error"],
+                })
 
     async def query(
         self,
@@ -59,17 +94,23 @@ class MockRAGService:
         device_type: Optional[str] = "all",
         top_k: int = 5,
     ) -> QueryResponse:
-        """
-        Simulate RAG query with realistic responses
-        """
-        self.query_count += 1
-
-        # Simulate processing delay
+        """Simulate RAG query with realistic responses."""
+        self.db.increment_query_count()
+        log.info("mock_query", question=question[:120], device_type=device_type)
         await asyncio.sleep(0.3)
 
-        # Generate mock answer based on question keywords
         answer = self._generate_mock_answer(question, device_type)
         sources = self._generate_mock_sources(question, device_type, top_k)
+
+        self.db.log_query(
+            question=question,
+            device_type=device_type or "all",
+            mode="mock",
+            confidence=0.87,
+            processing_time_ms=320,
+            sources_count=len(sources),
+            success=True,
+        )
 
         return QueryResponse(
             success=True,
@@ -86,23 +127,21 @@ class MockRAGService:
     async def upload_document(
         self, filename: str, device_type: str, file_content: bytes
     ) -> dict:
-        """
-        Simulate document upload
-        """
+        """Simulate document upload and schedule simulated processing."""
         doc_id = f"doc_{str(uuid.uuid4())[:8]}"
+        uploaded_at = datetime.utcnow().isoformat() + "Z"
+        log.info("mock_upload", doc_id=doc_id, filename=filename, device_type=device_type)
 
-        # Simulate upload processing
-        await asyncio.sleep(0.2)
-
-        self.mock_documents[doc_id] = {
+        self.db.insert({
             "id": doc_id,
             "filename": filename,
             "device_type": device_type,
             "status": "processing",
-            "uploaded_at": datetime.utcnow().isoformat() + "Z",
-            "processed_at": None,
-            "chunk_count": None,
-        }
+            "uploaded_at": uploaded_at,
+        })
+
+        # Simulate async processing that completes after a short delay
+        asyncio.create_task(self._simulate_processing(doc_id))
 
         return {
             "success": True,
@@ -112,55 +151,101 @@ class MockRAGService:
             "message": f"Document '{filename}' uploaded successfully (mock mode)",
         }
 
+    async def _simulate_processing(self, doc_id: str):
+        """Simulate chunking and embedding over ~2 seconds."""
+        simulated_chunks = 120
+        self.db.update(doc_id, {"chunk_count": simulated_chunks, "chunks_done": 0})
+        step = simulated_chunks // 4
+        for done in [step, step * 2, step * 3, simulated_chunks]:
+            await asyncio.sleep(0.5)
+            self.db.update(doc_id, {"chunks_done": done})
+        self.db.update(doc_id, {
+            "status": "complete",
+            "processed_at": datetime.utcnow().isoformat() + "Z",
+            "chunk_count": simulated_chunks,
+            "chunks_done": simulated_chunks,
+        })
+
     async def get_processing_status(self, doc_id: str) -> ProcessingStatus:
-        """
-        Get document processing status
-        """
-        doc = self.mock_documents.get(doc_id)
+        """Get document processing status with real progress."""
+        doc = self.db.get(doc_id)
         if not doc:
             raise ValueError(f"Document {doc_id} not found")
 
-        # Simulate processing progress
-        if doc["status"] == "processing":
-            # Randomly complete processing in mock mode
-            import random
+        status = doc["status"]
+        chunks_done = doc.get("chunks_done") or 0
+        total_chunks = doc.get("chunk_count")
 
-            if random.random() > 0.5:
-                doc["status"] = "complete"
-                doc["processed_at"] = datetime.utcnow().isoformat() + "Z"
-                doc["chunk_count"] = random.randint(100, 250)
+        if status == "complete":
+            progress = 100
+        elif status == "failed":
+            progress = 0
+        elif total_chunks:
+            progress = min(int(chunks_done / total_chunks * 100), 99)
+        else:
+            progress = 5
+
+        message = (
+            "Processing complete" if status == "complete"
+            else f"Processing failed: {doc.get('error')}" if status == "failed"
+            else "Extracting and chunking document"
+        )
 
         return ProcessingStatus(
             doc_id=doc_id,
-            status=doc["status"],
-            progress=100 if doc["status"] == "complete" else 65,
-            message="Processing complete" if doc["status"] == "complete" else "Extracting and chunking document",
-            chunks_processed=doc.get("chunk_count", 0) if doc["status"] == "complete" else 65,
-            total_chunks=doc.get("chunk_count", 100),
+            status=status,
+            progress=progress,
+            message=message,
+            chunks_processed=chunks_done,
+            total_chunks=total_chunks,
         )
 
-    async def list_documents(self) -> List[DocumentInfo]:
-        """
-        List all documents
-        """
-        return [
+    async def list_documents(self, offset: int = 0, limit: int = 100) -> tuple[List[DocumentInfo], int]:
+        """List documents with pagination."""
+        total = self.db.count_all()
+        rows = self.db.list_all(offset=offset, limit=limit)
+        docs = [
             DocumentInfo(
-                id=doc["id"],
+                id=doc["doc_id"],
                 filename=doc["filename"],
                 device_type=doc["device_type"],
                 status=doc["status"],
                 uploaded_at=doc["uploaded_at"],
                 processed_at=doc.get("processed_at"),
                 chunk_count=doc.get("chunk_count"),
+                error=doc.get("error"),
             )
-            for doc in self.mock_documents.values()
+            for doc in rows
         ]
+        return docs, total
+
+    async def reprocess_document(self, doc_id: str) -> dict:
+        """Simulate reprocessing (mock mode)."""
+        doc = self.db.get(doc_id)
+        if not doc:
+            raise ValueError(f"Document {doc_id} not found")
+
+        self.db.update(doc_id, {
+            "status": "processing",
+            "processed_at": None,
+            "chunk_count": None,
+            "chunks_done": 0,
+            "error": None,
+        })
+        asyncio.create_task(self._simulate_processing(doc_id))
+
+        return {
+            "success": True,
+            "doc_id": doc_id,
+            "filename": doc["filename"],
+            "status": "processing",
+            "message": f"Document '{doc['filename']}' is being reprocessed (mock mode)",
+        }
 
     async def delete_document(self, doc_id: str) -> DocumentDeleteResponse:
-        """
-        Delete document (mock)
-        """
-        doc = self.mock_documents.get(doc_id)
+        """Delete document from persistent store."""
+        log.info("mock_delete", doc_id=doc_id)
+        doc = self.db.get(doc_id)
         if not doc:
             return DocumentDeleteResponse(
                 success=False,
@@ -172,12 +257,10 @@ class MockRAGService:
                 message=f"Document {doc_id} not found",
             )
 
-        chunk_count = doc.get("chunk_count", 0)
+        chunk_count = doc.get("chunk_count") or 0
         doc_name = doc["filename"]
 
-        # Remove from mock storage
-        del self.mock_documents[doc_id]
-
+        self.db.delete(doc_id)
         await asyncio.sleep(0.1)
 
         return DocumentDeleteResponse(
@@ -190,15 +273,17 @@ class MockRAGService:
             message=f"Document '{doc_name}' deleted successfully (mock mode)",
         )
 
+    def get_analytics(self, recent_limit: int = 20) -> dict:
+        return self.db.get_analytics(recent_limit=recent_limit)
+
     async def get_stats(self) -> SystemStats:
-        """
-        Get system statistics
-        """
-        total_docs = len(self.mock_documents)
+        """Get system statistics."""
+        all_docs = self.db.list_all()
+        total_docs = len(all_docs)
         total_chunks = sum(
-            doc.get("chunk_count", 0)
-            for doc in self.mock_documents.values()
-            if doc.get("chunk_count")
+            doc.get("chunk_count") or 0
+            for doc in all_docs
+            if doc.get("status") == "complete"
         )
         uptime = int((datetime.utcnow() - self.start_time).total_seconds())
 
@@ -206,22 +291,20 @@ class MockRAGService:
             status="healthy",
             total_documents=total_docs,
             total_chunks=total_chunks,
-            total_queries=self.query_count,
+            total_queries=self.db.get_query_count(),
             uptime_seconds=uptime,
             mode="mock",
             db_status="simulated",
             llm_status="simulated",
         )
 
-    def _generate_mock_answer(self, question: str, device_type: Optional[str]) -> str:
-        """
-        Generate realistic mock answer based on question
-        """
-        question_lower = question.lower()
+    # ── Mock answer/source generation ─────────────────────────
 
-        # Pattern matching for common maintenance questions
-        if any(word in question_lower for word in ["replace", "change", "swap"]):
-            if "filter" in question_lower:
+    def _generate_mock_answer(self, question: str, device_type: Optional[str]) -> str:
+        q = question.lower()
+
+        if any(w in q for w in ["replace", "change", "swap"]):
+            if "filter" in q:
                 return """To replace the air filter:
 
 1. **Safety First**: Shut down the equipment and disconnect power
@@ -233,7 +316,7 @@ class MockRAGService:
 
 **Important**: Always use OEM-approved filters. Replacement interval: Every 500 operating hours or 3 months."""
 
-            elif "oil" in question_lower or "fluid" in question_lower:
+            if any(w in q for w in ["oil", "fluid"]):
                 return """To replace the hydraulic fluid:
 
 1. **Preparation**: Ensure system is cool and depressurized
@@ -243,11 +326,9 @@ class MockRAGService:
 5. **Bleed**: Run system at low pressure to remove air bubbles
 6. **Check Level**: Ensure fluid is at the "FULL" mark
 
-**Capacity**: 15 liters
-**Recommended Fluid**: Mobil DTE 25 or equivalent
-**Change Interval**: Every 2000 hours or annually"""
+**Capacity**: 15 liters | **Fluid**: Mobil DTE 25 or equivalent | **Interval**: Every 2000 hours or annually"""
 
-        elif any(word in question_lower for word in ["troubleshoot", "problem", "issue", "not working"]):
+        if any(w in q for w in ["troubleshoot", "problem", "issue", "not working"]):
             return """Common troubleshooting steps:
 
 **If equipment won't start:**
@@ -266,43 +347,21 @@ class MockRAGService:
 1. Check cooling fan operation
 2. Clean air vents and heat exchangers
 3. Verify coolant circulation
-4. Reduce operating load temporarily
 
 Refer to Section 7 (Troubleshooting) for error code meanings."""
 
-        elif any(word in question_lower for word in ["maintain", "maintenance", "service"]):
+        if any(w in q for w in ["maintain", "maintenance", "service"]):
             return """Regular maintenance schedule:
 
-**Daily:**
-- Visual inspection for leaks
-- Check fluid levels
-- Verify proper operation
-
-**Weekly:**
-- Inspect filters
-- Check belt tension
-- Lubricate moving parts
-
-**Monthly:**
-- Replace air filters
-- Check electrical connections
-- Inspect hoses for wear
-
-**Quarterly:**
-- Change hydraulic fluid
-- Inspect safety systems
-- Calibrate sensors
-
-**Annually:**
-- Complete system overhaul
-- Replace wear parts
-- Professional inspection
+**Daily:** Visual inspection, check fluid levels, verify normal operation
+**Weekly:** Inspect filters, check belt tension, lubricate moving parts
+**Monthly:** Replace air filters, check electrical connections
+**Quarterly:** Change hydraulic fluid, inspect safety systems, calibrate sensors
+**Annually:** Complete system overhaul, replace wear parts, professional inspection
 
 Detailed procedures are in Section 6 (Preventive Maintenance)."""
 
-        else:
-            # Generic answer
-            return f"""Based on the maintenance documentation for {device_type or 'your equipment'}:
+        return f"""Based on the maintenance documentation for {device_type or 'your equipment'}:
 
 The recommended procedure involves:
 1. Following standard safety protocols
@@ -310,65 +369,46 @@ The recommended procedure involves:
 3. Using manufacturer-approved parts and tools
 4. Documenting all maintenance activities
 
-For detailed step-by-step instructions, please refer to the relevant section of the manual. If this is a critical operation, contact a certified technician.
-
 **Safety Note**: Always wear appropriate PPE and follow lockout/tagout procedures."""
-
-        return answer
 
     def _generate_mock_sources(
         self, question: str, device_type: Optional[str], top_k: int
     ) -> List[SourceDocument]:
-        """
-        Generate mock source citations
-        """
-        # Select relevant mock documents
-        relevant_docs = []
-        for doc in self.mock_documents.values():
-            if device_type == "all" or doc["device_type"] == device_type:
-                relevant_docs.append(doc)
+        all_docs = self.db.list_all()
+        relevant = [
+            d for d in all_docs
+            if d.get("status") == "complete"
+            and (device_type == "all" or d["device_type"] == device_type)
+        ] or [d for d in all_docs if d.get("status") == "complete"]
 
-        # If no documents match, use all
-        if not relevant_docs:
-            relevant_docs = list(self.mock_documents.values())
-
-        # Generate sources
         sources = []
-        for i, doc in enumerate(relevant_docs[:top_k]):
-            relevance = 0.95 - (i * 0.08)  # Decreasing relevance
+        for i, doc in enumerate(relevant[:top_k]):
             sources.append(
                 SourceDocument(
                     doc_name=doc["filename"],
                     page_numbers=f"{12 + i}-{13 + i}",
                     section=self._get_relevant_section(question),
-                    relevance=round(relevance, 2),
-                    excerpt=self._get_excerpt(question, doc["filename"]),
+                    relevance=round(0.95 - (i * 0.08), 2),
+                    excerpt=(
+                        "...the procedure for this operation requires following standard "
+                        "safety protocols. Refer to the detailed instructions and diagrams "
+                        "provided in this section. Always use manufacturer-approved parts..."
+                    ),
                 )
             )
-
         return sources
 
     def _get_relevant_section(self, question: str) -> str:
-        """
-        Get relevant section based on question
-        """
-        question_lower = question.lower()
-        if any(word in question_lower for word in ["replace", "install"]):
+        q = question.lower()
+        if any(w in q for w in ["replace", "install"]):
             return "Section 5: Component Replacement"
-        elif any(word in question_lower for word in ["troubleshoot", "problem"]):
+        if any(w in q for w in ["troubleshoot", "problem"]):
             return "Section 7: Troubleshooting Guide"
-        elif any(word in question_lower for word in ["maintain", "service"]):
+        if any(w in q for w in ["maintain", "service"]):
             return "Section 6: Preventive Maintenance"
-        elif any(word in question_lower for word in ["safety", "warning"]):
+        if any(w in q for w in ["safety", "warning"]):
             return "Section 2: Safety Guidelines"
-        else:
-            return "Section 4: Operating Procedures"
-
-    def _get_excerpt(self, question: str, doc_name: str) -> str:
-        """
-        Generate relevant excerpt
-        """
-        return f"...the procedure for this operation requires following standard safety protocols. Refer to the detailed instructions and diagrams provided in this section. Always use manufacturer-approved parts..."
+        return "Section 4: Operating Procedures"
 
 
 # Global instance

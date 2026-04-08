@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
+    # EnterpriseRAG API key (set to enable auth; leave empty to disable in dev)
+    rag_api_key: str | None = None
+
     # Frontend URL (for CORS)
     frontend_url: str = "http://localhost:5173"
 
@@ -54,6 +57,9 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 50
     allowed_extensions: list[str] = [".pdf", ".docx"]
     upload_dir: Path = Path("uploads")
+
+    # Persistent metadata database
+    metadata_db_path: Path = Path("data/rag_metadata.db")
 
     # Processing
     batch_size: int = 100

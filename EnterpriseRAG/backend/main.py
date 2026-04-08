@@ -2,21 +2,54 @@
 EnterpriseRAG - FastAPI Application Entry Point
 """
 
-from fastapi import FastAPI
+import time
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
+
 from .api import query, admin
 from .utils.config import settings, is_mock_mode
+from .rate_limiter import limiter
+from .logging_config import configure_logging, get_logger
+from .services.rag_service import production_service
 
-# Create FastAPI app
+# Initialise structured logging before anything else
+configure_logging()
+log = get_logger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage startup and shutdown lifecycle."""
+    log.info(
+        "startup",
+        app=settings.app_name,
+        version=settings.app_version,
+        mode=settings.mode,
+        auth_enabled=bool(settings.rag_api_key),
+    )
+    yield
+    # Close persistent HTTP clients on shutdown
+    await production_service.aclose()
+    log.info("shutdown", app=settings.app_name)
+
+
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="RAG system for maintenance documentation Q&A",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
-# Configure CORS
+# ── Rate limiter ──────────────────────────────────────────────
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ── CORS ──────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_url, "http://localhost:5173"],
@@ -25,16 +58,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# ── Request logging middleware ────────────────────────────────
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = round((time.perf_counter() - start) * 1000)
+    log.info(
+        "http_request",
+        method=request.method,
+        path=request.url.path,
+        status=response.status_code,
+        duration_ms=duration_ms,
+        client=request.client.host if request.client else "unknown",
+    )
+    return response
+
+# ── Routers ───────────────────────────────────────────────────
 app.include_router(query.router)
 app.include_router(admin.router)
 
 
 @app.get("/")
 async def root():
-    """
-    Root endpoint
-    """
     return {
         "name": settings.app_name,
         "version": settings.app_version,
@@ -42,37 +88,3 @@ async def root():
         "docs": "/docs",
         "health": "/api/health",
     }
-
-
-@app.on_event("startup")
-async def startup_event():
-    """
-    Startup event handler
-    """
-    print("\n✅ EnterpriseRAG backend started successfully")
-    print(f"   Mode: {settings.mode.upper()}")
-    print(f"   API Documentation: http://{settings.api_host}:{settings.api_port}/docs")
-    print(f"   Health Check: http://{settings.api_host}:{settings.api_port}/api/health")
-
-    if not is_mock_mode():
-        print(f"   JadeVectorDB: {settings.jadevectordb_url}")
-        print(f"   Ollama: {settings.ollama_url}")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """
-    Shutdown event handler
-    """
-    print("\n🛑 EnterpriseRAG backend shutting down")
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(
-        "main:app",
-        host=settings.api_host,
-        port=settings.api_port,
-        reload=settings.debug,
-    )

@@ -1,12 +1,14 @@
 """
-Document processing: PDF/DOCX extraction and intelligent chunking
+Document processing: PDF/DOCX extraction and intelligent chunking.
+
+Production-only dependencies (pymupdf, python-docx, langchain) are imported
+lazily inside the methods that need them so the module loads cleanly in mock
+mode without those packages installed.
 """
 
 import io
-import fitz  # PyMuPDF
-from docx import Document as DocxDocument
+import re
 from typing import List, Dict, Any
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from ..utils.config import settings
 
 
@@ -14,17 +16,27 @@ class DocumentProcessor:
     """Handle document extraction and chunking"""
 
     def __init__(self):
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=settings.chunk_size,
-            chunk_overlap=settings.chunk_overlap,
-            separators=["\n\n", "\n", ". ", " ", ""],
-            length_function=len,
-        )
+        # Splitter is created lazily to avoid importing langchain at startup
+        self._text_splitter = None
+
+    def _get_splitter(self):
+        if self._text_splitter is None:
+            try:
+                from langchain.text_splitter import RecursiveCharacterTextSplitter
+            except ImportError:
+                raise ImportError(
+                    "langchain is required for production mode. "
+                    "Run: pip install -r requirements.prod.txt"
+                )
+            self._text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=settings.chunk_size,
+                chunk_overlap=settings.chunk_overlap,
+                separators=["\n\n", "\n", ". ", " ", ""],
+                length_function=len,
+            )
+        return self._text_splitter
 
     async def extract_text(self, filename: str, file_content: bytes) -> str:
-        """
-        Extract text from PDF or DOCX
-        """
         if filename.lower().endswith(".pdf"):
             return await self._extract_pdf(file_content)
         elif filename.lower().endswith(".docx"):
@@ -33,84 +45,59 @@ class DocumentProcessor:
             raise ValueError(f"Unsupported file type: {filename}")
 
     async def _extract_pdf(self, file_content: bytes) -> str:
-        """
-        Extract text from PDF using PyMuPDF
-        """
+        try:
+            import fitz  # PyMuPDF
+        except ImportError:
+            raise ImportError(
+                "pymupdf is required for PDF processing. "
+                "Run: pip install -r requirements.prod.txt"
+            )
         doc = fitz.open(stream=file_content, filetype="pdf")
         text_parts = []
-
         for page_num in range(len(doc)):
             page = doc[page_num]
             text = page.get_text()
             if text.strip():
                 text_parts.append(f"\n[Page {page_num + 1}]\n{text}")
-
         doc.close()
         return "\n".join(text_parts)
 
     async def _extract_docx(self, file_content: bytes) -> str:
-        """
-        Extract text from DOCX
-        """
+        try:
+            from docx import Document as DocxDocument
+        except ImportError:
+            raise ImportError(
+                "python-docx is required for DOCX processing. "
+                "Run: pip install -r requirements.prod.txt"
+            )
         doc = DocxDocument(io.BytesIO(file_content))
-        text_parts = []
-
-        for i, para in enumerate(doc.paragraphs):
-            text = para.text.strip()
-            if text:
-                text_parts.append(text)
-
+        text_parts = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
         return "\n\n".join(text_parts)
 
     async def chunk_text(self, text: str) -> List[Dict[str, Any]]:
-        """
-        Chunk text semantically with metadata
-        """
-        # Split text into chunks
-        chunks = self.text_splitter.split_text(text)
-
-        # Add metadata
-        chunked_docs = []
-        for i, chunk in enumerate(chunks):
-            # Extract page number from chunk if available
-            page = self._extract_page_number(chunk)
-
-            # Extract section heading if available
-            section = self._extract_section(chunk)
-
-            chunked_docs.append({
+        splitter = self._get_splitter()
+        chunks = splitter.split_text(text)
+        return [
+            {
                 "text": chunk.strip(),
                 "chunk_index": i,
-                "page": page,
-                "section": section,
-            })
-
-        return chunked_docs
+                "page": self._extract_page_number(chunk),
+                "section": self._extract_section(chunk),
+            }
+            for i, chunk in enumerate(chunks)
+        ]
 
     def _extract_page_number(self, chunk: str) -> str:
-        """
-        Extract page number from chunk text
-        """
-        import re
-
         match = re.search(r"\[Page (\d+)\]", chunk)
-        if match:
-            return match.group(1)
-        return "unknown"
+        return match.group(1) if match else "unknown"
 
     def _extract_section(self, chunk: str) -> str:
-        """
-        Extract section heading from chunk
-        """
-        lines = chunk.split("\n")
-        for line in lines[:3]:  # Check first 3 lines
+        for line in chunk.split("\n")[:3]:
             line = line.strip()
-            # Look for section headers (all caps, or numbered)
-            if line.isupper() and len(line) > 3 and len(line) < 80:
+            if line.isupper() and 3 < len(line) < 80:
                 return line
             if line and line[0].isdigit() and "." in line[:10]:
                 return line
-
         return ""
 
 

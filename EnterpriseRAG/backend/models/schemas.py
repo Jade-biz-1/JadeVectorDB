@@ -3,7 +3,7 @@ Pydantic models for request/response validation
 """
 
 from pydantic import BaseModel, Field
-from typing import List, Optional, Literal
+from typing import Any, Dict, List, Optional, Literal
 from datetime import datetime
 
 
@@ -72,6 +72,8 @@ class DocumentListResponse(BaseModel):
     """List of documents"""
     documents: List[DocumentInfo]
     total: int
+    offset: int = 0
+    limit: int = 100
 
 
 class DocumentDeleteResponse(BaseModel):
@@ -105,6 +107,30 @@ class HealthResponse(BaseModel):
     timestamp: str
     mode: Literal["mock", "production"]
     components: dict
+
+
+# Analytics Models
+class QueryRecord(BaseModel):
+    """Single query log entry"""
+    id: int
+    question: str
+    device_type: str
+    mode: str
+    confidence: float
+    processing_time_ms: int
+    sources_count: int
+    success: bool
+    timestamp: str
+
+
+class AnalyticsResponse(BaseModel):
+    """Query analytics summary"""
+    total_queries: int
+    avg_confidence: float
+    avg_processing_time_ms: float
+    success_rate: float
+    device_type_breakdown: Dict[str, int]
+    recent_queries: List[QueryRecord]
 
 
 # Processing Models
