@@ -2,10 +2,11 @@
 FROM python:3.11-slim AS deps
 
 WORKDIR /app
-COPY backend/requirements.txt .
+COPY backend/requirements.txt backend/requirements.prod.txt ./
 
 RUN pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir -r requirements.txt
+ && pip install --no-cache-dir -r requirements.txt \
+ && pip install --no-cache-dir -r requirements.prod.txt
 
 
 # ── Stage 2: runtime ─────────────────────────────────────────
