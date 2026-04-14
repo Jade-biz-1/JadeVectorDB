@@ -24,13 +24,13 @@ function QueryPage() {
     }
   };
 
-  const handleQuery = async (question, deviceType, topK) => {
+  const handleQuery = async (question, category, topK) => {
     setLoading(true);
     setError(null);
     setResponse(null);
 
     try {
-      const data = await queryAPI.query(question, deviceType, topK);
+      const data = await queryAPI.query(question, category, topK);
       setResponse(data);
       // Refresh stats after query
       loadStats();
@@ -45,8 +45,8 @@ function QueryPage() {
     <div className="query-page">
       <div className="query-container">
         <header className="page-header">
-          <h2>Maintenance Documentation Q&A</h2>
-          <p>Ask questions about your equipment maintenance procedures</p>
+          <h2>Document Q&amp;A</h2>
+          <p>Ask questions about your organization's documents</p>
         </header>
 
         <QueryForm onSubmit={handleQuery} loading={loading} />

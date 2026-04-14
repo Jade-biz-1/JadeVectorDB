@@ -2,21 +2,21 @@ import { useState } from 'react';
 
 function QueryForm({ onSubmit, loading }) {
   const [question, setQuestion] = useState('');
-  const [deviceType, setDeviceType] = useState('all');
+  const [category, setCategory] = useState('all');
   const [topK, setTopK] = useState(5);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (question.trim()) {
-      onSubmit(question, deviceType, topK);
+      onSubmit(question, category, topK);
     }
   };
 
   const exampleQuestions = [
-    'How do I replace the hydraulic fluid?',
-    'What is the maintenance schedule for the air compressor?',
-    'How to troubleshoot overheating issues?',
-    'What safety precautions should I take?',
+    'How do I submit an expense report?',
+    'What is the process for requesting time off?',
+    'How do I request access to a new system?',
+    'What should a new employee do on their first day?',
   ];
 
   return (
@@ -28,7 +28,7 @@ function QueryForm({ onSubmit, loading }) {
             id="question"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Ask a question about maintenance procedures..."
+            placeholder="Ask a question about your organization's documents..."
             rows="4"
             disabled={loading}
             required
@@ -37,17 +37,18 @@ function QueryForm({ onSubmit, loading }) {
 
         <div className="form-row">
           <div className="form-group">
-            <label htmlFor="device-type">Device Type</label>
+            <label htmlFor="category">Category</label>
             <select
-              id="device-type"
-              value={deviceType}
-              onChange={(e) => setDeviceType(e.target.value)}
+              id="category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
               disabled={loading}
             >
-              <option value="all">All Devices</option>
-              <option value="hydraulic_pump">Hydraulic Pump</option>
-              <option value="air_compressor">Air Compressor</option>
-              <option value="conveyor">Conveyor System</option>
+              <option value="all">All Categories</option>
+              <option value="hr">HR</option>
+              <option value="finance">Finance</option>
+              <option value="it">IT</option>
+              <option value="general">General</option>
             </select>
           </div>
 

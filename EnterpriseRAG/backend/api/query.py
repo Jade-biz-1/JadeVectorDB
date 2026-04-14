@@ -22,14 +22,14 @@ _protected = [Depends(verify_api_key)]
 @limiter.limit("20/minute")
 async def query_documents(request: Request, body: QueryRequest):
     """
-    Query maintenance documentation using RAG.
+    Query documents using RAG.
     Limited to 20 requests per minute per IP.
     """
     try:
         svc = mock_service if is_mock_mode() else production_service
         return await svc.query(
             question=body.question,
-            device_type=body.device_type,
+            category=body.category,
             top_k=body.top_k,
         )
     except Exception as e:
@@ -52,7 +52,7 @@ async def get_stats():
 async def get_analytics(
     recent: int = Query(20, ge=1, le=100, description="Number of recent queries to return"),
 ):
-    """Query analytics: totals, averages, device breakdown, and recent query log."""
+    """Query analytics: totals, averages, category breakdown, and recent query log."""
     try:
         svc = mock_service if is_mock_mode() else production_service
         data = svc.get_analytics(recent_limit=recent)
@@ -61,7 +61,7 @@ async def get_analytics(
             QueryRecord(
                 id=r["id"],
                 question=r["question"],
-                device_type=r["device_type"],
+                category=r.get("category") or r.get("device_type") or "all",
                 mode=r["mode"],
                 confidence=r["confidence"] or 0,
                 processing_time_ms=r["processing_time_ms"] or 0,
@@ -76,7 +76,7 @@ async def get_analytics(
             avg_confidence=data["avg_confidence"],
             avg_processing_time_ms=data["avg_processing_time_ms"],
             success_rate=data["success_rate"],
-            device_type_breakdown=data["device_type_breakdown"],
+            category_breakdown=data.get("category_breakdown") or data.get("device_type_breakdown", {}),
             recent_queries=records,
         )
     except Exception as e:

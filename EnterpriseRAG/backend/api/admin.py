@@ -1,5 +1,6 @@
 """
-Admin API endpoints for document management
+Admin API endpoints for document management.
+All endpoints require a valid Bearer token (API key or JWT with admin role).
 """
 
 from fastapi import APIRouter, Depends, Query, Request, UploadFile, File, Form, HTTPException, BackgroundTasks
@@ -34,10 +35,10 @@ def _svc():
 async def upload_document(
     request: Request,
     file: UploadFile = File(...),
-    device_type: str = Form(...),
+    category: str = Form("general"),
 ):
     """
-    Upload a maintenance document (PDF or DOCX).
+    Upload a document (PDF or DOCX).
     Limited to 10 uploads per minute per IP.
     Production mode saves the file to disk so it can be reprocessed later.
     """
@@ -58,7 +59,7 @@ async def upload_document(
     try:
         result = await _svc().upload_document(
             filename=file.filename,
-            device_type=device_type,
+            category=category,
             file_content=file_content,
         )
         return DocumentUploadResponse(**result)
