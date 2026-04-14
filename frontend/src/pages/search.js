@@ -1,6 +1,15 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
-import { searchApi, databaseApi } from '../lib/api';
+import { searchApi } from '../lib/api';
+import { useDatabases } from '../hooks/useDatabases';
+import {
+  Alert, AlertDescription,
+  Button,
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
+  EmptyState,
+  FormField,
+  StatusBadge,
+} from '../components/ui';
 
 export default function SearchInterface() {
   const [queryVector, setQueryVector] = useState('');
@@ -10,10 +19,15 @@ export default function SearchInterface() {
   const [includeMetadata, setIncludeMetadata] = useState(true);
   const [includeValues, setIncludeValues] = useState(false);
   const [results, setResults] = useState([]);
-  const [databases, setDatabases] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [fetchingDatabases, setFetchingDatabases] = useState(false);
   const [error, setError] = useState('');
+
+  const { databases, loading: fetchingDatabases, error: dbError } = useDatabases();
+
+  // Surface database-fetch errors through the page error state
+  useEffect(() => {
+    if (dbError) setError(dbError);
+  }, [dbError]);
 
   // Extract database ID from query parameters if available
   useEffect(() => {
@@ -26,27 +40,6 @@ export default function SearchInterface() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchDatabases();
-  }, []);
-
-  const fetchDatabases = async () => {
-    setFetchingDatabases(true);
-    try {
-      const response = await databaseApi.listDatabases();
-      const dbList = response.databases || [];
-      setDatabases(dbList.map(db => ({
-        id: db.databaseId,
-        name: db.name
-      })));
-    } catch (error) {
-      console.error('Error fetching databases:', error);
-      setError(`Error fetching databases: ${error.message}`);
-    } finally {
-      setFetchingDatabases(false);
-    }
-  };
-
   const handleSearch = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -56,11 +49,9 @@ export default function SearchInterface() {
       // Parse query vector - handle both JSON array and comma-separated string
       let parsedVector = [];
 
-      // If it looks like a JSON array, parse it as JSON
       if (queryVector.trim().startsWith('[')) {
         parsedVector = JSON.parse(queryVector);
       } else {
-        // Otherwise, split by comma and convert to numbers
         parsedVector = queryVector.split(',')
           .map(s => parseFloat(s.trim()))
           .filter(v => !isNaN(v));
@@ -85,309 +76,34 @@ export default function SearchInterface() {
     }
   };
 
+  const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500 transition';
+
   return (
     <Layout title="Vector Search - JadeVectorDB">
-      <style jsx>{`
-        .search-container {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 20px;
-        }
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-1">Vector Search</h1>
+        <p className="text-gray-500">Find vectors similar to your query vector</p>
+      </div>
 
-        .page-header {
-          margin-bottom: 30px;
-        }
+      {error && (
+        <Alert variant="destructive" className="mb-6 bg-red-50 border-red-200 text-red-800">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-        .page-title {
-          font-size: 32px;
-          font-weight: 700;
-          color: #2c3e50;
-          margin: 0 0 10px 0;
-        }
-
-        .page-description {
-          color: #7f8c8d;
-          font-size: 16px;
-        }
-
-        .alert {
-          padding: 15px;
-          border-radius: 8px;
-          margin-bottom: 20px;
-          font-size: 14px;
-        }
-
-        .alert-error {
-          background: #fee2e2;
-          border: 1px solid #fecaca;
-          color: #991b1b;
-        }
-
-        .card {
-          background: white;
-          border-radius: 8px;
-          padding: 30px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-          margin-bottom: 30px;
-        }
-
-        .card-title {
-          font-size: 20px;
-          font-weight: 600;
-          color: #2c3e50;
-          margin: 0 0 10px 0;
-        }
-
-        .card-subtitle {
-          font-size: 14px;
-          color: #7f8c8d;
-          margin-bottom: 25px;
-        }
-
-        .form-grid {
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 20px;
-        }
-
-        @media (min-width: 768px) {
-          .form-grid {
-            grid-template-columns: 1fr 1fr;
-          }
-        }
-
-        .form-group {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .form-group.full-width {
-          grid-column: 1 / -1;
-        }
-
-        .form-label {
-          font-weight: 500;
-          color: #2c3e50;
-          margin-bottom: 8px;
-          font-size: 14px;
-        }
-
-        .form-input,
-        .form-select,
-        .form-textarea {
-          padding: 10px 12px;
-          border: 1px solid #d1d5db;
-          border-radius: 6px;
-          font-size: 14px;
-          transition: all 0.2s;
-          font-family: inherit;
-        }
-
-        .form-input:focus,
-        .form-select:focus,
-        .form-textarea:focus {
-          outline: none;
-          border-color: #3498db;
-          box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
-        }
-
-        .form-textarea {
-          resize: vertical;
-          min-height: 100px;
-          font-family: monospace;
-        }
-
-        .form-hint {
-          font-size: 12px;
-          color: #7f8c8d;
-          margin-top: 5px;
-        }
-
-        .checkbox-group {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .checkbox {
-          width: 18px;
-          height: 18px;
-          cursor: pointer;
-        }
-
-        .checkbox-label {
-          font-size: 14px;
-          color: #2c3e50;
-          cursor: pointer;
-        }
-
-        .btn {
-          padding: 12px 24px;
-          border-radius: 6px;
-          font-weight: 500;
-          font-size: 14px;
-          cursor: pointer;
-          transition: all 0.2s;
-          border: none;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .btn-primary {
-          background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
-          color: white;
-        }
-
-        .btn-primary:hover:not(:disabled) {
-          transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(52, 152, 219, 0.4);
-        }
-
-        .btn-primary:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .results-card {
-          background: white;
-          border-radius: 8px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-          overflow: hidden;
-        }
-
-        .results-header {
-          padding: 20px 25px;
-          border-bottom: 1px solid #ecf0f1;
-        }
-
-        .results-title {
-          font-size: 18px;
-          font-weight: 600;
-          color: #2c3e50;
-          margin: 0 0 5px 0;
-        }
-
-        .results-subtitle {
-          font-size: 14px;
-          color: #7f8c8d;
-        }
-
-        .results-list {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .result-item {
-          padding: 20px 25px;
-          border-bottom: 1px solid #ecf0f1;
-          transition: background 0.2s;
-        }
-
-        .result-item:hover {
-          background: #f8f9fa;
-        }
-
-        .result-item:last-child {
-          border-bottom: none;
-        }
-
-        .result-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 10px;
-        }
-
-        .result-id {
-          font-size: 14px;
-          font-weight: 500;
-          color: #3498db;
-          font-family: monospace;
-        }
-
-        .score-badge {
-          display: inline-flex;
-          padding: 4px 12px;
-          border-radius: 12px;
-          font-size: 12px;
-          font-weight: 600;
-          background: #d4edda;
-          color: #155724;
-        }
-
-        .metadata-section,
-        .values-section {
-          margin-top: 12px;
-        }
-
-        .section-label {
-          font-size: 13px;
-          font-weight: 600;
-          color: #2c3e50;
-          margin-bottom: 5px;
-        }
-
-        .metadata-grid {
-          display: flex;
-          flex-direction: column;
-          gap: 5px;
-        }
-
-        .metadata-item {
-          font-size: 13px;
-          color: #555;
-        }
-
-        .metadata-key {
-          font-weight: 500;
-        }
-
-        .values-display {
-          font-family: monospace;
-          font-size: 12px;
-          color: #555;
-          background: #f8f9fa;
-          padding: 10px;
-          border-radius: 4px;
-          overflow-x: auto;
-        }
-
-        .empty-state {
-          text-align: center;
-          padding: 60px 20px;
-          color: #7f8c8d;
-        }
-
-        .empty-icon {
-          font-size: 48px;
-          margin-bottom: 15px;
-        }
-      `}</style>
-
-      <div className="search-container">
-        <div className="page-header">
-          <h1 className="page-title">Vector Search</h1>
-          <p className="page-description">Find vectors similar to your query vector</p>
-        </div>
-
-        {error && (
-          <div className="alert alert-error">
-            {error}
-          </div>
-        )}
-
-        <div className="card">
-          <h2 className="card-title">Similarity Search</h2>
-          <p className="card-subtitle">Find vectors similar to your query vector</p>
-
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-xl">Similarity Search</CardTitle>
+          <CardDescription>Find vectors similar to your query vector</CardDescription>
+        </CardHeader>
+        <CardContent>
           <form onSubmit={handleSearch}>
-            <div className="form-grid">
-              <div className="form-group full-width">
-                <label htmlFor="database" className="form-label">Database *</label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+              <FormField label="Database" htmlFor="database" required className="md:col-span-2">
                 <select
                   id="database"
-                  className="form-select"
+                  className={inputCls}
                   value={selectedDatabase}
                   onChange={(e) => setSelectedDatabase(e.target.value)}
                   required
@@ -398,119 +114,121 @@ export default function SearchInterface() {
                     <option key={db.id} value={db.id}>{db.name}</option>
                   ))}
                 </select>
-              </div>
+              </FormField>
 
-              <div className="form-group full-width">
-                <label htmlFor="queryVector" className="form-label">Query Vector *</label>
+              <FormField
+                label="Query Vector"
+                htmlFor="queryVector"
+                required
+                hint="Example: [0.1, 0.2, 0.3, ...] or 0.1, 0.2, 0.3, ..."
+                className="md:col-span-2"
+              >
                 <textarea
                   id="queryVector"
-                  className="form-textarea"
+                  className={`${inputCls} resize-y min-h-[100px] font-mono`}
                   value={queryVector}
                   onChange={(e) => setQueryVector(e.target.value)}
                   placeholder="Enter vector values as comma-separated numbers or JSON array"
                   required
                 />
-                <p className="form-hint">
-                  Example: [0.1, 0.2, 0.3, ...] or 0.1, 0.2, 0.3, ...
-                </p>
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label htmlFor="topK" className="form-label">Top K Results</label>
+              <FormField label="Top K Results" htmlFor="topK">
                 <input
                   type="number"
                   id="topK"
-                  className="form-input"
+                  className={inputCls}
                   min="1"
                   max="1000"
                   value={topK}
                   onChange={(e) => setTopK(parseInt(e.target.value))}
                 />
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label htmlFor="threshold" className="form-label">Similarity Threshold</label>
+              <FormField
+                label="Similarity Threshold"
+                htmlFor="threshold"
+                hint="Minimum similarity score (0.0 to 1.0)"
+              >
                 <input
                   type="number"
                   id="threshold"
-                  className="form-input"
+                  className={inputCls}
                   min="0.0"
                   max="1.0"
                   step="0.01"
                   value={threshold}
                   onChange={(e) => setThreshold(parseFloat(e.target.value))}
                 />
-                <p className="form-hint">Minimum similarity score (0.0 to 1.0)</p>
-              </div>
+              </FormField>
 
-              <div className="form-group full-width">
-                <div className="checkbox-group">
+              <div className="md:col-span-2 flex flex-col gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     id="includeMetadata"
                     type="checkbox"
-                    className="checkbox"
+                    className="w-4 h-4 rounded border-gray-300 text-indigo-600"
                     checked={includeMetadata}
                     onChange={(e) => setIncludeMetadata(e.target.checked)}
                   />
-                  <label htmlFor="includeMetadata" className="checkbox-label">
-                    Include metadata in results
-                  </label>
-                </div>
-              </div>
-
-              <div className="form-group full-width">
-                <div className="checkbox-group">
+                  <span className="text-sm text-gray-700">Include metadata in results</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     id="includeValues"
                     type="checkbox"
-                    className="checkbox"
+                    className="w-4 h-4 rounded border-gray-300 text-indigo-600"
                     checked={includeValues}
                     onChange={(e) => setIncludeValues(e.target.checked)}
                   />
-                  <label htmlFor="includeValues" className="checkbox-label">
-                    Include vector values in results
-                  </label>
-                </div>
+                  <span className="text-sm text-gray-700">Include vector values in results</span>
+                </label>
               </div>
 
-              <div className="form-group full-width">
-                <button
+              <div className="md:col-span-2">
+                <Button
                   type="submit"
                   disabled={loading || !selectedDatabase || !queryVector}
-                  className="btn btn-primary"
                 >
-                  {loading ? 'Searching...' : 'Search Similar Vectors'}
-                </button>
+                  {loading ? 'Searching…' : 'Search Similar Vectors'}
+                </Button>
               </div>
             </div>
           </form>
-        </div>
+        </CardContent>
+      </Card>
 
-        {results.length > 0 && (
-          <div className="results-card">
-            <div className="results-header">
-              <h3 className="results-title">Search Results</h3>
-              <p className="results-subtitle">Top {results.length} most similar vectors</p>
-            </div>
-            <div className="results-list">
+      {results.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">Search Results</CardTitle>
+            <CardDescription>Top {results.length} most similar vectors</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-gray-100">
               {results.map((result, index) => (
-                <div key={result.vector?.id || result.vectorId || index} className="result-item">
-                  <div className="result-header">
-                    <div className="result-id">
+                <div
+                  key={result.vector?.id || result.vectorId || index}
+                  className="px-6 py-5 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium text-indigo-600 font-mono">
                       Vector ID: {result.vector?.id || result.vectorId || 'Unknown'}
-                    </div>
-                    <span className="score-badge">
-                      {(result.score || result.similarity || result.similarityScore || 0).toFixed(4)} similarity
                     </span>
+                    <StatusBadge
+                      status="success"
+                      label={`${(result.score || result.similarity || result.similarityScore || 0).toFixed(4)} similarity`}
+                    />
                   </div>
 
                   {result.vector && result.vector.metadata && (
-                    <div className="metadata-section">
-                      <div className="section-label">Metadata:</div>
-                      <div className="metadata-grid">
+                    <div className="mt-2">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Metadata</p>
+                      <div className="space-y-0.5">
                         {Object.entries(result.vector.metadata).map(([key, value]) => (
-                          <div key={key} className="metadata-item">
-                            <span className="metadata-key">{key}:</span> {typeof value === 'string' ? value : JSON.stringify(value)}
+                          <div key={key} className="text-sm text-gray-600">
+                            <span className="font-medium">{key}:</span>{' '}
+                            {typeof value === 'string' ? value : JSON.stringify(value)}
                           </div>
                         ))}
                       </div>
@@ -518,9 +236,11 @@ export default function SearchInterface() {
                   )}
 
                   {result.vector && result.vector.values && includeValues && (
-                    <div className="values-section">
-                      <div className="section-label">Values (first 10):</div>
-                      <div className="values-display">
+                    <div className="mt-2">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                        Values (first 10)
+                      </p>
+                      <div className="font-mono text-xs text-gray-600 bg-gray-50 px-3 py-2 rounded overflow-x-auto">
                         {(() => {
                           const values = result.vector.values || [];
                           const displayValues = values.slice(0, 10).map((v) => {
@@ -535,19 +255,21 @@ export default function SearchInterface() {
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          </CardContent>
+        </Card>
+      )}
 
-        {!loading && results.length === 0 && queryVector && (
-          <div className="card">
-            <div className="empty-state">
-              <div className="empty-icon">🔍</div>
-              <h3>No results found</h3>
-              <p>Try adjusting your query vector or similarity threshold</p>
-            </div>
-          </div>
-        )}
-      </div>
+      {!loading && results.length === 0 && queryVector && (
+        <Card>
+          <CardContent>
+            <EmptyState
+              icon="🔍"
+              title="No results found"
+              description="Try adjusting your query vector or similarity threshold"
+            />
+          </CardContent>
+        </Card>
+      )}
     </Layout>
   );
 }

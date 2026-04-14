@@ -1,6 +1,16 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { usersApi, authApi } from '../lib/api';
+import {
+  Alert, AlertDescription,
+  Button,
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
+  EmptyState,
+  FormField,
+  LoadingSpinner,
+  Modal,
+  StatusBadge,
+} from '../components/ui';
 
 export default function UserManagement() {
   const [users, setUsers] = useState([]);
@@ -167,542 +177,228 @@ export default function UserManagement() {
     }
   };
 
+  const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500 transition';
+
   return (
     <Layout title="User Management - JadeVectorDB">
-      <style jsx>{`
-        .users-container {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 20px;
-        }
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-1">User Management</h1>
+        <p className="text-gray-500">Create and manage user accounts</p>
+      </div>
 
-        .page-header {
-          margin-bottom: 30px;
-        }
+      {error && (
+        <Alert variant="destructive" className="mb-6 bg-red-50 border-red-200 text-red-800">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {success && (
+        <Alert className="mb-6 bg-green-50 border-green-200 text-green-800">
+          <AlertDescription>{success}</AlertDescription>
+        </Alert>
+      )}
 
-        .page-title {
-          font-size: 32px;
-          font-weight: 700;
-          color: #2c3e50;
-          margin: 0 0 10px 0;
-        }
-
-        .page-description {
-          color: #7f8c8d;
-          font-size: 16px;
-        }
-
-        .alert {
-          padding: 15px;
-          border-radius: 8px;
-          margin-bottom: 20px;
-          font-size: 14px;
-        }
-
-        .alert-error {
-          background: #fee2e2;
-          border: 1px solid #fecaca;
-          color: #991b1b;
-        }
-
-        .alert-success {
-          background: #dcfce7;
-          border: 1px solid #bbf7d0;
-          color: #166534;
-        }
-
-        .card {
-          background: white;
-          border-radius: 8px;
-          padding: 30px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-          margin-bottom: 30px;
-        }
-
-        .card-title {
-          font-size: 20px;
-          font-weight: 600;
-          color: #2c3e50;
-          margin: 0 0 10px 0;
-        }
-
-        .card-subtitle {
-          font-size: 14px;
-          color: #7f8c8d;
-          margin-bottom: 25px;
-        }
-
-        .form-grid {
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 15px;
-        }
-
-        @media (min-width: 768px) {
-          .form-grid {
-            grid-template-columns: 1fr 1fr;
-          }
-        }
-
-        .form-group {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .form-label {
-          font-weight: 500;
-          color: #2c3e50;
-          margin-bottom: 8px;
-          font-size: 14px;
-        }
-
-        .form-input {
-          padding: 10px 12px;
-          border: 1px solid #d1d5db;
-          border-radius: 6px;
-          font-size: 14px;
-          transition: all 0.2s;
-        }
-
-        .form-input:focus {
-          outline: none;
-          border-color: #3498db;
-          box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
-        }
-
-        .btn {
-          padding: 10px 20px;
-          border-radius: 6px;
-          font-weight: 500;
-          font-size: 14px;
-          cursor: pointer;
-          transition: all 0.2s;
-          border: none;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .btn-primary {
-          background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
-          color: white;
-        }
-
-        .btn-primary:hover:not(:disabled) {
-          transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(52, 152, 219, 0.4);
-        }
-
-        .btn-primary:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .btn-secondary {
-          background: #95a5a6;
-          color: white;
-        }
-
-        .btn-secondary:hover:not(:disabled) {
-          background: #7f8c8d;
-        }
-
-        .btn-danger {
-          background: #e74c3c;
-          color: white;
-          padding: 6px 12px;
-          font-size: 12px;
-        }
-
-        .btn-danger:hover:not(:disabled) {
-          background: #c0392b;
-        }
-
-        .btn-edit {
-          background: #3498db;
-          color: white;
-          padding: 6px 12px;
-          font-size: 12px;
-          margin-right: 8px;
-        }
-
-        .btn-edit:hover:not(:disabled) {
-          background: #2980b9;
-        }
-
-        .btn-warning {
-          background: #f39c12;
-          color: white;
-          padding: 6px 12px;
-          font-size: 12px;
-          margin-right: 8px;
-        }
-
-        .btn-warning:hover:not(:disabled) {
-          background: #e67e22;
-        }
-
-        .button-group {
-          display: flex;
-          gap: 10px;
-          margin-top: 15px;
-        }
-
-        .table-container {
-          overflow-x: auto;
-        }
-
-        table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-
-        thead {
-          background: #f8f9fa;
-        }
-
-        th {
-          text-align: left;
-          padding: 12px 15px;
-          border-bottom: 2px solid #ecf0f1;
-          font-size: 12px;
-          color: #7f8c8d;
-          text-transform: uppercase;
-          font-weight: 600;
-        }
-
-        td {
-          padding: 15px;
-          border-bottom: 1px solid #ecf0f1;
-          font-size: 14px;
-          color: #2c3e50;
-        }
-
-        tbody tr:hover {
-          background: #f8f9fa;
-        }
-
-        .badge {
-          display: inline-block;
-          padding: 4px 12px;
-          border-radius: 12px;
-          font-size: 12px;
-          font-weight: 600;
-        }
-
-        .badge-success {
-          background: #d4edda;
-          color: #155724;
-        }
-
-        .badge-error {
-          background: #f8d7da;
-          color: #721c24;
-        }
-
-        .empty-state {
-          text-align: center;
-          padding: 40px;
-          color: #7f8c8d;
-        }
-
-        .loading-state {
-          text-align: center;
-          padding: 40px;
-          color: #7f8c8d;
-        }
-
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.5);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-        }
-
-        .modal {
-          background: white;
-          border-radius: 8px;
-          padding: 30px;
-          max-width: 500px;
-          width: 90%;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-        }
-
-        .modal-header {
-          margin-bottom: 20px;
-        }
-
-        .modal-title {
-          font-size: 24px;
-          font-weight: 600;
-          color: #2c3e50;
-          margin: 0 0 10px 0;
-        }
-
-        .modal-subtitle {
-          font-size: 14px;
-          color: #7f8c8d;
-        }
-
-        .modal-body {
-          margin-bottom: 20px;
-        }
-
-        .modal-footer {
-          display: flex;
-          gap: 10px;
-          justify-content: flex-end;
-        }
-
-        .password-hint {
-          font-size: 12px;
-          color: #7f8c8d;
-          margin-top: 8px;
-        }
-      `}</style>
-
-      <div className="users-container">
-        <div className="page-header">
-          <h1 className="page-title">User Management</h1>
-          <p className="page-description">Create and manage user accounts</p>
-        </div>
-
-        {error && (
-          <div className="alert alert-error">
-            {error}
-          </div>
-        )}
-
-        {success && (
-          <div className="alert alert-success">
-            {success}
-          </div>
-        )}
-
-        <div className="card">
-          <h2 className="card-title">{editingId ? 'Edit User' : 'Add New User'}</h2>
-          <p className="card-subtitle">
+      {/* ── Add / Edit form ── */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-xl">{editingId ? 'Edit User' : 'Add New User'}</CardTitle>
+          <CardDescription>
             {editingId ? 'Update user information' : 'Create a new user account'}
-          </p>
-
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
           <form onSubmit={editingId ? handleUpdateUser : handleAddUser}>
-            <div className="form-grid">
-              <div className="form-group">
-                <label htmlFor="username" className="form-label">Username *</label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+              <FormField label="Username" htmlFor="username" required>
                 <input
                   type="text"
                   id="username"
                   name="username"
-                  className="form-input"
+                  className={inputCls}
                   value={form.username}
                   onChange={handleInputChange}
                   required
                   placeholder="john_doe"
                 />
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label htmlFor="email" className="form-label">Email *</label>
+              <FormField label="Email" htmlFor="email" required>
                 <input
                   type="email"
                   id="email"
                   name="email"
-                  className="form-input"
+                  className={inputCls}
                   value={form.email}
                   onChange={handleInputChange}
                   required
                   placeholder="john@example.com"
                 />
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label htmlFor="password" className="form-label">
-                  Password {editingId ? '(leave blank to keep current)' : '*'}
-                </label>
+              <FormField
+                label={`Password${editingId ? ' (leave blank to keep current)' : ''}`}
+                htmlFor="password"
+                required={!editingId}
+              >
                 <input
                   type="password"
                   id="password"
                   name="password"
-                  className="form-input"
+                  className={inputCls}
                   value={form.password}
                   onChange={handleInputChange}
                   required={!editingId}
                   placeholder={editingId ? 'Leave blank to keep current' : 'Enter password'}
                 />
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label htmlFor="roles" className="form-label">Roles (comma-separated)</label>
+              <FormField label="Roles (comma-separated)" htmlFor="roles">
                 <input
                   type="text"
                   id="roles"
                   name="roles"
-                  className="form-input"
+                  className={inputCls}
                   value={form.roles}
                   onChange={handleInputChange}
                   placeholder="admin, developer, user"
                 />
-              </div>
+              </FormField>
             </div>
 
-            <div className="button-group">
-              <button type="submit" disabled={saving} className="btn btn-primary">
-                {editingId ? (saving ? 'Updating...' : 'Update User') : (saving ? 'Adding...' : 'Add User')}
-              </button>
+            <div className="flex gap-3 mt-5">
+              <Button type="submit" disabled={saving}>
+                {editingId ? (saving ? 'Updating…' : 'Update User') : (saving ? 'Adding…' : 'Add User')}
+              </Button>
               {editingId && (
-                <button
+                <Button
                   type="button"
-                  className="btn btn-secondary"
+                  variant="secondary"
                   onClick={() => {
                     setEditingId(null);
                     setForm({ username: '', password: '', email: '', roles: '' });
                   }}
                 >
                   Cancel
-                </button>
+                </Button>
               )}
             </div>
           </form>
-        </div>
+        </CardContent>
+      </Card>
 
-        <div className="card">
-          <h2 className="card-title">Users</h2>
-          <p className="card-subtitle">Manage existing user accounts</p>
-
-          <div className="table-container">
-            {loading ? (
-              <div className="loading-state">Loading users...</div>
-            ) : users.length === 0 ? (
-              <div className="empty-state">No users found. Add your first user above.</div>
-            ) : (
-              <table>
+      {/* ── Users table ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-xl">Users</CardTitle>
+          <CardDescription>Manage existing user accounts</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <LoadingSpinner label="Loading users…" />
+          ) : users.length === 0 ? (
+            <EmptyState
+              icon="👤"
+              title="No users found"
+              description="Add your first user above"
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
                 <thead>
-                  <tr>
-                    <th>User ID</th>
-                    <th>Username</th>
-                    <th>Email</th>
-                    <th>Roles</th>
-                    <th>Status</th>
-                    <th>Actions</th>
+                  <tr className="bg-gray-50">
+                    <th className="text-left px-4 py-3 border-b-2 border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">User ID</th>
+                    <th className="text-left px-4 py-3 border-b-2 border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">Username</th>
+                    <th className="text-left px-4 py-3 border-b-2 border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">Email</th>
+                    <th className="text-left px-4 py-3 border-b-2 border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">Roles</th>
+                    <th className="text-left px-4 py-3 border-b-2 border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                    <th className="text-left px-4 py-3 border-b-2 border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.map(user => (
-                    <tr key={user.id}>
-                      <td>{user.id}</td>
-                      <td>{user.username}</td>
-                      <td>{user.email}</td>
-                      <td>{Array.isArray(user.roles) ? user.roles.join(', ') : user.roles}</td>
-                      <td>
-                        <span className={`badge ${user.status === 'active' ? 'badge-success' : 'badge-error'}`}>
-                          {user.status || 'active'}
-                        </span>
+                    <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 text-gray-700">{user.id}</td>
+                      <td className="px-4 py-3 font-medium text-gray-900">{user.username}</td>
+                      <td className="px-4 py-3 text-gray-600">{user.email}</td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {Array.isArray(user.roles) ? user.roles.join(', ') : user.roles}
                       </td>
-                      <td>
-                        <button
-                          className="btn btn-edit"
-                          onClick={() => handleEditUser(user)}
-                          disabled={saving}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="btn btn-warning"
-                          onClick={() => handleOpenResetPassword(user)}
-                          disabled={saving}
-                        >
-                          Reset Password
-                        </button>
-                        <button
-                          className="btn btn-danger"
-                          onClick={() => handleDeleteUser(user.id)}
-                          disabled={saving}
-                        >
-                          Delete
-                        </button>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={user.status || 'active'} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-2 flex-wrap">
+                          <Button size="sm" onClick={() => handleEditUser(user)} disabled={saving}>
+                            Edit
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => handleOpenResetPassword(user)} disabled={saving}>
+                            Reset Password
+                          </Button>
+                          <Button size="sm" variant="destructive" onClick={() => handleDeleteUser(user.id)} disabled={saving}>
+                            Delete
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            )}
-          </div>
-        </div>
-
-        {/* Password Reset Modal */}
-        {resetPasswordModal.show && (
-          <div className="modal-overlay" onClick={handleCloseResetPassword}>
-            <div className="modal" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2 className="modal-title">Reset Password</h2>
-                <p className="modal-subtitle">
-                  Resetting password for: <strong>{resetPasswordModal.username}</strong>
-                </p>
-              </div>
-
-              <form onSubmit={handleResetPassword}>
-                <div className="modal-body">
-                  <div className="form-group">
-                    <label htmlFor="newPassword" className="form-label">New Password *</label>
-                    <input
-                      type="password"
-                      id="newPassword"
-                      className="form-input"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      required
-                      placeholder="Enter new password"
-                      disabled={saving}
-                    />
-                    <p className="password-hint">
-                      Must be at least 10 characters with uppercase, lowercase, digit, and special character
-                    </p>
-                  </div>
-
-                  {error && (
-                    <div className="alert alert-error" style={{ marginTop: '15px' }}>
-                      {error}
-                    </div>
-                  )}
-
-                  <div className="alert" style={{
-                    background: '#fff3cd',
-                    border: '1px solid #ffeaa7',
-                    color: '#856404',
-                    marginTop: '15px'
-                  }}>
-                    User will be required to change this password on their next login.
-                  </div>
-                </div>
-
-                <div className="modal-footer">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={handleCloseResetPassword}
-                    disabled={saving}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={saving}
-                  >
-                    {saving ? 'Resetting...' : 'Reset Password'}
-                  </button>
-                </div>
-              </form>
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Reset Password Modal ── */}
+      <Modal
+        open={resetPasswordModal.show}
+        onClose={handleCloseResetPassword}
+        title="Reset Password"
+      >
+        <p className="text-sm text-gray-500 mb-4">
+          Resetting password for: <strong className="text-gray-800">{resetPasswordModal.username}</strong>
+        </p>
+
+        <form onSubmit={handleResetPassword}>
+          <FormField
+            label="New Password"
+            htmlFor="newPassword"
+            required
+            hint="Must be at least 10 characters with uppercase, lowercase, digit, and special character"
+          >
+            <input
+              type="password"
+              id="newPassword"
+              className={inputCls}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+              placeholder="Enter new password"
+              disabled={saving}
+            />
+          </FormField>
+
+          {error && (
+            <Alert variant="destructive" className="mt-3 bg-red-50 border-red-200 text-red-800">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          <Alert className="mt-3 bg-amber-50 border-amber-200 text-amber-800">
+            <AlertDescription>
+              User will be required to change this password on their next login.
+            </AlertDescription>
+          </Alert>
+
+          <div className="flex justify-end gap-3 mt-5">
+            <Button type="button" variant="secondary" onClick={handleCloseResetPassword} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Resetting…' : 'Reset Password'}
+            </Button>
           </div>
-        )}
-      </div>
+        </form>
+      </Modal>
     </Layout>
   );
 }
