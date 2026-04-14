@@ -60,16 +60,16 @@ class ProductionRAGService:
     async def query(
         self,
         question: str,
-        device_type: Optional[str] = "all",
+        category: Optional[str] = "all",
         top_k: int = 5,
     ) -> QueryResponse:
         start_time = datetime.utcnow()
         self.db.increment_query_count()
-        log.info("query_started", question=question[:120], device_type=device_type, top_k=top_k)
+        log.info("query_started", question=question[:120], category=category, top_k=top_k)
 
         try:
             question_embedding = await self._generate_embedding(question)
-            search_results = await self._search_vectors(question_embedding, device_type, top_k)
+            search_results = await self._search_vectors(question_embedding, category, top_k)
             context = self._build_context(search_results)
             answer = await self._generate_answer(question, context)
             sources = self._extract_sources(search_results)
@@ -84,7 +84,7 @@ class ProductionRAGService:
             )
             self.db.log_query(
                 question=question,
-                device_type=device_type or "all",
+                category=category or "all",
                 mode="production",
                 confidence=confidence,
                 processing_time_ms=processing_time,
@@ -96,7 +96,7 @@ class ProductionRAGService:
                 answer=answer,
                 sources=sources,
                 query=question,
-                device_type=device_type or "all",
+                category=category or "all",
                 timestamp=datetime.utcnow().isoformat() + "Z",
                 confidence=confidence,
                 processing_time_ms=processing_time,
@@ -107,7 +107,7 @@ class ProductionRAGService:
             log.error("query_failed", error=str(e), question=question[:120])
             self.db.log_query(
                 question=question,
-                device_type=device_type or "all",
+                category=category or "all",
                 mode="production",
                 confidence=0.0,
                 processing_time_ms=0,
@@ -119,7 +119,7 @@ class ProductionRAGService:
                 answer=f"Error processing query: {str(e)}",
                 sources=[],
                 query=question,
-                device_type=device_type or "all",
+                category=category or "all",
                 timestamp=datetime.utcnow().isoformat() + "Z",
                 confidence=0.0,
                 processing_time_ms=0,
@@ -127,7 +127,7 @@ class ProductionRAGService:
             )
 
     async def upload_document(
-        self, filename: str, device_type: str, file_content: bytes
+        self, filename: str, category: str = "general", file_content: bytes = b""
     ) -> dict:
         doc_id = f"doc_{str(uuid.uuid4())[:12]}"
         uploaded_at = datetime.utcnow().isoformat() + "Z"
@@ -139,7 +139,7 @@ class ProductionRAGService:
         self.db.insert({
             "id": doc_id,
             "filename": filename,
-            "device_type": device_type,
+            "category": category,
             "status": "processing",
             "uploaded_at": uploaded_at,
         })
@@ -149,10 +149,10 @@ class ProductionRAGService:
             "document_upload_received",
             doc_id=doc_id,
             filename=filename,
-            device_type=device_type,
+            category=category,
             size_bytes=len(file_content),
         )
-        asyncio.create_task(self._process_document(doc_id, filename, device_type, file_content))
+        asyncio.create_task(self._process_document(doc_id, filename, category, file_content))
 
         return {
             "success": True,
@@ -186,7 +186,7 @@ class ProductionRAGService:
 
         file_content = Path(file_path).read_bytes()
         asyncio.create_task(
-            self._process_document(doc_id, meta["filename"], meta["device_type"], file_content)
+            self._process_document(doc_id, meta["filename"], meta.get("category", "general"), file_content)
         )
 
         return {
@@ -198,7 +198,7 @@ class ProductionRAGService:
         }
 
     async def _process_document(
-        self, doc_id: str, filename: str, device_type: str, file_content: bytes
+        self, doc_id: str, filename: str, category: str, file_content: bytes
     ):
         log.info("document_processing_started", doc_id=doc_id, filename=filename)
         try:
@@ -219,7 +219,7 @@ class ProductionRAGService:
                 embeddings.append(embedding)
                 self.db.update(doc_id, {"chunks_done": i + 1})
 
-            await self._store_vectors(doc_id, chunks, embeddings, device_type)
+            await self._store_vectors(doc_id, chunks, embeddings, category)
 
             self.db.update(doc_id, {
                 "status": "complete",
@@ -268,7 +268,7 @@ class ProductionRAGService:
             DocumentInfo(
                 id=r["doc_id"],
                 filename=r["filename"],
-                device_type=r["device_type"],
+                category=r.get("category", "general"),
                 status=r["status"],
                 uploaded_at=r["uploaded_at"],
                 processed_at=r.get("processed_at"),
@@ -358,9 +358,9 @@ class ProductionRAGService:
         return response.json()["embedding"]
 
     async def _search_vectors(
-        self, query_embedding: List[float], device_type: Optional[str], top_k: int
+        self, query_embedding: List[float], category: Optional[str], top_k: int
     ) -> List[Dict[str, Any]]:
-        if device_type and device_type != "all":
+        if category and category != "all":
             endpoint = f"/v1/databases/{self.database_id}/search/advanced"
             payload = {
                 "queryVector": query_embedding,
@@ -369,7 +369,7 @@ class ProductionRAGService:
                 "filters": {
                     "combination": "AND",
                     "conditions": [
-                        {"field": "metadata.device_type", "op": "EQUALS", "value": device_type}
+                        {"field": "metadata.category", "op": "EQUALS", "value": category}
                     ],
                 },
             }
@@ -385,9 +385,9 @@ class ProductionRAGService:
         return response.json().get("results", [])
 
     async def _generate_answer(self, question: str, context: str) -> str:
-        prompt = f"""You are a maintenance documentation assistant. Answer the question based ONLY on the provided context.
+        prompt = f"""You are a helpful assistant. Answer the question based ONLY on the provided context.
 
-Context from maintenance manuals:
+Context from documentation:
 {context}
 
 Question: {question}
@@ -421,7 +421,7 @@ Answer:"""
         doc_id: str,
         chunks: List[Dict[str, Any]],
         embeddings: List[List[float]],
-        device_type: str,
+        category: str,
     ):
         vectors = [
             {
@@ -433,7 +433,7 @@ Answer:"""
                     "text": chunk["text"],
                     "page": chunk.get("page", "unknown"),
                     "section": chunk.get("section", ""),
-                    "device_type": device_type,
+                    "category": category,
                 },
             }
             for i, (chunk, embedding) in enumerate(zip(chunks, embeddings))

@@ -1,8 +1,8 @@
-# RAG Use Case: Maintenance Documentation Q&A System
+# RAG Use Case: Document Q&A System
 
 ## Executive Summary
 
-This document outlines the architecture and implementation strategy for a **Retrieval-Augmented Generation (RAG)** system designed to help field engineers and mechanics access maintenance documentation for devices, instruments, and machines. The system uses JadeVectorDB as the vector database, Ollama for local LLM inference, and operates entirely offline for data privacy and cost efficiency.
+This document outlines the architecture and implementation strategy for a **Retrieval-Augmented Generation (RAG)** system designed to help users access organizational documents, knowledge bases, and reference materials. The system uses JadeVectorDB as the vector database, Ollama for local LLM inference, and operates entirely offline for data privacy and cost efficiency.
 
 **Target Scale**: Medium (100-1000 documents, 1000-10000 pages)
 **Deployment**: Local workstation/laptop
@@ -14,16 +14,17 @@ This document outlines the architecture and implementation strategy for a **Retr
 ## Table of Contents
 
 1. [Use Case Overview](#use-case-overview)
-2. [System Architecture](#system-architecture)
-3. [Component Details](#component-details)
-4. [JadeVectorDB Capability Assessment](#jadevectordb-capability-assessment)
-5. [Required Enhancements](#required-enhancements)
-6. [Technology Stack](#technology-stack)
-7. [Implementation Roadmap](#implementation-roadmap)
-8. [Best Practices](#best-practices)
-9. [Performance Considerations](#performance-considerations)
-10. [Cost Analysis](#cost-analysis)
-11. [References](#references)
+2. [User Management](#user-management)
+3. [System Architecture](#system-architecture)
+4. [Component Details](#component-details)
+5. [JadeVectorDB Capability Assessment](#jadevectordb-capability-assessment)
+6. [Required Enhancements](#required-enhancements)
+7. [Technology Stack](#technology-stack)
+8. [Implementation Roadmap](#implementation-roadmap)
+9. [Best Practices](#best-practices)
+10. [Performance Considerations](#performance-considerations)
+11. [Cost Analysis](#cost-analysis)
+12. [References](#references)
 
 ---
 
@@ -31,12 +32,12 @@ This document outlines the architecture and implementation strategy for a **Retr
 
 ### Problem Statement
 
-Field engineers and mechanics need quick access to specific maintenance procedures, troubleshooting steps, and technical specifications buried within hundreds of PDF and DOCX documents. Traditional keyword search is inefficient and often misses semantically relevant information.
+Users need quick access to specific procedures, policies, and technical specifications buried within hundreds of PDF and DOCX documents. Traditional keyword search is inefficient and often misses semantically relevant information.
 
 ### Solution
 
 A RAG-based Q&A system that:
-1. **Ingests** PDF and DOCX maintenance documents
+1. **Ingests** PDF and DOCX documents
 2. **Chunks** documents into semantically meaningful segments
 3. **Embeds** text chunks into high-dimensional vectors
 4. **Stores** vectors and metadata in JadeVectorDB
@@ -50,18 +51,158 @@ A RAG-based Q&A system that:
 │                      User Journey                           │
 └─────────────────────────────────────────────────────────────┘
 
-Field Engineer → Asks Question → System Searches Docs →
+User → Asks Question → System Searches Docs →
   → Retrieves Relevant Sections → LLM Generates Answer →
-    → Engineer Gets Answer + Source References
+    → User Gets Answer + Source References
 ```
 
 ### Key Benefits
 
-- **Offline Operation**: No internet required, works in remote field locations
-- **Data Privacy**: Sensitive maintenance docs never leave local infrastructure
+- **Offline Operation**: No internet required, works in air-gapped or restricted environments
+- **Data Privacy**: Sensitive documents never leave local infrastructure
 - **Zero Ongoing Costs**: No API fees for embeddings or LLM inference
 - **Fast Responses**: Local processing with sub-second retrieval
 - **Source Attribution**: Every answer includes references to source documents
+
+---
+
+## User Management
+
+The RAG system enforces **admin-controlled user provisioning**. There is no self-registration. All accounts are created by an administrator, and every new user is required to change their password on first login.
+
+### Design Principles
+
+- **No self-registration**: only administrators create accounts
+- **System-generated initial passwords**: never set by humans, shown once at creation
+- **Forced first-login password change**: users cannot bypass the change-password screen
+- **Admin password reset**: admins can reset any user's password; the new password is shown once
+- **Deployment bootstrap**: a default `admin` account is created on first startup, requiring an immediate password change
+
+---
+
+### Data Model
+
+```python
+class User:
+    id: UUID                    # Primary key
+    username: str               # Unique, login identifier
+    email: str                  # Unique, for notifications
+    hashed_password: str        # bcrypt-hashed
+    role: Literal['admin', 'user']
+    must_change_password: bool  # True until user changes it
+    created_by: UUID            # FK → User (admin who created)
+    created_at: datetime
+    last_login: datetime | None
+    is_active: bool             # Soft delete / disable
+```
+
+---
+
+### REST API Endpoints
+
+All user management endpoints require a valid JWT with `role=admin`, except the two auth endpoints.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/auth/login` | None | Returns JWT + `must_change_password` flag |
+| `POST` | `/api/auth/change-password` | Any user | Changes own password; clears `must_change_password` flag |
+| `GET` | `/api/users` | Admin | List all users (paginated) |
+| `POST` | `/api/users` | Admin | Create user; returns `{ user, generated_password }` |
+| `DELETE` | `/api/users/{id}` | Admin | Deactivate user (soft delete) |
+| `POST` | `/api/users/{id}/reset-password` | Admin | Generate new password; returns it once |
+
+**Login response:**
+```json
+{
+  "access_token": "eyJ...",
+  "token_type": "bearer",
+  "must_change_password": true,
+  "user": { "id": "...", "username": "alice", "role": "user" }
+}
+```
+
+**Create user request / response:**
+```json
+// POST /api/users
+{ "username": "alice", "email": "alice@example.com", "role": "user" }
+
+// Response (generated_password shown ONCE — not stored in plaintext)
+{
+  "user": { "id": "...", "username": "alice", "role": "user", "must_change_password": true },
+  "generated_password": "Kx9#mPqR2v"
+}
+```
+
+---
+
+### Frontend Behavior
+
+**Login page:**
+- Standard username + password form
+- No "Register" or "Sign up" link
+
+**Post-login redirect:**
+- If `must_change_password === true` → redirect to `/change-password` (no bypass)
+- Otherwise → redirect to home / dashboard
+
+**Change Password page (`/change-password`):**
+- Fields: new password + confirm password
+- On success: clears flag, redirects to home
+- Users cannot navigate away without changing password while flag is set
+
+**Admin Users page (`/admin/users`):**
+- Table of all users: username, email, role, status, last login
+- **Create User** button: form with username / email / role; on submit shows generated password in a modal ("Copy this password — it will not be shown again")
+- **Reset Password** button per row: on confirm, shows new generated password once in a modal
+- **Deactivate / Reactivate** toggle per row
+
+---
+
+### Deployment Bootstrap
+
+On first startup (or when no users exist in the database), the system automatically creates a default admin account:
+
+```bash
+# bootstrap_admin.py — runs at application startup if user table is empty
+python scripts/bootstrap_admin.py
+```
+
+```python
+# bootstrap_admin.py
+import os
+from models import User, db
+
+DEFAULT_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+DEFAULT_PASSWORD = os.getenv("ADMIN_DEFAULT_PASSWORD", "Admin@1234")
+
+def bootstrap():
+    if db.query(User).count() == 0:
+        admin = User(
+            username=DEFAULT_USERNAME,
+            email="admin@localhost",
+            hashed_password=hash_password(DEFAULT_PASSWORD),
+            role="admin",
+            must_change_password=True,
+            created_by=None,
+            is_active=True
+        )
+        db.add(admin)
+        db.commit()
+        print(f"✓ Default admin created: {DEFAULT_USERNAME} / {DEFAULT_PASSWORD}")
+        print("  → Admin must change password on first login.")
+
+if __name__ == "__main__":
+    bootstrap()
+```
+
+**Environment variables for bootstrap:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ADMIN_USERNAME` | `admin` | Initial admin username |
+| `ADMIN_DEFAULT_PASSWORD` | `Admin@1234` | Initial admin password (change immediately) |
+
+> **Security note:** Change `ADMIN_DEFAULT_PASSWORD` before deploying to any shared or production environment. The bootstrap script will not overwrite an existing admin account.
 
 ---
 
@@ -91,7 +232,7 @@ Field Engineer → Asks Question → System Searches Docs →
 │                            │ - Document name              │        │
 │                            │ - Section/chapter            │        │
 │                            │ - Page numbers               │        │
-│                            │ - Device/machine type        │        │
+│                            │ - Category / topic tag       │        │
 │                            └──────────────────────────────┘        │
 │                                       │                            │
 └───────────────────────────────────────┼────────────────────────────┘
@@ -122,7 +263,7 @@ Field Engineer → Asks Question → System Searches Docs →
 │  ┌────────────────────────────────────────────────────────────┐    │
 │  │                    JadeVectorDB                            │    │
 │  │                                                            │    │
-│  │  Database: "maintenance_docs"                              │    │
+│  │  Database: "rag_documents"                                 │    │
 │  │  Dimension: 384                                            │    │
 │  │  Index Type: HNSW (for fast similarity search)             │    │
 │  │                                                            │    │
@@ -135,7 +276,7 @@ Field Engineer → Asks Question → System Searches Docs →
 │  │  │                      │ - page_numbers               │   │    │
 │  │  │                      │ - section                    │   │    │
 │  │  │                      │ - text (original chunk)      │   │    │
-│  │  │                      │ - device_type                │   │    │
+│  │  │                      │ - category                   │   │    │
 │  │  └──────────────────────┴──────────────────────────────┘   │    │
 │  └────────────────────────────────────────────────────────────┘    │
 │                                                                    │
@@ -158,7 +299,7 @@ Field Engineer → Asks Question → System Searches Docs →
 │  │ - Cosine similarity                         │                    │
 │  │ - Retrieve top-k chunks (k=5-10)           │                    │
 │  │ - Optional: metadata filtering              │                    │
-│  │   (device_type, section, etc.)             │                    │
+│  │   (category, section, etc.)                │                    │
 │  └─────────────────────────────────────────────┘                    │
 │       │                                                              │
 │       v                                                              │
@@ -179,8 +320,8 @@ Field Engineer → Asks Question → System Searches Docs →
 │  ┌─────────────────────────────────────────────┐                    │
 │  │ Prompt Construction                          │                    │
 │  │                                              │                    │
-│  │ System: You are a helpful maintenance        │                    │
-│  │         assistant...                         │                    │
+│  │ System: You are a helpful assistant...       │                    │
+│  │                                              │                    │
 │  │                                              │                    │
 │  │ Context: [Retrieved chunks 1-5]             │                    │
 │  │                                              │                    │
@@ -202,12 +343,12 @@ Field Engineer → Asks Question → System Searches Docs →
 │  ┌─────────────────────────────────────────────┐                    │
 │  │ Generated Answer + Source Citations          │                    │
 │  │                                              │                    │
-│  │ Answer: "To reset the XYZ-100, follow       │                    │
-│  │          these steps: 1) Turn off power...  │                    │
+│  │ Answer: "To complete this procedure,         │                    │
+│  │          follow these steps: 1) ..."         │                    │
 │  │                                              │                    │
 │  │ Sources:                                     │                    │
-│  │ - XYZ-100_Manual.pdf, Page 45                │                    │
-│  │ - Troubleshooting_Guide.docx, Section 3.2   │                    │
+│  │ - ProductManual.pdf, Page 45                 │                    │
+│  │ - Procedures_Guide.docx, Section 3.2        │                    │
 │  └─────────────────────────────────────────────┘                    │
 │                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
@@ -234,11 +375,11 @@ Field Engineer → Asks Question → System Searches Docs →
 │  └────────────────────────────────────────┘                        │
 │                                                                      │
 │  Option 2: CLI Interface (for power users)                         │
-│  $ rag-query "How to reset XYZ-100?"                               │
+│  $ rag-query "What is the approval process for expense reports?"   │
 │                                                                      │
 │  Option 3: REST API (for integration with existing tools)          │
 │  POST /api/v1/query                                                 │
-│  { "question": "How to reset XYZ-100?" }                           │
+│  { "question": "What is the onboarding procedure?" }               │
 │                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -273,7 +414,7 @@ User Question → Embed → Search JadeVectorDB → Retrieve Context →
 
 #### Chunking Strategy
 
-Based on [2025 RAG best practices](https://medium.com/@adnanmasood/chunking-strategies-for-retrieval-augmented-generation-rag-a-comprehensive-guide-5522c4ea2a90), **semantic chunking** is recommended for maintenance documentation:
+Based on [2025 RAG best practices](https://medium.com/@adnanmasood/chunking-strategies-for-retrieval-augmented-generation-rag-a-comprehensive-guide-5522c4ea2a90), **semantic chunking** is recommended for structured organizational documents:
 
 **Approach: Hybrid Semantic Chunking**
 
@@ -286,7 +427,7 @@ Chunking Parameters:
 ```
 
 **Why This Works:**
-- Maintenance docs have clear structure (sections, procedures)
+- Organizational documents have clear structure (sections, procedures, policies)
 - Semantic coherence ensures complete procedure steps stay together
 - Overlap prevents information loss at chunk boundaries
 - Optimized size balances context vs. specificity
@@ -319,17 +460,16 @@ Each chunk includes rich metadata for filtering and source attribution:
   "vector_id": "doc_123_chunk_45",
   "vector": [0.123, 0.456, ...],  // 384-dim embedding
   "metadata": {
-    "doc_id": "XYZ-100_Manual_v2.3",
-    "doc_name": "XYZ-100 Service Manual",
+    "doc_id": "employee_handbook_v3",
+    "doc_name": "Employee Handbook",
     "doc_type": "pdf",
-    "file_path": "/docs/manuals/XYZ-100_Manual.pdf",
+    "source_path": "/docs/hr/employee_handbook.pdf",
     "chunk_id": 45,
     "page_numbers": [23, 24],
-    "section": "Chapter 3: Troubleshooting",
-    "subsection": "3.2 Reset Procedures",
-    "device_type": "XYZ-100",
-    "device_category": "Diagnostic Equipment",
-    "text": "To reset the XYZ-100 device, follow these steps: 1) Turn off power...",
+    "section": "Chapter 3: Policies",
+    "subsection": "3.2 Expense Reimbursement",
+    "category": "hr",
+    "text": "To submit an expense report, follow these steps: 1) Log into the portal...",
     "chunk_length": 487,
     "created_at": "2025-01-02T10:30:00Z"
   }
@@ -387,8 +527,8 @@ embedding = response['embedding']
 
 ```json
 {
-  "name": "maintenance_docs",
-  "description": "Maintenance documentation for field engineers",
+  "name": "rag_documents",
+  "description": "Organizational documents for Q&A retrieval",
   "vectorDimension": 384,
   "indexType": "HNSW",
   "distance_metric": "cosine",
@@ -433,11 +573,11 @@ Before embedding the user question, apply these enhancements:
 
 **1. Query Expansion (Optional)**
 ```python
-# Expand abbreviations common in maintenance docs
+# Expand abbreviations common in your domain
 expansions = {
-    "PSU": "power supply unit",
-    "HMI": "human machine interface",
-    "PLC": "programmable logic controller"
+    "HR": "human resources",
+    "PO": "purchase order",
+    "SOP": "standard operating procedure"
 }
 ```
 
@@ -455,16 +595,16 @@ expanded_query = query_prefix + user_question
 ```python
 # 1. Vector similarity search
 vector_results = jadevectordb.search(
-    database_id="maintenance_docs",
+    database_id="rag_documents",
     query_vector=query_embedding,
     top_k=10,
     threshold=0.7  # Minimum similarity
 )
 
-# 2. Optional: Metadata filtering
+# 2. Optional: Metadata filtering by category
 filtered_results = [
     r for r in vector_results
-    if r['metadata']['device_type'] == user_selected_device
+    if not category_filter or r['metadata'].get('category') == category_filter
 ]
 
 # 3. Re-rank by recency (if time-sensitive)
@@ -481,15 +621,19 @@ top_chunks = sorted_results[:5]
 **Context Window Management:**
 
 ```python
-# LLMs have limited context (e.g., 4K tokens for Llama 3.2)
-# Budget allocation:
-# - System prompt: ~200 tokens
-# - Retrieved context: ~2000 tokens (400 tokens × 5 chunks)
-# - User question: ~50 tokens
-# - Answer generation: ~1750 tokens (reserved)
-# Total: ~4000 tokens
+# llama3.2:3b has a 128K token context window.
+# For fast CPU inference, operate within a practical 8K budget:
+# Budget allocation (8K operating window):
+# - System prompt:      ~150 tokens
+# - Retrieved context: ~2500 tokens (500 tokens × 5 chunks)
+# - User question:      ~100 tokens
+# - Answer generation: ~1000 tokens  (max_tokens=1024)
+# - Safety headroom:    ~250 tokens
+# Total:               ~4000 tokens  (well within 8K)
+#
+# Scale up to 25+ chunks or longer answers when using the full 128K window.
 
-max_context_tokens = 2000
+max_context_tokens = 2500
 selected_chunks = []
 current_tokens = 0
 
@@ -523,26 +667,26 @@ for chunk in top_chunks:
 
 **System Prompt:**
 ```python
-system_prompt = """You are a helpful maintenance assistant for field engineers and mechanics.
+system_prompt = """You are a helpful assistant. Answer questions based ONLY on the provided documentation context.
 
 Your role:
-- Answer questions based ONLY on the provided maintenance documentation
+- Answer questions based ONLY on the provided documentation
 - Provide step-by-step instructions clearly and concisely
 - Always cite source documents (document name and page number)
 - If the information is not in the provided context, say "I don't have that information in the available documentation"
-- Use technical terminology accurately
+- Use accurate terminology from the source material
 - Format procedures as numbered lists for clarity
 
 Guidelines:
-- Be precise and safety-conscious
-- Highlight any warnings or cautions mentioned in the documentation
+- Be precise and factual
+- Highlight any warnings or important notes mentioned in the documentation
 - If multiple procedures exist, present the official/recommended one first
 """
 ```
 
 **User Prompt Template:**
 ```python
-user_prompt_template = """Context from maintenance documentation:
+user_prompt_template = """Context from documentation:
 
 {context_chunks}
 
@@ -582,6 +726,7 @@ response = ollama.chat(
     options={
         'temperature': 0.1,  # Low for factual accuracy
         'top_p': 0.9,
+        'num_ctx': 8192,     # Practical operating window (model supports 128K)
         'max_tokens': 1024
     }
 )
@@ -610,16 +755,16 @@ answer = response['message']['content']
 ```python
 import streamlit as st
 
-st.title("🔧 Maintenance Documentation Q&A")
+st.title("📄 Document Q&A")
 
-# Device filter (optional)
-device_filter = st.selectbox(
-    "Filter by device (optional)",
-    options=["All"] + get_unique_devices()
+# Category filter (optional)
+category_filter = st.selectbox(
+    "Filter by category (optional)",
+    options=["All"] + get_unique_categories()
 )
 
 # Question input
-question = st.text_area("Ask a question about maintenance procedures:")
+question = st.text_area("Ask a question about your documents:")
 
 if st.button("Get Answer"):
     with st.spinner("Searching documentation..."):
@@ -627,7 +772,8 @@ if st.button("Get Answer"):
         query_embedding = embed_text(question)
 
         # 2. Search JadeVectorDB
-        results = search_database(query_embedding, device_filter)
+        category = None if category_filter == "All" else category_filter
+        results = search_database(query_embedding, category)
 
         # 3. Generate answer
         answer = generate_answer(question, results)
@@ -643,35 +789,34 @@ if st.button("Get Answer"):
 
 #### Option 2: CLI Interface
 
-For field engineers who prefer command-line:
+For users who prefer command-line:
 
 ```bash
-$ rag-query "How to calibrate XYZ-100 sensor?"
+$ rag-query "What is the process for submitting an expense report?"
 
 Searching documentation...
 Found 5 relevant sections.
 
 Answer:
-To calibrate the XYZ-100 sensor, follow these steps:
+To submit an expense report, follow these steps:
 
-1. Ensure the device is powered off
-2. Connect the calibration probe to port A3
-3. Power on while holding the CAL button
-4. Wait for the LED to turn green (approximately 30 seconds)
-5. Follow the on-screen prompts to complete calibration
+1. Log into the employee portal at portal.company.com
+2. Navigate to Finance → Expense Reports → New Report
+3. Attach receipts and fill in the required fields
+4. Submit for manager approval within 30 days of the expense
 
-⚠️  WARNING: Do not disconnect the calibration probe until the process is complete.
+⚠️  NOTE: Expenses over $500 require additional VP approval.
 
 Sources:
-• XYZ-100_Service_Manual.pdf, Page 67
-• Calibration_Procedures.docx, Section 4.2
+• Employee_Handbook.pdf, Page 67
+• Finance_Procedures.docx, Section 4.2
 
 Query time: 0.8s
 ```
 
 #### Option 3: REST API
 
-For integration with existing maintenance management systems:
+For integration with existing business systems:
 
 ```python
 from fastapi import FastAPI
@@ -685,7 +830,7 @@ async def query_documents(request: QueryRequest):
 
     # 2. Search
     results = jadevectordb.search(
-        database_id="maintenance_docs",
+        database_id="rag_documents",
         query_vector=embedding,
         top_k=10
     )
@@ -909,7 +1054,7 @@ class DocumentProcessor:
 
         # Batch insert
         self.db_client.batch_store_vectors(
-            database_id="maintenance_docs",
+            database_id="rag_documents",
             vectors=vectors
         )
 
@@ -946,8 +1091,8 @@ def ingest_all_documents(docs_directory: str):
             'doc_id': file_path.stem,
             'doc_name': file_path.name,
             'doc_type': file_path.suffix[1:],  # pdf or docx
-            'file_path': str(file_path),
-            'device_type': extract_device_type(file_path),  # Custom logic
+            'source_path': str(file_path),
+            'category': file_path.parent.name,  # Derive from parent directory
             'created_at': datetime.now().isoformat()
         }
 
@@ -960,7 +1105,7 @@ def ingest_all_documents(docs_directory: str):
     print("Ingestion complete!")
 
 if __name__ == "__main__":
-    ingest_all_documents("/path/to/maintenance/docs")
+    ingest_all_documents("/path/to/documents")
 ```
 
 ### 2. RAG Query Service
@@ -980,7 +1125,7 @@ class RAGService:
         self.embedder = SentenceTransformer('intfloat/e5-small-v2')
         self.llm_model = "llama3.2:3b"
 
-    def query(self, question: str, device_filter: str = None, top_k: int = 5):
+    def query(self, question: str, category_filter: str = None, top_k: int = 5):
         """Full RAG pipeline."""
 
         # 1. Embed question
@@ -988,17 +1133,17 @@ class RAGService:
 
         # 2. Search JadeVectorDB
         search_results = self.db_client.search(
-            database_id="maintenance_docs",
+            database_id="rag_documents",
             query_vector=query_embedding.tolist(),
             top_k=top_k * 2,  # Retrieve more for filtering
             threshold=0.65
         )
 
-        # 3. Optional: Filter by device
-        if device_filter:
+        # 3. Optional: Filter by category
+        if category_filter:
             search_results = [
                 r for r in search_results
-                if r['metadata'].get('device_type') == device_filter
+                if r['metadata'].get('category') == category_filter
             ]
 
         # 4. Take top-k after filtering
@@ -1036,13 +1181,12 @@ class RAGService:
     def _generate_answer(self, question: str, context: str) -> str:
         """Use Ollama to generate answer."""
 
-        system_prompt = """You are a helpful maintenance assistant for field engineers.
-Answer questions based ONLY on the provided documentation.
-Always cite sources with document name and page number.
-If information is not in the context, say so clearly.
-Format procedures as numbered lists."""
+        system_prompt = """You are a helpful assistant. Answer questions based ONLY on the
+provided documentation context. Always cite the source document and page number.
+If the answer is not in the context, say so explicitly.
+Format step-by-step instructions as numbered lists."""
 
-        user_prompt = f"""Context from maintenance documentation:
+        user_prompt = f"""Context from documentation:
 
 {context}
 
@@ -1093,7 +1237,7 @@ Answer:"""
 
 ### 3. Web Interface (Streamlit)
 
-**Purpose**: User-friendly interface for field engineers
+**Purpose**: User-friendly web interface for querying documents
 
 ```python
 # app.py
@@ -1101,7 +1245,7 @@ Answer:"""
 import streamlit as st
 from rag_service import RAGService
 
-st.set_page_config(page_title="Maintenance Q&A", page_icon="🔧", layout="wide")
+st.set_page_config(page_title="Document Q&A", page_icon="📄", layout="wide")
 
 # Initialize RAG service (cached)
 @st.cache_resource
@@ -1111,16 +1255,16 @@ def load_rag_service():
 rag = load_rag_service()
 
 # UI Layout
-st.title("🔧 Maintenance Documentation Q&A System")
-st.markdown("Ask questions about device maintenance, troubleshooting, and procedures.")
+st.title("📄 Document Q&A System")
+st.markdown("Ask questions about your organization's documents and procedures.")
 
 # Sidebar: Filters
 with st.sidebar:
     st.header("Filters")
 
-    device_filter = st.selectbox(
-        "Device Type (Optional)",
-        options=["All Devices", "XYZ-100", "ABC-200", "DEF-300"]  # Dynamic from DB
+    category_filter = st.selectbox(
+        "Category (Optional)",
+        options=["All"] + get_unique_categories()  # Dynamic from DB metadata
     )
 
     top_k = st.slider("Number of sources to retrieve", 3, 10, 5)
@@ -1131,7 +1275,7 @@ with st.sidebar:
 # Main area: Question input
 question = st.text_area(
     "Your Question:",
-    placeholder="e.g., How do I reset the XYZ-100 after a power failure?",
+    placeholder="e.g., What is the process for submitting a leave request?",
     height=100
 )
 
@@ -1149,8 +1293,8 @@ if clear_button:
 if ask_button and question:
     with st.spinner("🔎 Searching documentation and generating answer..."):
         # Query RAG system
-        device = None if device_filter == "All Devices" else device_filter
-        result = rag.query(question, device_filter=device, top_k=top_k)
+        category = None if category_filter == "All" else category_filter
+        result = rag.query(question, category_filter=category, top_k=top_k)
 
         # Display answer
         st.success("✅ Answer Generated")
@@ -1220,15 +1364,15 @@ from rag_service import RAGService
 
 @click.command()
 @click.argument('question')
-@click.option('--device', '-d', default=None, help='Filter by device type')
+@click.option('--category', '-c', default=None, help='Filter by document category')
 @click.option('--top-k', '-k', default=5, help='Number of sources to retrieve')
-def query(question, device, top_k):
-    """Query the maintenance documentation."""
+def query(question, category, top_k):
+    """Query the document knowledge base."""
 
     click.echo(f"\n🔍 Searching for: {question}\n")
 
     rag = RAGService()
-    result = rag.query(question, device_filter=device, top_k=top_k)
+    result = rag.query(question, category_filter=category, top_k=top_k)
 
     # Print answer
     click.echo("📝 Answer:")
@@ -1252,8 +1396,8 @@ if __name__ == '__main__':
 **Usage:**
 ```bash
 chmod +x rag_cli.py
-./rag_cli.py "How to reset XYZ-100?"
-./rag_cli.py "Calibration procedure" --device XYZ-100 --top-k 8
+./rag_cli.py "What is the expense reimbursement policy?"
+./rag_cli.py "Onboarding checklist" --category hr --top-k 8
 ```
 
 ---
@@ -1341,10 +1485,10 @@ Layer 6: User Interface
   model = SentenceTransformer('intfloat/e5-small-v2')
 
   # For queries
-  query_embedding = model.encode("query: How to reset XYZ-100?")
+  query_embedding = model.encode("query: What is the expense reimbursement policy?")
 
   # For documents (prefix optional but recommended)
-  doc_embedding = model.encode("passage: To reset the XYZ-100...")
+  doc_embedding = model.encode("passage: To submit an expense report...")
   ```
 
 **JadeVectorDB Compatibility:** ✅ Perfect - 384 dimensions fully supported
@@ -1882,31 +2026,31 @@ embedder = SentenceTransformer('intfloat/e5-small-v2')
 # --- INDEXING PHASE ---
 
 # 1. Generate embedding for document chunk
-chunk_text = "To reset the XYZ-100 device, follow these steps..."
+chunk_text = "To submit an expense report, follow these steps..."
 chunk_embedding = embedder.encode(f"passage: {chunk_text}")
 
 # 2. Store in JadeVectorDB
 db_client.store_vector(
-    database_id="maintenance_docs",
+    database_id="rag_documents",
     vector_id="chunk_001",
     values=chunk_embedding.tolist(),
     metadata={
         "text": chunk_text,
-        "doc_name": "XYZ-100 Manual",
+        "doc_name": "Employee Handbook",
         "page": 23,
-        "section": "Reset Procedures"
+        "section": "Expense Reimbursement"
     }
 )
 
 # --- QUERY PHASE ---
 
 # 1. Embed user question
-question = "How do I reset the XYZ-100 after a power failure?"
+question = "How do I submit an expense report?"
 query_embedding = embedder.encode(f"query: {question}")
 
 # 2. Search JadeVectorDB
 results = db_client.search(
-    database_id="maintenance_docs",
+    database_id="rag_documents",
     query_vector=query_embedding.tolist(),
     top_k=5,
     threshold=0.7
@@ -1920,7 +2064,7 @@ context = "\n\n".join([
 ])
 
 # 4. Generate answer with Ollama
-system_prompt = """You are a helpful maintenance assistant.
+system_prompt = """You are a helpful assistant.
 Answer based ONLY on the provided documentation.
 Always cite sources with document name and page number."""
 
@@ -1972,7 +2116,7 @@ pip install PyMuPDF==1.26.7
 import pymupdf  # or: import fitz
 
 # Open PDF
-doc = pymupdf.open("maintenance_manual.pdf")
+doc = pymupdf.open("document.pdf")
 
 # Extract text from all pages
 full_text = ""
@@ -2235,7 +2379,7 @@ JadeVectorDB supports arbitrary dimensions configured per database:
 
 ```json
 {
-  "name": "maintenance_docs",
+  "name": "rag_documents",
   "vectorDimension": 384,     // Configurable: 128, 256, 384, 768, 1024, 1536, etc.
   "indexType": "HNSW",
   "distance_metric": "cosine"
@@ -2310,7 +2454,7 @@ Examples:
 
 ```json
 {
-  "name": "maintenance_docs",
+  "name": "rag_documents",
   "vectorDimension": 384,
   "indexType": "HNSW",
   "distance_metric": "cosine",
@@ -2543,14 +2687,14 @@ JADEVECTORDB_PID=$!
 echo "JadeVectorDB started with PID: $JADEVECTORDB_PID"
 
 # 6. Create database
-echo "📁 Creating maintenance_docs database..."
+echo "📁 Creating rag_documents database..."
 sleep 2  # Wait for JadeVectorDB to start
 python -c "
 from jadevectordb import JadeVectorDBClient
 client = JadeVectorDBClient('http://localhost:8080')
 client.create_database(
-    name='maintenance_docs',
-    description='Maintenance documentation for field engineers',
+    name='rag_documents',
+    description='Organizational documents for Q&A retrieval',
     vectorDimension=384,
     indexType='HNSW'
 )
@@ -2609,7 +2753,7 @@ echo ""
    - [ ] Pull Llama 3.2 model via Ollama
 
 3. **JadeVectorDB Configuration**
-   - [ ] Create `maintenance_docs` database
+   - [ ] Create `rag_documents` database
    - [ ] Configure HNSW index (M=16, ef_construction=200)
    - [ ] Test basic vector insert/search operations
 
@@ -2636,7 +2780,7 @@ echo ""
 
 1. **PDF Processing**
    - [ ] Implement `process_pdf()` function
-   - [ ] Test with sample maintenance PDFs
+   - [ ] Test with sample PDF documents
    - [ ] Handle multi-column layouts
    - [ ] Extract page numbers correctly
 
@@ -2654,7 +2798,7 @@ echo ""
 
 4. **Metadata Extraction**
    - [ ] Extract document name, type
-   - [ ] Identify device type from filename/content
+   - [ ] Derive category from directory structure or filename
    - [ ] Track page numbers per chunk
    - [ ] Detect section headers
 
@@ -2818,7 +2962,7 @@ from pathlib import Path
 @app.post("/api/admin/documents/upload")
 async def upload_document(
     file: UploadFile,
-    device_type: str,
+    category: str,
     background_tasks: BackgroundTasks
 ):
     # Validate file type
@@ -2838,7 +2982,7 @@ async def upload_document(
     document = {
         "id": doc_id,
         "filename": file.filename,
-        "device_type": device_type,
+        "category": category,
         "status": "pending",
         "uploaded_at": datetime.now().isoformat()
     }
@@ -2851,7 +2995,7 @@ async def upload_document(
         process_document_async,
         doc_id=doc_id,
         file_path=str(file_path),
-        device_type=device_type
+        category=category
     )
 
     return {
@@ -2860,7 +3004,7 @@ async def upload_document(
         "message": f"Document {file.filename} uploaded successfully"
     }
 
-async def process_document_async(doc_id: str, file_path: str, device_type: str):
+async def process_document_async(doc_id: str, file_path: str, category: str):
     """Background task to process uploaded document"""
     try:
         documents_db[doc_id]["status"] = "processing"
@@ -2877,13 +3021,13 @@ async def process_document_async(doc_id: str, file_path: str, device_type: str):
         # 4. Store in JadeVectorDB
         for chunk, embedding in zip(chunks, embeddings):
             jadevectordb.store_vector(
-                database_id="maintenance_docs",
+                database_id="rag_documents",
                 vector_id=f"{doc_id}_{chunk.id}",
                 values=embedding,
                 metadata={
                     "doc_id": doc_id,
                     "doc_name": Path(file_path).name,
-                    "device_type": device_type,
+                    "category": category,
                     "text": chunk.text,
                     "page_numbers": chunk.pages,
                     "section": chunk.section
@@ -2929,7 +3073,7 @@ async def delete_document(doc_id: str, background_tasks: BackgroundTasks):
 
         while True:
             batch = jadevectordb.list_vectors(
-                database_id="maintenance_docs",
+                database_id="rag_documents",
                 filter={"doc_id": doc_id},
                 limit=batch_size,
                 offset=offset
@@ -2951,7 +3095,7 @@ async def delete_document(doc_id: str, background_tasks: BackgroundTasks):
         for chunk in all_chunks:
             try:
                 jadevectordb.delete_vector(
-                    database_id="maintenance_docs",
+                    database_id="rag_documents",
                     vector_id=chunk['id']
                 )
                 deleted_count += 1
@@ -2966,7 +3110,7 @@ async def delete_document(doc_id: str, background_tasks: BackgroundTasks):
         # This runs asynchronously and doesn't block the response
         background_tasks.add_task(
             check_and_compact_index,
-            database_id="maintenance_docs"
+            database_id="rag_documents"
         )
 
         return {
@@ -3061,7 +3205,7 @@ async def check_and_compact_index(database_id: str):
 4. **When Compaction Runs:**
    - After deleting 10+ documents from 100-doc library (10%)
    - After deleting 100+ documents from 1000-doc library (10%)
-   - Can be scheduled as nightly maintenance task
+   - Can be scheduled as a nightly background task
 ```
 
 **Code Example - Frontend Upload Component:**
@@ -3084,11 +3228,11 @@ function AdminDocuments() {
     setDocuments(data)
   }
 
-  const handleUpload = async (file, deviceType) => {
+  const handleUpload = async (file, category) => {
     setUploading(true)
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('device_type', deviceType)
+    formData.append('category', category)
 
     const response = await fetch('/api/admin/documents/upload', {
       method: 'POST',
@@ -3156,7 +3300,7 @@ function AdminDocuments() {
           <thead>
             <tr>
               <th>Document Name</th>
-              <th>Device Type</th>
+              <th>Category</th>
               <th>Chunks</th>
               <th>Status</th>
               <th>Uploaded</th>
@@ -3167,7 +3311,7 @@ function AdminDocuments() {
             {documents.map(doc => (
               <tr key={doc.id}>
                 <td>{doc.filename}</td>
-                <td>{doc.device_type}</td>
+                <td>{doc.category}</td>
                 <td>{doc.chunk_count || '-'}</td>
                 <td>
                   <StatusBadge status={doc.status} />
@@ -3244,7 +3388,7 @@ function AdminDocuments() {
    - [ ] Document common queries and expected answers
    - [ ] Identify documentation gaps in source materials
    - [ ] Test with 50+ real-world questions
-   - [ ] User acceptance testing with field engineers
+   - [ ] User acceptance testing with target users
 
 **Deliverables (Days 4-7):**
 - Optimized retrieval configuration
@@ -3259,7 +3403,7 @@ function AdminDocuments() {
 
 **Goals:**
 - Full document ingestion via UI
-- User training (query interface + admin tools)
+- User training (query interface + admin tools)  
 - Production launch
 
 **Tasks:**
@@ -3273,7 +3417,7 @@ function AdminDocuments() {
    - [ ] Test random sample queries across all documents
 
 2. **Days 3-4: User Training**
-   - [ ] Create training materials for end users (field engineers)
+   - [ ] Create training materials for end users
      - How to ask effective questions
      - Understanding source citations
      - When to trust vs. verify answers
@@ -3281,7 +3425,7 @@ function AdminDocuments() {
      - How to upload new documents
      - How to manage document library
      - How to interpret system stats
-   - [ ] Run pilot sessions with 5-10 engineers
+   - [ ] Run pilot sessions with 5-10 users
    - [ ] Collect feedback on usability
    - [ ] Refine UI based on feedback
 
@@ -3298,7 +3442,7 @@ function AdminDocuments() {
    - [ ] Monitor first 24-48 hours closely
    - [ ] Address any critical issues immediately
    - [ ] Establish feedback collection process
-   - [ ] Create maintenance schedule:
+   - [ ] Create update schedule:
      - Weekly: Review query logs, identify gaps
      - Monthly: Update/add documentation based on gaps
      - Quarterly: System optimization and re-tuning
@@ -3309,9 +3453,9 @@ function AdminDocuments() {
   - Query interface (port 8000)
   - Admin panel (port 8000/admin)
 - Fully indexed document library (100-1000 docs)
-- Trained users (engineers + admins)
+- Trained users (end users + admins)
 - Support documentation and processes
-- Maintenance and iteration plan
+- Update and iteration plan
 
 ---
 
@@ -3322,11 +3466,11 @@ function AdminDocuments() {
 Based on [recent RAG research](https://stackoverflow.blog/2024/12/27/breaking-up-is-hard-to-do-chunking-in-rag-applications/), follow these best practices:
 
 **✅ DO:**
-- Use semantic chunking for structured documents (maintenance manuals)
+- Use semantic chunking for structured documents (manuals, policies, guides)
 - Preserve document structure (keep procedures together)
 - Use 50-100 token overlap to prevent context loss
 - Test multiple chunk sizes (256, 512, 1024) and evaluate
-- Keep chunk metadata rich (document, section, page, device type)
+- Keep chunk metadata rich (document, section, page, category)
 
 **❌ DON'T:**
 - Use fixed-size chunking without overlap
@@ -3617,13 +3761,13 @@ Assumptions:
 - **Break-even**: ~8 years if only considering direct costs
 
 **BUT: Key Advantages of Local System:**
-- **Data privacy**: Sensitive maintenance docs never leave premises
-- **Offline operation**: Works in remote field locations (critical!)
+- **Data privacy**: Sensitive documents never leave premises
+- **Offline operation**: Works in air-gapped or restricted environments (critical!)
 - **No usage limits**: Unlimited queries, no rate limiting
 - **Predictable costs**: No surprise bills from usage spikes
 - **Customization**: Full control over models, prompts, data
 
-**For your use case (field engineers in remote locations), local deployment is strongly recommended regardless of cost.**
+**For privacy-sensitive or offline deployments, local deployment is strongly recommended regardless of cost.**
 
 ---
 
@@ -3664,7 +3808,7 @@ Assumptions:
 ## Appendix A: Sample Code Repository Structure
 
 ```
-rag-maintenance-qa/
+rag-document-qa/
 ├── README.md
 ├── requirements.txt
 ├── setup.sh
@@ -3715,7 +3859,7 @@ rag-maintenance-qa/
 ```bash
 # 1. Clone repository (assuming you've created this structure)
 git clone <repo-url>
-cd rag-maintenance-qa
+cd rag-document-qa
 
 # 2. Run setup script
 chmod +x setup.sh
@@ -3736,7 +3880,7 @@ python scripts/test_pipeline.py
 streamlit run ui/streamlit_app.py
 
 # Or use CLI
-python ui/cli.py "How to reset XYZ-100?"
+python ui/cli.py "What is the expense reimbursement policy?"
 ```
 
 ---
@@ -3749,33 +3893,33 @@ Create `tests/test_questions.json`:
 [
   {
     "id": 1,
-    "question": "How do I reset the XYZ-100 after a power failure?",
-    "expected_docs": ["XYZ-100_Manual.pdf"],
-    "expected_sections": ["Troubleshooting", "Reset Procedures"]
+    "question": "How do I submit an expense report?",
+    "expected_docs": ["Employee_Handbook.pdf"],
+    "expected_sections": ["Expense Reimbursement", "Finance Procedures"]
   },
   {
     "id": 2,
-    "question": "What is the calibration procedure for the ABC-200 sensor?",
-    "expected_docs": ["ABC-200_Calibration_Guide.docx"],
-    "expected_sections": ["Calibration", "Maintenance"]
+    "question": "What is the process for requesting parental leave?",
+    "expected_docs": ["HR_Policies.pdf"],
+    "expected_sections": ["Leave Policies", "Benefits"]
   },
   {
     "id": 3,
-    "question": "What safety precautions should I take when servicing the DEF-300?",
-    "expected_docs": ["DEF-300_Safety_Manual.pdf"],
-    "expected_sections": ["Safety", "Warnings"]
+    "question": "What are the data security requirements for remote work?",
+    "expected_docs": ["IT_Security_Policy.pdf"],
+    "expected_sections": ["Security Guidelines", "Remote Work"]
   },
   {
     "id": 4,
-    "question": "How often should I replace the filter on the XYZ-100?",
-    "expected_docs": ["XYZ-100_Manual.pdf", "Maintenance_Schedule.docx"],
-    "expected_sections": ["Maintenance Schedule", "Filter Replacement"]
+    "question": "How do I request access to a new software system?",
+    "expected_docs": ["IT_Access_Request_Process.docx"],
+    "expected_sections": ["Access Management", "Onboarding"]
   },
   {
     "id": 5,
-    "question": "What error code E42 means on the ABC-200?",
-    "expected_docs": ["ABC-200_Error_Codes.pdf"],
-    "expected_sections": ["Error Codes", "Diagnostics"]
+    "question": "What is the escalation process for customer complaints?",
+    "expected_docs": ["Customer_Service_Handbook.pdf"],
+    "expected_sections": ["Escalation Procedures", "Customer Handling"]
   }
 ]
 ```
@@ -3784,7 +3928,7 @@ Create `tests/test_questions.json`:
 
 ## Conclusion
 
-This RAG system design leverages JadeVectorDB's robust vector storage and retrieval capabilities alongside local LLMs (Ollama) to create a **privacy-preserving, cost-effective, and offline-capable** maintenance documentation Q&A system for field engineers and mechanics.
+This RAG system design leverages JadeVectorDB's robust vector storage and retrieval capabilities alongside local LLMs (Ollama) to create a **privacy-preserving, cost-effective, and offline-capable** document Q&A system applicable to any organization or industry.
 
 ### Key Takeaways
 
@@ -3813,7 +3957,7 @@ This RAG system design leverages JadeVectorDB's robust vector storage and retrie
 1. Review and approve this architecture
 2. Begin Phase 1: Foundation setup
 3. Process sample documents to validate pipeline
-4. Iterate based on field engineer feedback
+4. Iterate based on user feedback
 
 ---
 

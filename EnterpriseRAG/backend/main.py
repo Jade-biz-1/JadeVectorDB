@@ -10,19 +10,55 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
 from .api import query, admin
+from .api import users as users_api
 from .utils.config import settings, is_mock_mode
 from .rate_limiter import limiter
 from .logging_config import configure_logging, get_logger
 from .services.rag_service import production_service
+from .services.metadata_db import MetadataDB
+from .security import hash_password
 
 # Initialise structured logging before anything else
 configure_logging()
 log = get_logger(__name__)
 
 
+def _bootstrap_admin():
+    """Create default admin account if no users exist."""
+    db = MetadataDB(settings.metadata_db_path)
+    if db.user_exists():
+        return
+
+    import uuid
+    from datetime import datetime, timezone
+
+    admin_id = str(uuid.uuid4())
+    db.user_insert({
+        "id": admin_id,
+        "username": settings.admin_username,
+        "email": f"{settings.admin_username}@localhost",
+        "hashed_password": hash_password(settings.admin_default_password),
+        "role": "admin",
+        "created_by": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    log.info(
+        "bootstrap_admin_created",
+        username=settings.admin_username,
+        note="Change password on first login",
+    )
+    print(f"\n{'='*60}")
+    print("  Bootstrap admin account created:")
+    print(f"  Username : {settings.admin_username}")
+    print(f"  Password : {settings.admin_default_password}")
+    print("  ⚠️  Change this password immediately after first login!")
+    print(f"{'='*60}\n")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage startup and shutdown lifecycle."""
+    _bootstrap_admin()
     log.info(
         "startup",
         app=settings.app_name,
@@ -39,7 +75,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="RAG system for maintenance documentation Q&A",
+    description="RAG system for organizational document Q&A",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
@@ -77,6 +113,7 @@ async def log_requests(request: Request, call_next):
 # ── Routers ───────────────────────────────────────────────────
 app.include_router(query.router)
 app.include_router(admin.router)
+app.include_router(users_api.router)
 
 
 @app.get("/")

@@ -3,7 +3,7 @@ import { adminAPI } from '../services/api';
 
 function DocumentUpload({ onSuccess }) {
   const [file, setFile] = useState(null);
-  const [deviceType, setDeviceType] = useState('hydraulic_pump');
+  const [category, setCategory] = useState('general');
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState(null);
 
@@ -24,13 +24,12 @@ function DocumentUpload({ onSuccess }) {
     setMessage(null);
 
     try {
-      const result = await adminAPI.uploadDocument(file, deviceType);
+      await adminAPI.uploadDocument(file, category);
       setMessage({
         type: 'success',
         text: `Document "${file.name}" uploaded successfully. Processing...`,
       });
       setFile(null);
-      // Reset file input
       e.target.reset();
       onSuccess();
     } catch (err) {
@@ -66,17 +65,17 @@ function DocumentUpload({ onSuccess }) {
         </div>
 
         <div className="form-group">
-          <label htmlFor="device-type">Device Type</label>
+          <label htmlFor="category">Category</label>
           <select
-            id="device-type"
-            value={deviceType}
-            onChange={(e) => setDeviceType(e.target.value)}
+            id="category"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
             disabled={uploading}
           >
-            <option value="hydraulic_pump">Hydraulic Pump</option>
-            <option value="air_compressor">Air Compressor</option>
-            <option value="conveyor">Conveyor System</option>
-            <option value="other">Other</option>
+            <option value="hr">HR</option>
+            <option value="finance">Finance</option>
+            <option value="it">IT</option>
+            <option value="general">General</option>
           </select>
         </div>
 
