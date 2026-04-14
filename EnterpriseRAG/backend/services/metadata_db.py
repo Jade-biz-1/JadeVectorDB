@@ -1,5 +1,5 @@
 """
-SQLite-backed persistent metadata store for EnterpriseRAG documents.
+SQLite-backed persistent metadata store for EnterpriseRAG documents and users.
 Replaces the in-memory dict so state survives restarts.
 """
 
@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 
 class MetadataDB:
-    """Thread-safe SQLite store for document metadata and query stats."""
+    """Thread-safe SQLite store for document metadata, query stats, and users."""
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -47,11 +47,12 @@ class MetadataDB:
 
     def _init_schema(self):
         with self._cursor() as cur:
+            # Documents table
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS documents (
                     doc_id       TEXT PRIMARY KEY,
                     filename     TEXT NOT NULL,
-                    device_type  TEXT NOT NULL,
+                    category     TEXT NOT NULL DEFAULT 'general',
                     status       TEXT NOT NULL DEFAULT 'pending',
                     uploaded_at  TEXT NOT NULL,
                     processed_at TEXT,
@@ -61,11 +62,22 @@ class MetadataDB:
                     error        TEXT
                 )
             """)
-            # Migration: add file_path if upgrading from an older schema
+            # Migrations from older schema
+            for col, definition in [
+                ("file_path", "TEXT"),
+                ("category", "TEXT NOT NULL DEFAULT 'general'"),
+            ]:
+                try:
+                    cur.execute(f"ALTER TABLE documents ADD COLUMN {col} {definition}")
+                except Exception:
+                    pass  # Column already exists
+            # Rename device_type → category if upgrading from old schema
             try:
-                cur.execute("ALTER TABLE documents ADD COLUMN file_path TEXT")
+                cur.execute("ALTER TABLE documents RENAME COLUMN device_type TO category")
             except Exception:
-                pass  # Column already exists
+                pass
+
+            # Stats table
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS stats (
                     key   TEXT PRIMARY KEY,
@@ -75,11 +87,13 @@ class MetadataDB:
             cur.execute(
                 "INSERT OR IGNORE INTO stats (key, value) VALUES ('query_count', 0)"
             )
+
+            # Queries table (category replaces device_type)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS queries (
                     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
                     question           TEXT NOT NULL,
-                    device_type        TEXT NOT NULL DEFAULT 'all',
+                    category           TEXT NOT NULL DEFAULT 'all',
                     mode               TEXT NOT NULL DEFAULT 'mock',
                     confidence         REAL DEFAULT 0,
                     processing_time_ms INTEGER DEFAULT 0,
@@ -88,6 +102,28 @@ class MetadataDB:
                     timestamp          TEXT NOT NULL
                 )
             """)
+            # Migration: rename device_type → category in queries table
+            try:
+                cur.execute("ALTER TABLE queries RENAME COLUMN device_type TO category")
+            except Exception:
+                pass
+
+            # Users table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id                   TEXT PRIMARY KEY,
+                    username             TEXT NOT NULL UNIQUE,
+                    email                TEXT NOT NULL UNIQUE,
+                    hashed_password      TEXT NOT NULL,
+                    role                 TEXT NOT NULL DEFAULT 'user',
+                    must_change_password INTEGER NOT NULL DEFAULT 1,
+                    created_by           TEXT,
+                    created_at           TEXT NOT NULL,
+                    last_login           TEXT,
+                    is_active            INTEGER NOT NULL DEFAULT 1
+                )
+            """)
+
             # Any document stuck in 'processing' or 'pending' at startup means
             # the server was killed mid-flight — mark them failed so users know.
             cur.execute(
@@ -103,10 +139,10 @@ class MetadataDB:
             cur.execute(
                 """
                 INSERT INTO documents
-                    (doc_id, filename, device_type, status, uploaded_at)
+                    (doc_id, filename, category, status, uploaded_at)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (doc["id"], doc["filename"], doc["device_type"],
+                (doc["id"], doc["filename"], doc.get("category", "general"),
                  doc["status"], doc["uploaded_at"]),
             )
 
@@ -167,7 +203,7 @@ class MetadataDB:
     def log_query(
         self,
         question: str,
-        device_type: str,
+        category: str,
         mode: str,
         confidence: float,
         processing_time_ms: int,
@@ -178,13 +214,13 @@ class MetadataDB:
             cur.execute(
                 """
                 INSERT INTO queries
-                    (question, device_type, mode, confidence,
+                    (question, category, mode, confidence,
                      processing_time_ms, sources_count, success, timestamp)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     question[:500],  # cap length
-                    device_type,
+                    category,
                     mode,
                     confidence,
                     processing_time_ms,
@@ -207,14 +243,14 @@ class MetadataDB:
             """)
             agg = dict(cur.fetchone())
 
-            # Device-type breakdown
+            # Category breakdown
             cur.execute("""
-                SELECT device_type, COUNT(*) AS cnt
+                SELECT category, COUNT(*) AS cnt
                 FROM queries
-                GROUP BY device_type
+                GROUP BY category
                 ORDER BY cnt DESC
             """)
-            device_breakdown = {row["device_type"]: row["cnt"] for row in cur.fetchall()}
+            category_breakdown = {row["category"]: row["cnt"] for row in cur.fetchall()}
 
             # Recent queries
             cur.execute(
@@ -228,6 +264,81 @@ class MetadataDB:
             "avg_confidence": round(agg["avg_confidence"] or 0, 3),
             "avg_processing_time_ms": round(agg["avg_processing_time_ms"] or 0, 1),
             "success_rate": round(agg["success_rate"] or 0, 3),
-            "device_type_breakdown": device_breakdown,
+            "category_breakdown": category_breakdown,
             "recent_queries": recent,
         }
+
+    # ── User CRUD ─────────────────────────────────────────────
+
+    def user_insert(self, user: Dict[str, Any]) -> None:
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO users
+                    (id, username, email, hashed_password, role,
+                     must_change_password, created_by, created_at, is_active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+                """,
+                (
+                    user["id"],
+                    user["username"],
+                    user["email"],
+                    user["hashed_password"],
+                    user.get("role", "user"),
+                    1,  # must_change_password = True
+                    user.get("created_by"),
+                    user.get("created_at", datetime.utcnow().isoformat() + "Z"),
+                ),
+            )
+
+    def user_get_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+        with self._cursor() as cur:
+            cur.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def user_get_by_username(self, username: str) -> Optional[Dict[str, Any]]:
+        with self._cursor() as cur:
+            cur.execute("SELECT * FROM users WHERE username = ?", (username,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def user_get_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        with self._cursor() as cur:
+            cur.execute("SELECT * FROM users WHERE email = ?", (email,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def user_list(self, offset: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT * FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+    def user_count(self) -> int:
+        with self._cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM users")
+            return cur.fetchone()[0]
+
+    def user_update(self, user_id: str, fields: Dict[str, Any]) -> None:
+        if not fields:
+            return
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        values = list(fields.values()) + [user_id]
+        with self._cursor() as cur:
+            cur.execute(
+                f"UPDATE users SET {set_clause} WHERE id = ?", values
+            )
+
+    def user_delete(self, user_id: str) -> None:
+        """Soft-delete by deactivating the user."""
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE users SET is_active = 0 WHERE id = ?", (user_id,)
+            )
+
+    def user_exists(self) -> bool:
+        """Return True if at least one user exists (for bootstrap check)."""
+        return self.user_count() > 0

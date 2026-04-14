@@ -44,22 +44,22 @@ export default function AnalyticsPage() {
         <StatCard label="Avg Response Time"  value={`${avgMs} ms`} />
       </div>
 
-      {/* Device type breakdown */}
+      {/* Category breakdown */}
       <section className="analytics-section">
-        <h3>Queries by Device Type</h3>
-        {Object.keys(data.device_type_breakdown).length === 0 ? (
+        <h3>Queries by Category</h3>
+        {Object.keys(data.category_breakdown ?? {}).length === 0 ? (
           <p className="empty-msg">No queries yet.</p>
         ) : (
           <table className="analytics-table">
             <thead>
-              <tr><th>Device Type</th><th>Queries</th></tr>
+              <tr><th>Category</th><th>Queries</th></tr>
             </thead>
             <tbody>
-              {Object.entries(data.device_type_breakdown)
+              {Object.entries(data.category_breakdown ?? {})
                 .sort((a, b) => b[1] - a[1])
-                .map(([dt, count]) => (
-                  <tr key={dt}>
-                    <td>{dt}</td>
+                .map(([cat, count]) => (
+                  <tr key={cat}>
+                    <td>{cat}</td>
                     <td>{count}</td>
                   </tr>
                 ))}
@@ -78,7 +78,7 @@ export default function AnalyticsPage() {
             <thead>
               <tr>
                 <th>Question</th>
-                <th>Device</th>
+                <th>Category</th>
                 <th>Confidence</th>
                 <th>Time (ms)</th>
                 <th>Sources</th>
@@ -92,7 +92,7 @@ export default function AnalyticsPage() {
                   <td className="col-question" title={q.question}>
                     {q.question.length > 60 ? q.question.slice(0, 60) + '…' : q.question}
                   </td>
-                  <td>{q.device_type}</td>
+                  <td>{q.category}</td>
                   <td>{(q.confidence * 100).toFixed(0)}%</td>
                   <td>{q.processing_time_ms}</td>
                   <td>{q.sources_count}</td>

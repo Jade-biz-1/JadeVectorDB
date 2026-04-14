@@ -46,8 +46,8 @@ function DocumentList({ documents, onDelete, onRefresh }) {
 
             <div className="doc-details">
               <div className="doc-detail">
-                <span className="detail-label">Device Type:</span>
-                <span className="detail-value">{doc.device_type}</span>
+                <span className="detail-label">Category:</span>
+                <span className="detail-value">{doc.category}</span>
               </div>
 
               <div className="doc-detail">

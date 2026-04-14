@@ -27,13 +27,22 @@ class Settings(BaseSettings):
     # EnterpriseRAG API key (set to enable auth; leave empty to disable in dev)
     rag_api_key: str | None = None
 
+    # JWT auth
+    jwt_secret_key: str = "change-me-in-production-use-a-long-random-string"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 480  # 8 hours
+
+    # Bootstrap admin credentials (used only when no users exist)
+    admin_username: str = "admin"
+    admin_default_password: str = "Admin@1234"
+
     # Frontend URL (for CORS)
     frontend_url: str = "http://localhost:5173"
 
     # JadeVectorDB (Production Mode)
     jadevectordb_url: str = "http://localhost:8080"
     jadevectordb_api_key: str | None = None
-    jadevectordb_database_id: str = "maintenance_docs"
+    jadevectordb_database_id: str = "rag_documents"
 
     # Ollama (Production Mode)
     ollama_url: str = "http://localhost:11434"

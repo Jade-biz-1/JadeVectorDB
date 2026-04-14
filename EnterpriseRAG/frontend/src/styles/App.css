@@ -92,6 +92,42 @@
   font-size: 1.1rem;
 }
 
+/* Nav user section */
+
+.nav-user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.nav-username {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.nav-link-sm {
+  font-size: 0.825rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.nav-logout {
+  background: none;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  transition: all 0.2s;
+}
+
+.nav-logout:hover {
+  color: var(--error-color);
+  border-color: var(--error-color);
+  background: #fee2e2;
+}
+
 /* Responsive */
 
 @media (max-width: 768px) {

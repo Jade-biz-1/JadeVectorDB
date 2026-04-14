@@ -28,3 +28,7 @@ structlog>=24.1.0
 
 # Rate limiting
 slowapi>=0.1.9
+
+# Authentication (JWT + password hashing)
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4

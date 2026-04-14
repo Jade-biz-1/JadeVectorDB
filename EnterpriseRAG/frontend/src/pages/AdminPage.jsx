@@ -49,7 +49,7 @@ function AdminPage() {
       <div className="admin-container">
         <header className="page-header">
           <h2>Document Management</h2>
-          <p>Upload and manage maintenance documentation</p>
+          <p>Upload and manage organization documentation</p>
         </header>
 
         <DocumentUpload onSuccess={handleUploadSuccess} />

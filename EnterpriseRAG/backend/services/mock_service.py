@@ -26,8 +26,8 @@ log = get_logger(__name__)
 _SEED_DOCUMENTS = [
     {
         "id": "doc_001",
-        "filename": "hydraulic_pump_manual.pdf",
-        "device_type": "hydraulic_pump",
+        "filename": "employee_handbook.pdf",
+        "category": "hr",
         "status": "complete",
         "uploaded_at": "2026-03-20T10:30:00Z",
         "processed_at": "2026-03-20T10:31:45Z",
@@ -37,8 +37,8 @@ _SEED_DOCUMENTS = [
     },
     {
         "id": "doc_002",
-        "filename": "air_compressor_guide.pdf",
-        "device_type": "air_compressor",
+        "filename": "it_security_policy.pdf",
+        "category": "it",
         "status": "complete",
         "uploaded_at": "2026-03-21T14:20:00Z",
         "processed_at": "2026-03-21T14:22:10Z",
@@ -48,8 +48,8 @@ _SEED_DOCUMENTS = [
     },
     {
         "id": "doc_003",
-        "filename": "conveyor_system_manual.pdf",
-        "device_type": "conveyor",
+        "filename": "finance_procedures.pdf",
+        "category": "finance",
         "status": "complete",
         "uploaded_at": "2026-03-22T09:15:00Z",
         "processed_at": "2026-03-22T09:17:30Z",
@@ -72,12 +72,12 @@ class MockRAGService:
         """Insert demo documents on first run if the DB is empty."""
         if not self.db.list_all():
             for doc in _SEED_DOCUMENTS:
-                # MetadataDB.insert() only uses id/filename/device_type/status/uploaded_at,
+                # MetadataDB.insert() only uses id/filename/category/status/uploaded_at,
                 # so we call update() afterwards for the remaining fields.
                 self.db.insert({
                     "id": doc["id"],
                     "filename": doc["filename"],
-                    "device_type": doc["device_type"],
+                    "category": doc["category"],
                     "status": doc["status"],
                     "uploaded_at": doc["uploaded_at"],
                 })
@@ -91,20 +91,20 @@ class MockRAGService:
     async def query(
         self,
         question: str,
-        device_type: Optional[str] = "all",
+        category: Optional[str] = "all",
         top_k: int = 5,
     ) -> QueryResponse:
         """Simulate RAG query with realistic responses."""
         self.db.increment_query_count()
-        log.info("mock_query", question=question[:120], device_type=device_type)
+        log.info("mock_query", question=question[:120], category=category)
         await asyncio.sleep(0.3)
 
-        answer = self._generate_mock_answer(question, device_type)
-        sources = self._generate_mock_sources(question, device_type, top_k)
+        answer = self._generate_mock_answer(question, category)
+        sources = self._generate_mock_sources(question, category, top_k)
 
         self.db.log_query(
             question=question,
-            device_type=device_type or "all",
+            category=category or "all",
             mode="mock",
             confidence=0.87,
             processing_time_ms=320,
@@ -117,7 +117,7 @@ class MockRAGService:
             answer=answer,
             sources=sources,
             query=question,
-            device_type=device_type or "all",
+            category=category or "all",
             timestamp=datetime.utcnow().isoformat() + "Z",
             confidence=0.87,
             processing_time_ms=320,
@@ -125,17 +125,17 @@ class MockRAGService:
         )
 
     async def upload_document(
-        self, filename: str, device_type: str, file_content: bytes
+        self, filename: str, category: str = "general", file_content: bytes = b""
     ) -> dict:
         """Simulate document upload and schedule simulated processing."""
         doc_id = f"doc_{str(uuid.uuid4())[:8]}"
         uploaded_at = datetime.utcnow().isoformat() + "Z"
-        log.info("mock_upload", doc_id=doc_id, filename=filename, device_type=device_type)
+        log.info("mock_upload", doc_id=doc_id, filename=filename, category=category)
 
         self.db.insert({
             "id": doc_id,
             "filename": filename,
-            "device_type": device_type,
+            "category": category,
             "status": "processing",
             "uploaded_at": uploaded_at,
         })
@@ -208,7 +208,7 @@ class MockRAGService:
             DocumentInfo(
                 id=doc["doc_id"],
                 filename=doc["filename"],
-                device_type=doc["device_type"],
+                category=doc.get("category", "general"),
                 status=doc["status"],
                 uploaded_at=doc["uploaded_at"],
                 processed_at=doc.get("processed_at"),
@@ -300,85 +300,80 @@ class MockRAGService:
 
     # ── Mock answer/source generation ─────────────────────────
 
-    def _generate_mock_answer(self, question: str, device_type: Optional[str]) -> str:
+    def _generate_mock_answer(self, question: str, category: Optional[str]) -> str:
         q = question.lower()
 
-        if any(w in q for w in ["replace", "change", "swap"]):
-            if "filter" in q:
-                return """To replace the air filter:
+        if any(w in q for w in ["expense", "reimburs", "receipt"]):
+            return """To submit an expense report:
 
-1. **Safety First**: Shut down the equipment and disconnect power
-2. **Locate Filter**: Remove the access panel on the right side
-3. **Remove Old Filter**: Unscrew the retaining clips and slide out the old filter
-4. **Install New Filter**: Insert the new filter ensuring the airflow direction arrow points inward
-5. **Secure**: Replace retaining clips and access panel
-6. **Test**: Restart equipment and verify normal operation
+1. **Log In**: Access the employee portal at portal.company.com
+2. **Navigate**: Go to Finance → Expense Reports → New Report
+3. **Fill Details**: Enter expense date, amount, category, and business purpose
+4. **Attach Receipts**: Upload digital copies of all receipts
+5. **Submit**: Click Submit for manager approval
 
-**Important**: Always use OEM-approved filters. Replacement interval: Every 500 operating hours or 3 months."""
+**Important**: Expenses must be submitted within 30 days. Expenses over $500 require VP approval.
+Refer to the Finance Procedures document, Section 4.2 for full policy."""
 
-            if any(w in q for w in ["oil", "fluid"]):
-                return """To replace the hydraulic fluid:
+        if any(w in q for w in ["leave", "vacation", "time off", "pto"]):
+            return """To request time off:
 
-1. **Preparation**: Ensure system is cool and depressurized
-2. **Drain**: Open drain valve at the bottom of the reservoir
-3. **Clean**: Wipe reservoir interior with lint-free cloth
-4. **Refill**: Add manufacturer-specified hydraulic oil (ISO VG 46)
-5. **Bleed**: Run system at low pressure to remove air bubbles
-6. **Check Level**: Ensure fluid is at the "FULL" mark
+1. **Log In**: Access the HR portal
+2. **Navigate**: Go to My Team → Time Off → New Request
+3. **Select Dates**: Choose start and end dates
+4. **Select Type**: Annual leave, sick leave, or other
+5. **Submit**: Your manager will approve or decline within 2 business days
 
-**Capacity**: 15 liters | **Fluid**: Mobil DTE 25 or equivalent | **Interval**: Every 2000 hours or annually"""
+**Accrual**: Full-time employees accrue 1.5 days per month (18 days/year).
+Refer to the Employee Handbook, Section 6 (Leave Policies) for details."""
 
-        if any(w in q for w in ["troubleshoot", "problem", "issue", "not working"]):
-            return """Common troubleshooting steps:
+        if any(w in q for w in ["password", "access", "account", "it", "system"]):
+            return """To request IT access:
 
-**If equipment won't start:**
-1. Check power supply and circuit breakers
-2. Verify emergency stop button is not engaged
-3. Check control panel for error codes
-4. Inspect safety interlocks
+1. **Submit Ticket**: Go to it-support.company.com → New Request → Access Management
+2. **Specify System**: Name the application or system you need access to
+3. **Provide Justification**: State your business reason
+4. **Manager Approval**: Your manager must approve before IT provisions access
+5. **Processing Time**: Standard requests are completed within 2 business days
 
-**If performance is degraded:**
-1. Check fluid levels (oil, coolant, hydraulic)
-2. Inspect filters for clogging
-3. Verify pressure gauges show normal ranges
-4. Listen for unusual noises indicating wear
+Refer to the IT Security Policy, Section 3 (Access Management) for full details."""
 
-**If overheating:**
-1. Check cooling fan operation
-2. Clean air vents and heat exchangers
-3. Verify coolant circulation
+        if any(w in q for w in ["onboard", "new hire", "first day", "checklist"]):
+            return """New employee onboarding checklist:
 
-Refer to Section 7 (Troubleshooting) for error code meanings."""
+**Before Day 1:**
+- Complete digital paperwork via HR portal
+- Receive equipment and credentials from IT
 
-        if any(w in q for w in ["maintain", "maintenance", "service"]):
-            return """Regular maintenance schedule:
+**Day 1:**
+- Meet with manager and team
+- Complete mandatory compliance training
+- Set up email, Slack, and required systems
 
-**Daily:** Visual inspection, check fluid levels, verify normal operation
-**Weekly:** Inspect filters, check belt tension, lubricate moving parts
-**Monthly:** Replace air filters, check electrical connections
-**Quarterly:** Change hydraulic fluid, inspect safety systems, calibrate sensors
-**Annually:** Complete system overhaul, replace wear parts, professional inspection
+**Week 1:**
+- Complete all onboarding modules in the LMS
+- Review team processes and tools
+- Schedule 1:1 meetings with key stakeholders
 
-Detailed procedures are in Section 6 (Preventive Maintenance)."""
+Refer to the Employee Handbook, Chapter 2 (Onboarding) for the full guide."""
 
-        return f"""Based on the maintenance documentation for {device_type or 'your equipment'}:
+        return f"""Based on the {'[' + category + '] ' if category and category != 'all' else ''}documentation:
 
-The recommended procedure involves:
-1. Following standard safety protocols
-2. Consulting the technical specifications in Chapter 3
-3. Using manufacturer-approved parts and tools
-4. Documenting all maintenance activities
+The relevant information includes:
+1. Following the documented procedures in the source materials
+2. Consulting the applicable policy section for specifics
+3. Reaching out to the responsible team if clarification is needed
 
-**Safety Note**: Always wear appropriate PPE and follow lockout/tagout procedures."""
+Please review the sources cited below for the detailed guidance."""
 
     def _generate_mock_sources(
-        self, question: str, device_type: Optional[str], top_k: int
+        self, question: str, category: Optional[str], top_k: int
     ) -> List[SourceDocument]:
         all_docs = self.db.list_all()
         relevant = [
             d for d in all_docs
             if d.get("status") == "complete"
-            and (device_type == "all" or d["device_type"] == device_type)
+            and (not category or category == "all" or d.get("category") == category)
         ] or [d for d in all_docs if d.get("status") == "complete"]
 
         sources = []
@@ -400,15 +395,15 @@ The recommended procedure involves:
 
     def _get_relevant_section(self, question: str) -> str:
         q = question.lower()
-        if any(w in q for w in ["replace", "install"]):
-            return "Section 5: Component Replacement"
-        if any(w in q for w in ["troubleshoot", "problem"]):
-            return "Section 7: Troubleshooting Guide"
-        if any(w in q for w in ["maintain", "service"]):
-            return "Section 6: Preventive Maintenance"
-        if any(w in q for w in ["safety", "warning"]):
-            return "Section 2: Safety Guidelines"
-        return "Section 4: Operating Procedures"
+        if any(w in q for w in ["expense", "reimburs", "receipt"]):
+            return "Section 4: Expense Reimbursement"
+        if any(w in q for w in ["leave", "vacation", "pto"]):
+            return "Section 6: Leave Policies"
+        if any(w in q for w in ["password", "access", "it"]):
+            return "Section 3: Access Management"
+        if any(w in q for w in ["onboard", "new hire"]):
+            return "Chapter 2: Onboarding"
+        return "Section 1: General Procedures"
 
 
 # Global instance
