@@ -2299,7 +2299,7 @@ pip install langchain-text-splitters
 pip install langchain
 ```
 
-**Configuration for Maintenance Documentation:**
+**Configuration for Document Q&A:**
 ```python
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
@@ -2657,7 +2657,7 @@ Software:
 #!/bin/bash
 # setup.sh - Setup RAG system
 
-echo "🚀 Setting up Maintenance Documentation Q&A System"
+echo "🚀 Setting up Document Q&A System"
 
 # 1. Install Python dependencies
 echo "📦 Installing Python packages..."
