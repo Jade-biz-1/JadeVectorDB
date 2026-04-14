@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import Head from 'next/head';
-import { vectorApi, databaseApi } from '../lib/api';
+import { vectorApi } from '../lib/api';
+import { useDatabases } from '../hooks/useDatabases';
 
 export default function BatchOperations() {
   const [selectedDatabase, setSelectedDatabase] = useState('');
-  const [databases, setDatabases] = useState([]);
+  const { databases } = useDatabases();
   const [batchOperation, setBatchOperation] = useState('upload'); // 'upload' or 'download'
   const [vectors, setVectors] = useState([{ id: '', values: '', metadata: '{}' }]);
   const [loading, setLoading] = useState(false);
@@ -13,24 +14,6 @@ export default function BatchOperations() {
   const [fileContent, setFileContent] = useState('');
   const [downloadFormat, setDownloadFormat] = useState('json');
   const fileInputRef = useRef(null);
-
-  // Fetch databases on component mount
-  useEffect(() => {
-    fetchDatabases();
-  }, []);
-
-  const fetchDatabases = async () => {
-    try {
-      const response = await databaseApi.listDatabases();
-      setDatabases(response.databases.map(db => ({
-        id: db.databaseId,
-        name: db.name
-      })));
-    } catch (error) {
-      console.error('Error fetching databases:', error);
-      alert(`Error fetching databases: ${error.message}`);
-    }
-  };
 
   const handleAddVector = () => {
     setVectors([...vectors, { id: '', values: '', metadata: '{}' }]);

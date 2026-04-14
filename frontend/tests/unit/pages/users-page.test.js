@@ -529,9 +529,10 @@ describe('User Management Page', () => {
       });
 
       expect(screen.getByText('User ID')).toBeInTheDocument();
-      expect(screen.getByText('Username')).toBeInTheDocument();
-      expect(screen.getByText('Email')).toBeInTheDocument();
-      expect(screen.getByText('Roles')).toBeInTheDocument();
+      // Username, Email, Roles appear in both form labels and table headers
+      expect(screen.getAllByText('Username').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Email').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Roles').length).toBeGreaterThan(0);
       expect(screen.getByText('Status')).toBeInTheDocument();
       expect(screen.getByText('Actions')).toBeInTheDocument();
     });

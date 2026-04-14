@@ -4,6 +4,9 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/tests/setupTests.js'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^next/head$': '<rootDir>/tests/__mocks__/next-head.js',
+    '^next/router$': '<rootDir>/tests/__mocks__/next-router.js',
+    '^next/link$': '<rootDir>/tests/__mocks__/next-link.js',
   },
   testPathIgnorePatterns: [
     '<rootDir>/node_modules/',

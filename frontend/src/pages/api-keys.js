@@ -2,6 +2,15 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import { apiKeysApi, authApi } from '../lib/api';
+import {
+  Alert, AlertDescription,
+  Button,
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
+  EmptyState,
+  FormField,
+  LoadingSpinner,
+  StatusBadge,
+} from '../components/ui';
 
 export default function ApiKeyManagement() {
   const router = useRouter();
@@ -19,7 +28,6 @@ export default function ApiKeyManagement() {
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
-    // Get current user
     if (typeof window !== 'undefined') {
       const user = authApi.getCurrentUser();
       setCurrentUser(user);
@@ -76,7 +84,6 @@ export default function ApiKeyManagement() {
       setSuccess('API key created successfully! Save it now - you won\'t be able to see it again.');
       setNewKeyData({ description: '', permissions: '', validity_days: 30 });
 
-      // Refresh the list
       fetchApiKeys(currentUser.user_id);
     } catch (err) {
       console.error('Error creating API key:', err);
@@ -115,11 +122,8 @@ export default function ApiKeyManagement() {
   const formatDate = (value) => {
     if (!value && value !== 0) return 'N/A';
     try {
-      // Backend may send Unix timestamps (seconds) as integers, or ISO 8601 strings.
-      // If it's a number, convert seconds to milliseconds for JavaScript's Date constructor.
       if (typeof value === 'number') {
         if (value === 0) return 'Never';
-        // Unix timestamps in seconds are > 1e9; in milliseconds they'd be > 1e12
         const ms = value < 1e12 ? value * 1000 : value;
         return new Date(ms).toLocaleString();
       }
@@ -129,62 +133,21 @@ export default function ApiKeyManagement() {
     }
   };
 
+  const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500 transition';
+
   if (!currentUser || !currentUser.user_id) {
     return (
       <Layout title="API Key Management - JadeVectorDB">
-        <style jsx>{`
-          .auth-required {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 400px;
-          }
-
-          .auth-card {
-            background: white;
-            border-radius: 8px;
-            padding: 40px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            text-align: center;
-            max-width: 400px;
-          }
-
-          .auth-title {
-            font-size: 24px;
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 10px;
-          }
-
-          .auth-description {
-            font-size: 14px;
-            color: #7f8c8d;
-            margin-bottom: 25px;
-          }
-
-          .btn-login {
-            padding: 12px 24px;
-            background: #3498db;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-          }
-
-          .btn-login:hover {
-            background: #2980b9;
-          }
-        `}</style>
-        <div className="auth-required">
-          <div className="auth-card">
-            <h2 className="auth-title">Authentication Required</h2>
-            <p className="auth-description">You must be logged in to manage API keys</p>
-            <button onClick={() => router.push('/')} className="btn-login">
-              Go to Login
-            </button>
-          </div>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <Card className="max-w-sm w-full text-center">
+            <CardHeader>
+              <CardTitle>Authentication Required</CardTitle>
+              <CardDescription>You must be logged in to manage API keys</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button onClick={() => router.push('/')}>Go to Login</Button>
+            </CardContent>
+          </Card>
         </div>
       </Layout>
     );
@@ -192,400 +155,169 @@ export default function ApiKeyManagement() {
 
   return (
     <Layout title="API Key Management - JadeVectorDB">
-      <style jsx>{`
-        .apikeys-container {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 20px;
-        }
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-1">API Key Management</h1>
+        <p className="text-gray-500">Generate and manage your API keys for programmatic access</p>
+      </div>
 
-        .page-header {
-          margin-bottom: 30px;
-        }
-
-        .page-title {
-          font-size: 32px;
-          font-weight: 700;
-          color: #2c3e50;
-          margin: 0 0 10px 0;
-        }
-
-        .page-description {
-          color: #7f8c8d;
-          font-size: 16px;
-        }
-
-        .user-info {
-          background: #e3f2fd;
-          border: 1px solid #90caf9;
-          border-radius: 8px;
-          padding: 15px;
-          margin-bottom: 20px;
-          font-size: 14px;
-          color: #1565c0;
-        }
-
-        .alert {
-          padding: 15px;
-          border-radius: 8px;
-          margin-bottom: 20px;
-          font-size: 14px;
-        }
-
-        .alert-error {
-          background: #fee2e2;
-          border: 1px solid #fecaca;
-          color: #991b1b;
-        }
-
-        .alert-success {
-          background: #dcfce7;
-          border: 1px solid #bbf7d0;
-          color: #166534;
-        }
-
-        .card {
-          background: white;
-          border-radius: 8px;
-          padding: 30px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-          margin-bottom: 30px;
-        }
-
-        .card.highlight {
-          border: 2px solid #27ae60;
-        }
-
-        .card-title {
-          font-size: 20px;
-          font-weight: 600;
-          color: #2c3e50;
-          margin: 0 0 10px 0;
-        }
-
-        .card-title.success {
-          color: #27ae60;
-        }
-
-        .card-subtitle {
-          font-size: 14px;
-          color: #7f8c8d;
-          margin-bottom: 25px;
-        }
-
-        .generated-key-display {
-          background: #f8f9fa;
-          padding: 15px;
-          border-radius: 6px;
-          font-family: monospace;
-          font-size: 13px;
-          word-break: break-all;
-          margin-bottom: 15px;
-        }
-
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          margin-bottom: 20px;
-        }
-
-        .form-label {
-          font-weight: 500;
-          color: #2c3e50;
-          margin-bottom: 8px;
-          font-size: 14px;
-        }
-
-        .form-input {
-          padding: 10px 12px;
-          border: 1px solid #d1d5db;
-          border-radius: 6px;
-          font-size: 14px;
-          transition: all 0.2s;
-        }
-
-        .form-input:focus {
-          outline: none;
-          border-color: #3498db;
-          box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
-        }
-
-        .form-hint {
-          font-size: 12px;
-          color: #7f8c8d;
-          margin-top: 5px;
-        }
-
-        .btn {
-          padding: 10px 20px;
-          border-radius: 6px;
-          font-weight: 500;
-          font-size: 14px;
-          cursor: pointer;
-          transition: all 0.2s;
-          border: none;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .btn-primary {
-          background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
-          color: white;
-        }
-
-        .btn-primary:hover:not(:disabled) {
-          transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(52, 152, 219, 0.4);
-        }
-
-        .btn-primary:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .btn-danger {
-          background: #e74c3c;
-          color: white;
-          padding: 6px 12px;
-          font-size: 12px;
-        }
-
-        .btn-danger:hover:not(:disabled) {
-          background: #c0392b;
-        }
-
-        .keys-list {
-          display: flex;
-          flex-direction: column;
-          gap: 15px;
-        }
-
-        .key-item {
-          border: 1px solid #e1e8ed;
-          border-radius: 8px;
-          padding: 20px;
-          display: flex;
-          justify-content: space-between;
-          align-items: start;
-        }
-
-        .key-info {
-          flex: 1;
-        }
-
-        .key-header {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin-bottom: 15px;
-        }
-
-        .key-title {
-          font-size: 16px;
-          font-weight: 600;
-          color: #2c3e50;
-        }
-
-        .badge {
-          display: inline-flex;
-          padding: 4px 12px;
-          border-radius: 12px;
-          font-size: 12px;
-          font-weight: 600;
-        }
-
-        .badge-success {
-          background: #d4edda;
-          color: #155724;
-        }
-
-        .badge-error {
-          background: #f8d7da;
-          color: #721c24;
-        }
-
-        .key-details {
-          display: flex;
-          flex-direction: column;
-          gap: 5px;
-          font-size: 13px;
-        }
-
-        .detail-row {
-          color: #555;
-        }
-
-        .detail-label {
-          color: #7f8c8d;
-          margin-right: 8px;
-        }
-
-        .detail-value {
-          font-family: monospace;
-        }
-
-        .empty-state {
-          text-align: center;
-          padding: 40px;
-          color: #7f8c8d;
-        }
-
-        .loading-state {
-          text-align: center;
-          padding: 40px;
-          color: #7f8c8d;
-        }
-      `}</style>
-
-      <div className="apikeys-container">
-        <div className="page-header">
-          <h1 className="page-title">API Key Management</h1>
-          <p className="page-description">Generate and manage your API keys for programmatic access</p>
-        </div>
-
-        <div className="user-info">
+      <Alert className="mb-6 bg-blue-50 border-blue-200 text-blue-800">
+        <AlertDescription>
           <strong>Logged in as:</strong> {currentUser.username} (User ID: {currentUser.user_id})
-        </div>
+        </AlertDescription>
+      </Alert>
 
-        {error && (
-          <div className="alert alert-error">
-            {error}
-          </div>
-        )}
+      {error && (
+        <Alert variant="destructive" className="mb-6 bg-red-50 border-red-200 text-red-800">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {success && (
+        <Alert className="mb-6 bg-green-50 border-green-200 text-green-800">
+          <AlertDescription>{success}</AlertDescription>
+        </Alert>
+      )}
 
-        {success && (
-          <div className="alert alert-success">
-            {success}
-          </div>
-        )}
-
-        {generatedKey && (
-          <div className="card highlight">
-            <h2 className="card-title success">New API Key Created</h2>
-            <p className="card-subtitle">
-              Save this key securely - you won't be able to see it again!
-            </p>
-            <div className="generated-key-display">
+      {/* ── Generated key display ── */}
+      {generatedKey && (
+        <Card className="mb-6 border-2 border-green-400">
+          <CardHeader>
+            <CardTitle className="text-green-700">New API Key Created</CardTitle>
+            <CardDescription>Save this key securely - you won't be able to see it again!</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="bg-gray-50 rounded-lg px-4 py-3 font-mono text-sm break-all mb-4">
               {generatedKey.api_key}
             </div>
-            <button onClick={() => copyToClipboard(generatedKey.api_key)} className="btn btn-primary">
+            <Button onClick={() => copyToClipboard(generatedKey.api_key)}>
               Copy to Clipboard
-            </button>
-          </div>
-        )}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
-        <div className="card">
-          <h2 className="card-title">Create New API Key</h2>
-          <p className="card-subtitle">Generate a new API key for programmatic access</p>
-
+      {/* ── Create form ── */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-xl">Create New API Key</CardTitle>
+          <CardDescription>Generate a new API key for programmatic access</CardDescription>
+        </CardHeader>
+        <CardContent>
           <form onSubmit={handleCreateKey}>
-            <div className="form-group">
-              <label htmlFor="description" className="form-label">Description</label>
-              <input
-                id="description"
-                name="description"
-                type="text"
-                className="form-input"
-                placeholder="e.g., Production API key"
-                value={newKeyData.description}
-                onChange={handleInputChange}
-                disabled={creating}
-              />
-            </div>
+            <div className="space-y-4">
+              <FormField label="Description" htmlFor="description">
+                <input
+                  id="description"
+                  name="description"
+                  type="text"
+                  className={inputCls}
+                  placeholder="e.g., Production API key"
+                  value={newKeyData.description}
+                  onChange={handleInputChange}
+                  disabled={creating}
+                />
+              </FormField>
 
-            <div className="form-group">
-              <label htmlFor="permissions" className="form-label">Permissions (comma-separated)</label>
-              <input
-                id="permissions"
-                name="permissions"
-                type="text"
-                className="form-input"
-                placeholder="e.g., read, write, delete"
-                value={newKeyData.permissions}
-                onChange={handleInputChange}
-                disabled={creating}
-              />
-              <p className="form-hint">Optional. Leave empty for default permissions.</p>
-            </div>
+              <FormField
+                label="Permissions (comma-separated)"
+                htmlFor="permissions"
+                hint="Optional. Leave empty for default permissions."
+              >
+                <input
+                  id="permissions"
+                  name="permissions"
+                  type="text"
+                  className={inputCls}
+                  placeholder="e.g., read, write, delete"
+                  value={newKeyData.permissions}
+                  onChange={handleInputChange}
+                  disabled={creating}
+                />
+              </FormField>
 
-            <div className="form-group">
-              <label htmlFor="validity_days" className="form-label">Validity Period (days)</label>
-              <input
-                id="validity_days"
-                name="validity_days"
-                type="number"
-                className="form-input"
-                min="1"
-                max="365"
-                value={newKeyData.validity_days}
-                onChange={handleInputChange}
-                disabled={creating}
-              />
-            </div>
+              <FormField label="Validity Period (days)" htmlFor="validity_days">
+                <input
+                  id="validity_days"
+                  name="validity_days"
+                  type="number"
+                  className={inputCls}
+                  min="1"
+                  max="365"
+                  value={newKeyData.validity_days}
+                  onChange={handleInputChange}
+                  disabled={creating}
+                />
+              </FormField>
 
-            <button type="submit" disabled={creating} className="btn btn-primary">
-              {creating ? 'Creating...' : 'Create API Key'}
-            </button>
+              <Button type="submit" disabled={creating}>
+                {creating ? 'Creating…' : 'Create API Key'}
+              </Button>
+            </div>
           </form>
-        </div>
+        </CardContent>
+      </Card>
 
-        <div className="card">
-          <h2 className="card-title">Your API Keys</h2>
-          <p className="card-subtitle">Manage your existing API keys</p>
-
+      {/* ── API key list ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-xl">Your API Keys</CardTitle>
+          <CardDescription>Manage your existing API keys</CardDescription>
+        </CardHeader>
+        <CardContent>
           {loading ? (
-            <div className="loading-state">Loading API keys...</div>
+            <LoadingSpinner label="Loading API keys…" />
           ) : apiKeys.length === 0 ? (
-            <div className="empty-state">No API keys found. Create one above to get started.</div>
+            <EmptyState
+              icon="🔑"
+              title="No API keys found"
+              description="Create one above to get started"
+            />
           ) : (
-            <div className="keys-list">
+            <div className="space-y-4">
               {apiKeys.map((key) => (
-                <div key={key.key_id} className="key-item">
-                  <div className="key-info">
-                    <div className="key-header">
-                      <h3 className="key-title">
+                <div key={key.key_id} className="border border-gray-200 rounded-xl p-5 flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-3">
+                      <h3 className="text-base font-semibold text-gray-900">
                         {key.description || 'Unnamed Key'}
                       </h3>
-                      <span className={`badge ${key.is_active ? 'badge-success' : 'badge-error'}`}>
-                        {key.is_active ? 'Active' : 'Revoked'}
-                      </span>
+                      <StatusBadge status={key.is_active ? 'active' : 'inactive'} label={key.is_active ? 'Active' : 'Revoked'} />
                     </div>
-                    <div className="key-details">
-                      <div className="detail-row">
-                        <span className="detail-label">Key ID:</span>
-                        <span className="detail-value">{key.key_id}</span>
+                    <div className="space-y-1 text-sm text-gray-600">
+                      <div>
+                        <span className="text-gray-400 mr-2">Key ID:</span>
+                        <span className="font-mono">{key.key_id}</span>
                       </div>
-                      <div className="detail-row">
-                        <span className="detail-label">Created:</span>
-                        <span>{formatDate(key.created_at)}</span>
+                      <div>
+                        <span className="text-gray-400 mr-2">Created:</span>
+                        {formatDate(key.created_at)}
                       </div>
-                      <div className="detail-row">
-                        <span className="detail-label">Expires:</span>
-                        <span>{formatDate(key.expires_at)}</span>
+                      <div>
+                        <span className="text-gray-400 mr-2">Expires:</span>
+                        {formatDate(key.expires_at)}
                       </div>
                       {key.permissions && key.permissions.length > 0 && (
-                        <div className="detail-row">
-                          <span className="detail-label">Permissions:</span>
-                          <span>{key.permissions.join(', ')}</span>
+                        <div>
+                          <span className="text-gray-400 mr-2">Permissions:</span>
+                          {key.permissions.join(', ')}
                         </div>
                       )}
                     </div>
                   </div>
                   {key.is_active && (
-                    <button
+                    <Button
+                      size="sm"
+                      variant="destructive"
                       onClick={() => handleRevokeKey(key.key_id)}
-                      className="btn btn-danger"
                     >
                       Revoke
-                    </button>
+                    </Button>
                   )}
                 </div>
               ))}
             </div>
           )}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </Layout>
   );
 }
