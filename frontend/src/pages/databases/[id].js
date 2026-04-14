@@ -2,6 +2,15 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
 import { databaseApi, vectorApi } from '../../lib/api';
+import {
+  Alert, AlertDescription,
+  Button,
+  Card, CardHeader, CardTitle, CardContent,
+  EmptyState,
+  LoadingSpinner,
+  Modal,
+  StatusBadge,
+} from '../../components/ui';
 
 export default function DatabaseDetails() {
   const router = useRouter();
@@ -62,10 +71,12 @@ export default function DatabaseDetails() {
     setExpandedVectorId(expandedVectorId === vectorId ? null : vectorId);
   };
 
+  const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400 transition';
+
   if (loading) {
     return (
       <Layout title="Loading... - JadeVectorDB">
-        <div className="loading">Loading database details...</div>
+        <LoadingSpinner label="Loading database details…" />
       </Layout>
     );
   }
@@ -73,13 +84,12 @@ export default function DatabaseDetails() {
   if (error) {
     return (
       <Layout title="Error - JadeVectorDB">
-        <div className="error-container">
-          <h2>Error</h2>
-          <p>{error}</p>
-          <button onClick={() => router.push('/databases')} className="btn btn-primary">
-            Back to Databases
-          </button>
-        </div>
+        <Alert variant="destructive" className="mb-6 bg-red-50 border-red-200 text-red-800">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+        <Button variant="secondary" onClick={() => router.push('/databases')}>
+          Back to Databases
+        </Button>
       </Layout>
     );
   }
@@ -87,501 +97,134 @@ export default function DatabaseDetails() {
   if (!database) {
     return (
       <Layout title="Not Found - JadeVectorDB">
-        <div className="error-container">
-          <h2>Database Not Found</h2>
-          <p>The database you're looking for doesn't exist.</p>
-          <button onClick={() => router.push('/databases')} className="btn btn-primary">
-            Back to Databases
-          </button>
-        </div>
+        <EmptyState
+          icon="🔍"
+          title="Database Not Found"
+          description="The database you're looking for doesn't exist."
+          action={
+            <Button variant="secondary" onClick={() => router.push('/databases')}>
+              Back to Databases
+            </Button>
+          }
+        />
       </Layout>
     );
   }
 
   return (
     <Layout title={`${database.name} - JadeVectorDB`}>
-      <style jsx>{`
-        .details-container {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 20px;
-        }
-
-        .header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 30px;
-        }
-
-        .header h1 {
-          margin: 0;
-          font-size: 32px;
-          color: #2c3e50;
-        }
-
-        .actions {
-          display: flex;
-          gap: 10px;
-        }
-
-        .btn {
-          padding: 10px 20px;
-          border: none;
-          border-radius: 6px;
-          font-size: 14px;
-          cursor: pointer;
-          text-decoration: none;
-          display: inline-block;
-          transition: all 0.3s ease;
-        }
-
-        .btn-primary {
-          background: #3498db;
-          color: white;
-        }
-
-        .btn-primary:hover {
-          background: #2980b9;
-        }
-
-        .btn-secondary {
-          background: #95a5a6;
-          color: white;
-        }
-
-        .btn-secondary:hover {
-          background: #7f8c8d;
-        }
-
-        .btn-danger {
-          background: #e74c3c;
-          color: white;
-        }
-
-        .btn-danger:hover {
-          background: #c0392b;
-        }
-
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.5);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-        }
-
-        .modal {
-          background: white;
-          border-radius: 8px;
-          padding: 30px;
-          max-width: 480px;
-          width: 90%;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-        }
-
-        .modal-header {
-          font-size: 20px;
-          font-weight: 600;
-          color: #e74c3c;
-          margin: 0 0 15px 0;
-        }
-
-        .delete-warning {
-          color: #2c3e50;
-          margin-bottom: 20px;
-          line-height: 1.5;
-        }
-
-        .delete-input {
-          width: 100%;
-          padding: 10px 12px;
-          border: 1px solid #ddd;
-          border-radius: 6px;
-          font-size: 14px;
-          margin-bottom: 20px;
-          box-sizing: border-box;
-        }
-
-        .delete-input:focus {
-          outline: none;
-          border-color: #e74c3c;
-        }
-
-        .modal-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 10px;
-        }
-
-        .btn-danger:disabled {
-          background: #f5b7b1;
-          cursor: not-allowed;
-        }
-
-        .info-section {
-          background: white;
-          border-radius: 8px;
-          padding: 30px;
-          margin-bottom: 30px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .info-section h2 {
-          margin: 0 0 20px 0;
-          font-size: 24px;
-          color: #2c3e50;
-        }
-
-        .info-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-          gap: 20px;
-        }
-
-        .info-item {
-          display: flex;
-          flex-direction: column;
-          gap: 5px;
-        }
-
-        .info-label {
-          font-size: 12px;
-          font-weight: 600;
-          color: #7f8c8d;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-
-        .info-value {
-          font-size: 16px;
-          color: #2c3e50;
-          font-weight: 500;
-        }
-
-        .badge {
-          display: inline-block;
-          padding: 4px 12px;
-          border-radius: 12px;
-          font-size: 12px;
-          font-weight: 600;
-        }
-
-        .badge-success {
-          background: #d4edda;
-          color: #155724;
-        }
-
-        .badge-info {
-          background: #d1ecf1;
-          color: #0c5460;
-        }
-
-        .vectors-section {
-          background: white;
-          border-radius: 8px;
-          padding: 30px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .vectors-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 20px;
-        }
-
-        .vectors-header h2 {
-          margin: 0;
-          font-size: 24px;
-          color: #2c3e50;
-        }
-
-        .vectors-list {
-          display: flex;
-          flex-direction: column;
-          gap: 15px;
-        }
-
-        .vector-item {
-          border: 1px solid #e1e8ed;
-          border-radius: 6px;
-          background: #ffffff;
-          overflow: hidden;
-          transition: box-shadow 0.2s;
-        }
-
-        .vector-item:hover {
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .vector-item-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 15px;
-          background: #f8f9fa;
-        }
-
-        .vector-id-link {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          transition: opacity 0.2s;
-        }
-
-        .vector-id-link:hover {
-          opacity: 0.7;
-        }
-
-        .vector-id-badge {
-          font-family: monospace;
-          font-size: 14px;
-          color: #3498db;
-          font-weight: 600;
-        }
-
-        .expand-icon {
-          color: #7f8c8d;
-          font-size: 12px;
-        }
-
-        .vector-dims {
-          font-size: 12px;
-          color: #7f8c8d;
-          background: #e1e8ed;
-          padding: 4px 12px;
-          border-radius: 12px;
-        }
-
-        .vector-details {
-          padding: 15px;
-          border-top: 1px solid #e1e8ed;
-          animation: slideDown 0.2s ease-out;
-        }
-
-        @keyframes slideDown {
-          from {
-            opacity: 0;
-            max-height: 0;
-          }
-          to {
-            opacity: 1;
-            max-height: 500px;
-          }
-        }
-
-        .vector-details-section {
-          margin-bottom: 15px;
-        }
-
-        .vector-details-section:last-child {
-          margin-bottom: 0;
-        }
-
-        .detail-label {
-          font-size: 12px;
-          font-weight: 600;
-          color: #7f8c8d;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          margin-bottom: 8px;
-        }
-
-        .values-preview {
-          display: flex;
-          align-items: start;
-          gap: 10px;
-        }
-
-        .values-text {
-          font-family: monospace;
-          font-size: 12px;
-          color: #2c3e50;
-          background: #f8f9fa;
-          padding: 10px;
-          border-radius: 4px;
-          flex: 1;
-          word-break: break-all;
-        }
-
-        .btn-copy {
-          padding: 6px 12px;
-          background: #3498db;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          font-size: 11px;
-          cursor: pointer;
-          white-space: nowrap;
-          transition: background 0.2s;
-        }
-
-        .btn-copy:hover {
-          background: #2980b9;
-        }
-
-        .metadata-content {
-          font-family: monospace;
-          font-size: 12px;
-          color: #2c3e50;
-          background: #f8f9fa;
-          padding: 10px;
-          border-radius: 4px;
-          overflow-x: auto;
-          margin: 0;
-        }
-
-        .no-data {
-          font-size: 12px;
-          color: #95a5a6;
-          font-style: italic;
-        }
-
-        .empty-state {
-          text-align: center;
-          padding: 40px;
-          color: #7f8c8d;
-        }
-
-        .loading, .error-container {
-          text-align: center;
-          padding: 40px;
-        }
-
-        .error-container {
-          color: #e74c3c;
-        }
-      `}</style>
-
-      <div className="details-container">
-        <div className="header">
-          <h1>{database.name}</h1>
-          <div className="actions">
-            <button onClick={() => router.push('/databases')} className="btn btn-secondary">
-              Back to Databases
-            </button>
-            <button onClick={() => router.push(`/search?databaseId=${id}`)} className="btn btn-primary">
-              Search Vectors
-            </button>
-            <button onClick={() => setDeleteModalOpen(true)} className="btn btn-danger">
-              Delete Database
-            </button>
-          </div>
+      {/* ── Page header ── */}
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+        <h1 className="text-3xl font-bold text-gray-900">{database.name}</h1>
+        <div className="flex gap-3 flex-wrap">
+          <Button variant="secondary" onClick={() => router.push('/databases')}>
+            Back to Databases
+          </Button>
+          <Button onClick={() => router.push(`/search?databaseId=${id}`)}>
+            Search Vectors
+          </Button>
+          <Button variant="destructive" onClick={() => setDeleteModalOpen(true)}>
+            Delete Database
+          </Button>
         </div>
+      </div>
 
-        <div className="info-section">
-          <h2>Database Information</h2>
-          <div className="info-grid">
-            <div className="info-item">
-              <span className="info-label">Database ID</span>
-              <span className="info-value">{database.databaseId || id}</span>
-            </div>
-            <div className="info-item">
-              <span className="info-label">Name</span>
-              <span className="info-value">{database.name}</span>
-            </div>
-            <div className="info-item">
-              <span className="info-label">Description</span>
-              <span className="info-value">{database.description || 'No description'}</span>
-            </div>
-            <div className="info-item">
-              <span className="info-label">Vector Dimension</span>
-              <span className="info-value">{database.vectorDimension}</span>
-            </div>
-            <div className="info-item">
-              <span className="info-label">Index Type</span>
-              <span className="info-value">
-                <span className="badge badge-info">{database.indexType}</span>
-              </span>
-            </div>
-            <div className="info-item">
-              <span className="info-label">Status</span>
-              <span className="info-value">
-                <span className="badge badge-success">{database.status || 'active'}</span>
-              </span>
-            </div>
-            {database.created_at && (
-              <div className="info-item">
-                <span className="info-label">Created</span>
-                <span className="info-value">{new Date(database.created_at).toLocaleString()}</span>
+      {/* ── Database Info ── */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-xl">Database Information</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {[
+              { label: 'Database ID', value: database.databaseId || id },
+              { label: 'Name', value: database.name },
+              { label: 'Description', value: database.description || 'No description' },
+              { label: 'Vector Dimension', value: database.vectorDimension },
+              { label: 'Index Type', value: <StatusBadge status="info" label={database.indexType} /> },
+              { label: 'Status', value: <StatusBadge status={database.status || 'active'} /> },
+              ...(database.created_at ? [{ label: 'Created', value: new Date(database.created_at).toLocaleString() }] : []),
+              ...(database.updated_at ? [{ label: 'Updated', value: new Date(database.updated_at).toLocaleString() }] : []),
+            ].map(({ label, value }) => (
+              <div key={label}>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{label}</p>
+                <p className="text-sm font-medium text-gray-800">{value}</p>
               </div>
-            )}
-            {database.updated_at && (
-              <div className="info-item">
-                <span className="info-label">Updated</span>
-                <span className="info-value">{new Date(database.updated_at).toLocaleString()}</span>
-              </div>
-            )}
+            ))}
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        <div className="vectors-section">
-          <div className="vectors-header">
-            <h2>Recent Vectors</h2>
-            <button onClick={() => router.push(`/vectors?databaseId=${id}`)} className="btn btn-primary">
+      {/* ── Vectors section ── */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <CardTitle className="text-xl">Recent Vectors</CardTitle>
+            <Button size="sm" onClick={() => router.push(`/vectors?databaseId=${id}`)}>
               Manage Vectors
-            </button>
+            </Button>
           </div>
-
+        </CardHeader>
+        <CardContent>
           {vectors.length > 0 ? (
-            <div className="vectors-list">
+            <div className="space-y-3">
               {vectors.map((vector, index) => {
                 const isExpanded = expandedVectorId === vector.id;
                 const vectorLength = vector.values?.length || vector.vector?.length || database.vectorDimension;
 
                 return (
-                  <div key={vector.id || index} className="vector-item">
-                    <div className="vector-item-header">
-                      <div
-                        className="vector-id-link"
-                        onClick={() => toggleVectorExpand(vector.id)}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <span className="vector-id-badge">ID: {vector.id}</span>
-                        <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
+                  <div
+                    key={vector.id || index}
+                    className="border border-gray-200 rounded-xl overflow-hidden"
+                  >
+                    <div
+                      className="flex items-center justify-between px-4 py-3 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+                      onClick={() => toggleVectorExpand(vector.id)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm font-semibold text-indigo-600">
+                          ID: {vector.id}
+                        </span>
+                        <span className="text-gray-400 text-xs">{isExpanded ? '▼' : '▶'}</span>
                       </div>
-                      <div className="vector-dims">
+                      <span className="text-xs text-gray-500 bg-gray-200 px-2.5 py-1 rounded-full">
                         {vectorLength} dimensions
-                      </div>
+                      </span>
                     </div>
 
                     {isExpanded && (
-                      <div className="vector-details">
-                        <div className="vector-details-section">
-                          <div className="detail-label">Vector Values:</div>
-                          <div className="vector-values">
-                            {vector.values ? (
-                              <div className="values-preview">
-                                <span className="values-text">
-                                  [{vector.values.slice(0, 10).join(', ')}
-                                  {vector.values.length > 10 ? `, ... (${vector.values.length - 10} more)` : ''}]
-                                </span>
-                                <button
-                                  className="btn-copy"
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(JSON.stringify(vector.values));
-                                    alert('Vector values copied to clipboard!');
-                                  }}
-                                >
-                                  Copy All
-                                </button>
+                      <div className="px-4 py-4 border-t border-gray-200 space-y-3">
+                        <div>
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                            Vector Values
+                          </p>
+                          {vector.values ? (
+                            <div className="flex items-start gap-3">
+                              <div className="flex-1 font-mono text-xs text-gray-700 bg-gray-50 px-3 py-2 rounded break-all">
+                                [{vector.values.slice(0, 10).join(', ')}
+                                {vector.values.length > 10 ? `, ... (${vector.values.length - 10} more)` : ''}]
                               </div>
-                            ) : (
-                              <span className="no-data">No vector data available</span>
-                            )}
-                          </div>
+                              <button
+                                className="px-2.5 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors whitespace-nowrap"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(JSON.stringify(vector.values));
+                                  alert('Vector values copied to clipboard!');
+                                }}
+                              >
+                                Copy All
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-400 italic">No vector data available</p>
+                          )}
                         </div>
 
                         {vector.metadata && Object.keys(vector.metadata).length > 0 && (
-                          <div className="vector-details-section">
-                            <div className="detail-label">Metadata:</div>
-                            <pre className="metadata-content">
+                          <div>
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                              Metadata
+                            </p>
+                            <pre className="font-mono text-xs text-gray-700 bg-gray-50 px-3 py-2 rounded overflow-x-auto m-0">
                               {JSON.stringify(vector.metadata, null, 2)}
                             </pre>
                           </div>
@@ -593,55 +236,56 @@ export default function DatabaseDetails() {
               })}
             </div>
           ) : (
-            <div className="empty-state">
-              <p>No vectors in this database yet.</p>
-              <button onClick={() => router.push(`/vectors?databaseId=${id}`)} className="btn btn-primary">
-                Add Vectors
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {deleteModalOpen && (
-        <div className="modal-overlay" onClick={() => setDeleteModalOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3 className="modal-header">Delete Database</h3>
-            <p className="delete-warning">
-              This will permanently delete <strong>{database.name}</strong> and all its vectors. This action cannot be undone.
-            </p>
-            <p className="delete-warning">
-              Type <strong>{database.name}</strong> to confirm:
-            </p>
-            <input
-              type="text"
-              className="delete-input"
-              placeholder="Enter database name"
-              value={deleteConfirmName}
-              onChange={(e) => setDeleteConfirmName(e.target.value)}
-              autoFocus
+            <EmptyState
+              icon="📦"
+              title="No vectors in this database yet"
+              action={
+                <Button size="sm" onClick={() => router.push(`/vectors?databaseId=${id}`)}>
+                  Add Vectors
+                </Button>
+              }
             />
-            <div className="modal-actions">
-              <button
-                className="btn btn-secondary"
-                onClick={() => {
-                  setDeleteModalOpen(false);
-                  setDeleteConfirmName('');
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn btn-danger"
-                disabled={deleteConfirmName !== database.name || deleting}
-                onClick={handleDeleteDatabase}
-              >
-                {deleting ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
-          </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Delete Confirmation Modal ── */}
+      <Modal
+        open={deleteModalOpen}
+        onClose={() => { setDeleteModalOpen(false); setDeleteConfirmName(''); }}
+        title="Delete Database"
+      >
+        <p className="text-sm text-gray-600 mb-3">
+          This will permanently delete <strong className="text-gray-900">{database.name}</strong> and
+          all its vectors. This action cannot be undone.
+        </p>
+        <p className="text-sm text-gray-600 mb-3">
+          Type <strong className="text-gray-900">{database.name}</strong> to confirm:
+        </p>
+        <input
+          type="text"
+          className={inputCls}
+          placeholder="Enter database name"
+          value={deleteConfirmName}
+          onChange={(e) => setDeleteConfirmName(e.target.value)}
+          autoFocus
+        />
+        <div className="flex justify-end gap-3 mt-5">
+          <Button
+            variant="secondary"
+            onClick={() => { setDeleteModalOpen(false); setDeleteConfirmName(''); }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={deleteConfirmName !== database.name || deleting}
+            onClick={handleDeleteDatabase}
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
+          </Button>
         </div>
-      )}
+      </Modal>
     </Layout>
   );
 }

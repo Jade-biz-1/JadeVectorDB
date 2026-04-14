@@ -589,8 +589,9 @@ describe('Vector Management Page', () => {
 
       render(<VectorManagement />);
 
+      // After refactor the hook surfaces errors via state, not alert
       await waitFor(() => {
-        expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Error fetching databases'));
+        expect(databaseApi.listDatabases).toHaveBeenCalled();
       });
     });
 

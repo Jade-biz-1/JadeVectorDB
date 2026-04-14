@@ -1,6 +1,12 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { monitoringApi, databaseApi, vectorApi } from '../lib/api';
+import {
+  Button,
+  Card, CardHeader, CardTitle, CardContent,
+  EmptyState,
+  StatusBadge,
+} from '../components/ui';
 
 export default function MonitoringDashboard() {
   const [systemStatus, setSystemStatus] = useState(null);
@@ -19,10 +25,8 @@ export default function MonitoringDashboard() {
   const fetchSystemStatus = async () => {
     setLoading(true);
     try {
-      // Fetch real system status from backend
       const response = await monitoringApi.systemStatus();
 
-      // Set system status
       setSystemStatus({
         status: response.status || 'operational',
         checks: response.checks || {
@@ -35,7 +39,6 @@ export default function MonitoringDashboard() {
         timestamp: response.timestamp || new Date().toISOString()
       });
 
-      // Extract metrics from response - map backend field names to frontend state
       const perf = response.performance || {};
       const sys = response.system || {};
       setMetrics({
@@ -50,7 +53,6 @@ export default function MonitoringDashboard() {
       setLastUpdated(new Date());
     } catch (error) {
       console.error('Error fetching system status:', error);
-      // Fallback to basic status
       setSystemStatus({
         status: 'unknown',
         checks: {},
@@ -66,20 +68,17 @@ export default function MonitoringDashboard() {
       const response = await databaseApi.listDatabases();
       const databasesData = response.databases || [];
 
-      // Fetch per-database vector counts in parallel
       const formattedDbs = await Promise.all(databasesData.map(async (db) => {
         const dbId = db.databaseId || db.id;
         let vectorCount = db.stats?.vectorCount || 0;
         let indexCount = db.stats?.indexCount || 0;
         let storageSize = db.stats?.storageSize || '0 KB';
 
-        // If stats not included in list response, fetch vector count directly
         if (!db.stats) {
           try {
             const vecResponse = await vectorApi.listVectors(dbId, 1, 0);
             vectorCount = vecResponse.total || 0;
-            indexCount = 1; // Each database has its configured index
-            // Estimate storage: vectors * dimension * 4 bytes (float32)
+            indexCount = 1;
             const dim = db.vectorDimension || 0;
             const bytes = vectorCount * dim * 4;
             if (bytes >= 1024 * 1024) {
@@ -114,7 +113,6 @@ export default function MonitoringDashboard() {
   useEffect(() => {
     fetchSystemStatus();
     fetchDatabases();
-    // Refresh status every 30 seconds
     const interval = setInterval(() => {
       fetchSystemStatus();
       fetchDatabases();
@@ -122,474 +120,180 @@ export default function MonitoringDashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  const thCls = 'text-left px-4 py-3 border-b-2 border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50';
+  const tdCls = 'px-4 py-3 border-b border-gray-100 text-sm text-gray-700';
+
+  // Determine progress bar color
+  const progressColor = (value) => {
+    if (value > 80) return 'bg-red-500';
+    if (value > 60) return 'bg-amber-400';
+    return 'bg-emerald-500';
+  };
+
   return (
     <Layout title="Monitoring Dashboard - JadeVectorDB">
-      <style jsx>{`
-        .monitoring-container {
-          max-width: 1400px;
-          margin: 0 auto;
-          padding: 20px;
-        }
-
-        .page-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 30px;
-        }
-
-        .header-left h1 {
-          font-size: 32px;
-          font-weight: 700;
-          color: #2c3e50;
-          margin: 0 0 5px 0;
-        }
-
-        .last-updated {
-          font-size: 14px;
-          color: #7f8c8d;
-        }
-
-        .btn-refresh {
-          padding: 10px 20px;
-          background: #3498db;
-          color: white;
-          border: none;
-          border-radius: 6px;
-          cursor: pointer;
-          font-size: 14px;
-          font-weight: 500;
-          transition: all 0.3s ease;
-        }
-
-        .btn-refresh:hover:not(:disabled) {
-          background: #2980b9;
-        }
-
-        .btn-refresh:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .card {
-          background: white;
-          border-radius: 8px;
-          padding: 25px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-          margin-bottom: 25px;
-        }
-
-        .card-title {
-          font-size: 20px;
-          font-weight: 600;
-          color: #2c3e50;
-          margin: 0 0 20px 0;
-        }
-
-        .metrics-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 20px;
-        }
-
-        .metric-box {
-          background: #f8f9fa;
-          padding: 20px;
-          border-radius: 6px;
-        }
-
-        .metric-value {
-          font-size: 28px;
-          font-weight: 700;
-          color: #3498db;
-          margin-bottom: 5px;
-        }
-
-        .metric-value.status-ok {
-          color: #27ae60;
-        }
-
-        .metric-label {
-          font-size: 14px;
-          color: #7f8c8d;
-        }
-
-        .grid-3 {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-          gap: 25px;
-          margin-bottom: 25px;
-        }
-
-        .health-checks {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-
-        .health-check-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .health-check-label {
-          font-size: 14px;
-          font-weight: 500;
-          color: #2c3e50;
-          text-transform: capitalize;
-        }
-
-        .status-badge {
-          display: inline-flex;
-          padding: 4px 12px;
-          border-radius: 12px;
-          font-size: 12px;
-          font-weight: 600;
-        }
-
-        .status-badge.ok {
-          background: #d4edda;
-          color: #155724;
-        }
-
-        .status-badge.error {
-          background: #f8d7da;
-          color: #721c24;
-        }
-
-        .status-badge.warning {
-          background: #fff3cd;
-          color: #856404;
-        }
-
-        .performance-metrics {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
-
-        .metric-row {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .metric-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .metric-name {
-          font-size: 14px;
-          font-weight: 500;
-          color: #2c3e50;
-        }
-
-        .metric-number {
-          font-size: 14px;
-          font-weight: 600;
-          color: #3498db;
-        }
-
-        .progress-bar {
-          width: 100%;
-          height: 8px;
-          background: #ecf0f1;
-          border-radius: 4px;
-          overflow: hidden;
-        }
-
-        .progress-fill {
-          height: 100%;
-          background: #3498db;
-          border-radius: 4px;
-          transition: width 0.3s ease;
-        }
-
-        .progress-fill.green {
-          background: #27ae60;
-        }
-
-        .progress-fill.yellow {
-          background: #f39c12;
-        }
-
-        .progress-fill.red {
-          background: #e74c3c;
-        }
-
-        .activity-list {
-          display: flex;
-          flex-direction: column;
-          gap: 15px;
-        }
-
-        .activity-item {
-          display: flex;
-          gap: 12px;
-        }
-
-        .activity-dot {
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
-          margin-top: 5px;
-          flex-shrink: 0;
-        }
-
-        .activity-dot.green {
-          background: #27ae60;
-        }
-
-        .activity-dot.blue {
-          background: #3498db;
-        }
-
-        .activity-dot.yellow {
-          background: #f39c12;
-        }
-
-        .activity-content {
-          flex: 1;
-        }
-
-        .activity-title {
-          font-size: 14px;
-          font-weight: 500;
-          color: #2c3e50;
-          margin-bottom: 2px;
-        }
-
-        .activity-description {
-          font-size: 13px;
-          color: #7f8c8d;
-          margin-bottom: 3px;
-        }
-
-        .activity-time {
-          font-size: 12px;
-          color: #95a5a6;
-        }
-
-        .table-container {
-          overflow-x: auto;
-        }
-
-        table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-
-        thead {
-          background: #f8f9fa;
-        }
-
-        th {
-          text-align: left;
-          padding: 12px 15px;
-          border-bottom: 2px solid #ecf0f1;
-          font-size: 12px;
-          color: #7f8c8d;
-          text-transform: uppercase;
-          font-weight: 600;
-        }
-
-        td {
-          padding: 15px;
-          border-bottom: 1px solid #ecf0f1;
-          font-size: 14px;
-          color: #2c3e50;
-        }
-
-        tbody tr:hover {
-          background: #f8f9fa;
-        }
-
-        .empty-state {
-          text-align: center;
-          padding: 40px;
-          color: #7f8c8d;
-        }
-      `}</style>
-
-      <div className="monitoring-container">
-        <div className="page-header">
-          <div className="header-left">
-            <h1>System Monitoring</h1>
-            {lastUpdated && (
-              <div className="last-updated">
-                Last updated: {lastUpdated.toLocaleTimeString()}
-              </div>
-            )}
-          </div>
-          <button
-            onClick={() => {
-              fetchSystemStatus();
-              fetchDatabases();
-            }}
-            disabled={loading}
-            className="btn-refresh"
-          >
-            {loading ? 'Refreshing...' : 'Refresh Status'}
-          </button>
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-1">System Monitoring</h1>
+          {lastUpdated && (
+            <p className="text-sm text-gray-500">Last updated: {lastUpdated.toLocaleTimeString()}</p>
+          )}
         </div>
+        <Button
+          onClick={() => { fetchSystemStatus(); fetchDatabases(); }}
+          disabled={loading}
+          variant="secondary"
+        >
+          {loading ? 'Refreshing…' : 'Refresh Status'}
+        </Button>
+      </div>
 
-        <div className="card">
-          <h2 className="card-title">System Overview</h2>
-          <div className="metrics-grid">
-            <div className="metric-box">
-              <div className="metric-value status-ok">
-                {systemStatus?.status === 'operational' ? 'Operational' : systemStatus?.status || 'Unknown'}
+      {/* ── System Overview ── */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>System Overview</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { value: systemStatus?.status === 'operational' ? 'Operational' : systemStatus?.status || 'Unknown', label: 'Overall Status', isStatus: true },
+              { value: metrics.totalDatabases, label: 'Total Databases' },
+              { value: metrics.totalVectors.toLocaleString(), label: 'Total Vectors' },
+              { value: metrics.uptime, label: 'System Uptime' },
+            ].map(({ value, label, isStatus }) => (
+              <div key={label} className="bg-gray-50 rounded-xl p-4">
+                {isStatus
+                  ? <StatusBadge status={systemStatus?.status === 'operational' ? 'active' : 'warning'} label={String(value)} className="mb-1" />
+                  : <p className="text-2xl font-bold text-indigo-600 mb-1">{value}</p>
+                }
+                <p className="text-sm text-gray-500">{label}</p>
               </div>
-              <div className="metric-label">Overall Status</div>
-            </div>
-            <div className="metric-box">
-              <div className="metric-value">{metrics.totalDatabases}</div>
-              <div className="metric-label">Total Databases</div>
-            </div>
-            <div className="metric-box">
-              <div className="metric-value">{metrics.totalVectors.toLocaleString()}</div>
-              <div className="metric-label">Total Vectors</div>
-            </div>
-            <div className="metric-box">
-              <div className="metric-value">{metrics.uptime}</div>
-              <div className="metric-label">System Uptime</div>
-            </div>
+            ))}
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        <div className="grid-3">
-          <div className="card">
-            <h2 className="card-title">Performance Metrics</h2>
-            <div className="performance-metrics">
-              <div className="metric-row">
-                <div className="metric-header">
-                  <span className="metric-name">Queries Per Second</span>
-                  <span className="metric-number">{metrics.qps}</span>
-                </div>
-                <div className="progress-bar">
-                  <div
-                    className="progress-fill green"
-                    style={{ width: `${Math.min(100, (metrics.qps / 100) * 100)}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="metric-row">
-                <div className="metric-header">
-                  <span className="metric-name">Avg Query Time (ms)</span>
-                  <span className="metric-number">{metrics.avgQueryTime}</span>
-                </div>
-                <div className="progress-bar">
-                  <div
-                    className="progress-fill"
-                    style={{ width: `${Math.min(100, 100 - (metrics.avgQueryTime / 1000) * 100)}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="metric-row">
-                <div className="metric-header">
-                  <span className="metric-name">Storage Utilization</span>
-                  <span className="metric-number">{metrics.storageUsed}%</span>
-                </div>
-                <div className="progress-bar">
-                  <div
-                    className={`progress-fill ${metrics.storageUsed > 80 ? 'red' : metrics.storageUsed > 60 ? 'yellow' : 'green'}`}
-                    style={{ width: `${metrics.storageUsed}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <h2 className="card-title">Health Checks</h2>
-            <div className="health-checks">
-              {systemStatus && Object.keys(systemStatus.checks).length > 0 ? (
-                Object.entries(systemStatus.checks).map(([service, status]) => (
-                  <div key={service} className="health-check-item">
-                    <span className="health-check-label">{service}</span>
-                    <span className={`status-badge ${status === 'ok' ? 'ok' : 'error'}`}>
-                      {status}
-                    </span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
+        {/* ── Performance Metrics ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Performance Metrics</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-5">
+              {[
+                { name: 'Queries Per Second', value: metrics.qps, max: 100, pct: Math.min(100, (metrics.qps / 100) * 100) },
+                { name: 'Avg Query Time (ms)', value: metrics.avgQueryTime, max: 1000, pct: Math.min(100, 100 - (metrics.avgQueryTime / 1000) * 100) },
+                { name: 'Storage Utilization', value: `${metrics.storageUsed}%`, max: 100, pct: metrics.storageUsed, colored: true },
+              ].map(({ name, value, pct, colored }) => (
+                <div key={name}>
+                  <div className="flex justify-between text-sm mb-1.5">
+                    <span className="font-medium text-gray-700">{name}</span>
+                    <span className="font-semibold text-indigo-600">{value}</span>
                   </div>
-                ))
-              ) : (
-                <div className="empty-state">No health check data available</div>
-              )}
+                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${colored ? progressColor(pct) : 'bg-indigo-500'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
+          </CardContent>
+        </Card>
 
-          <div className="card">
-            <h2 className="card-title">Recent Activity</h2>
-            <div className="activity-list">
-              <div className="activity-item">
-                <div className="activity-dot green" />
-                <div className="activity-content">
-                  <div className="activity-title">System Started</div>
-                  <div className="activity-description">JadeVectorDB initialized successfully</div>
-                  <div className="activity-time">Today</div>
-                </div>
+        {/* ── Health Checks ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Health Checks</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {systemStatus && Object.keys(systemStatus.checks).length > 0 ? (
+              <div className="space-y-3">
+                {Object.entries(systemStatus.checks).map(([service, status]) => (
+                  <div key={service} className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700 capitalize">{service}</span>
+                    <StatusBadge status={status === 'ok' ? 'active' : 'error'} label={status} />
+                  </div>
+                ))}
               </div>
-              <div className="activity-item">
-                <div className="activity-dot blue" />
-                <div className="activity-content">
-                  <div className="activity-title">Database Activity</div>
-                  <div className="activity-description">Processing vector operations</div>
-                  <div className="activity-time">Ongoing</div>
-                </div>
-              </div>
-              <div className="activity-item">
-                <div className="activity-dot yellow" />
-                <div className="activity-content">
-                  <div className="activity-title">Monitoring Active</div>
-                  <div className="activity-description">Real-time metrics collection enabled</div>
-                  <div className="activity-time">Active</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <h2 className="card-title">Database Status</h2>
-          <div className="table-container">
-            {databases.length === 0 ? (
-              <div className="empty-state">No databases found or unable to fetch database information</div>
             ) : (
-              <table>
+              <EmptyState title="No health check data available" />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── Recent Activity ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Activity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {[
+                { dot: 'bg-emerald-500', title: 'System Started', desc: 'JadeVectorDB initialized successfully', time: 'Today' },
+                { dot: 'bg-indigo-500', title: 'Database Activity', desc: 'Processing vector operations', time: 'Ongoing' },
+                { dot: 'bg-amber-400', title: 'Monitoring Active', desc: 'Real-time metrics collection enabled', time: 'Active' },
+              ].map(({ dot, title, desc, time }) => (
+                <div key={title} className="flex gap-3">
+                  <span className={`w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0 ${dot}`} />
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{title}</p>
+                    <p className="text-sm text-gray-500">{desc}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{time}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Database Status Table ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Database Status</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {databases.length === 0 ? (
+            <div className="px-6 py-4">
+              <EmptyState icon="🗄️" title="No databases found" description="Unable to fetch database information" />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
                 <thead>
                   <tr>
-                    <th>Database Name</th>
-                    <th>Status</th>
-                    <th>Vectors</th>
-                    <th>Indexes</th>
-                    <th>Storage</th>
+                    <th className={thCls}>Database Name</th>
+                    <th className={thCls}>Status</th>
+                    <th className={thCls}>Vectors</th>
+                    <th className={thCls}>Indexes</th>
+                    <th className={thCls}>Storage</th>
                   </tr>
                 </thead>
                 <tbody>
                   {databases.map((db) => (
-                    <tr key={db.id}>
-                      <td>{db.name}</td>
-                      <td>
-                        <span className={`status-badge ${db.status === 'online' ? 'ok' : db.status === 'warning' ? 'warning' : 'error'}`}>
-                          {db.status}
-                        </span>
+                    <tr key={db.id} className="hover:bg-gray-50 transition-colors">
+                      <td className={tdCls}>{db.name}</td>
+                      <td className={tdCls}>
+                        <StatusBadge
+                          status={db.status === 'online' ? 'active' : db.status === 'warning' ? 'warning' : 'error'}
+                          label={db.status}
+                        />
                       </td>
-                      <td>{db.vectors.toLocaleString()}</td>
-                      <td>{db.indexes}</td>
-                      <td>{db.storage}</td>
+                      <td className={tdCls}>{db.vectors.toLocaleString()}</td>
+                      <td className={tdCls}>{db.indexes}</td>
+                      <td className={tdCls}>{db.storage}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            )}
-          </div>
-        </div>
-      </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </Layout>
   );
 }
