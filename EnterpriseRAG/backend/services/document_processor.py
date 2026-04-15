@@ -22,7 +22,7 @@ class DocumentProcessor:
     def _get_splitter(self):
         if self._text_splitter is None:
             try:
-                from langchain.text_splitter import RecursiveCharacterTextSplitter
+                from langchain_text_splitters import RecursiveCharacterTextSplitter
             except ImportError:
                 raise ImportError(
                     "langchain is required for production mode. "
