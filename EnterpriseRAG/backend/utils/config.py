@@ -56,7 +56,8 @@ class Settings(BaseSettings):
     similarity_threshold: float = 0.65
 
     # Embeddings
-    embedding_dimension: int = 384  # E5-small / nomic-embed-text
+    # nomic-embed-text → 768 dims; E5-small → 384 dims. Match your model.
+    embedding_dimension: int = 768  # nomic-embed-text default
 
     # LLM Parameters
     llm_temperature: float = 0.1

@@ -66,6 +66,8 @@ async def lifespan(app: FastAPI):
         mode=settings.mode,
         auth_enabled=bool(settings.rag_api_key),
     )
+    if not is_mock_mode():
+        await production_service.ensure_ready()
     yield
     # Close persistent HTTP clients on shutdown
     await production_service.aclose()

@@ -55,6 +55,58 @@ class ProductionRAGService:
         await self._ollama_client.aclose()
         log.info("http_clients_closed")
 
+    async def ensure_ready(self) -> None:
+        """Resolve/create the JadeVectorDB database at startup.
+
+        JadeVectorDB generates an internal ID (e.g. db_<timestamp>) that is
+        different from the human-readable name we configure. This method lists
+        existing databases, finds the one matching our configured name, and
+        stores its actual ID. If it doesn't exist yet, it creates it.
+        """
+        try:
+            await self._ensure_database_id()
+        except Exception as e:
+            # Non-fatal at startup — the first real query will fail cleanly and
+            # the health endpoint will report degraded status.
+            log.error("ensure_ready_failed", error=str(e))
+
+    async def _ensure_database_id(self) -> None:
+        configured_name = settings.jadevectordb_database_id
+        resp = await self._jade_client.get(
+            "/v1/databases", headers=self._get_auth_headers(), timeout=10
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        for db in data.get("databases", []):
+            if db.get("name") == configured_name:
+                self.database_id = db["databaseId"]
+                log.info(
+                    "jadevectordb_database_found",
+                    name=configured_name,
+                    database_id=self.database_id,
+                )
+                return
+
+        # Database doesn't exist yet — create it
+        payload = {
+            "name": configured_name,
+            "description": "RAG document store for EnterpriseRAG",
+            "vectorDimension": settings.embedding_dimension,
+            "indexType": "HNSW",
+        }
+        create_resp = await self._jade_client.post(
+            "/v1/databases", json=payload, headers=self._get_auth_headers(), timeout=10
+        )
+        create_resp.raise_for_status()
+        self.database_id = create_resp.json()["databaseId"]
+        log.info(
+            "jadevectordb_database_created",
+            name=configured_name,
+            database_id=self.database_id,
+            vector_dimension=settings.embedding_dimension,
+        )
+
     # ── Public API ────────────────────────────────────────────
 
     async def query(
