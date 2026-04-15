@@ -566,7 +566,10 @@ Answer:"""
             stats = resp.json()
             total = stats.get("total_vectors", 0)
             deleted = stats.get("deleted_vectors", 0)
-            if total > 0 and (deleted / total) > 0.10:
+            remaining = total - deleted
+            # Skip compaction when no live vectors remain — compacting an
+            # empty index corrupts the HNSW structure in JadeVectorDB.
+            if total > 0 and remaining > 0 and (deleted / total) > 0.10:
                 await self._jade_client.post(
                     f"/v1/databases/{self.database_id}/compact",
                     headers=self._get_auth_headers(),
