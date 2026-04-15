@@ -474,8 +474,9 @@ Answer:"""
         chunks: List[Dict[str, Any]],
         embeddings: List[List[float]],
         category: str,
+        batch_size: int = 100,
     ):
-        vectors = [
+        all_vectors = [
             {
                 "id": f"{doc_id}_chunk_{i}",
                 "values": embedding,
@@ -490,13 +491,22 @@ Answer:"""
             }
             for i, (chunk, embedding) in enumerate(zip(chunks, embeddings))
         ]
-        response = await self._jade_client.post(
-            f"/v1/databases/{self.database_id}/vectors/batch",
-            json={"vectors": vectors},
-            headers=self._get_auth_headers(),
-            timeout=60,
-        )
-        response.raise_for_status()
+        for start in range(0, len(all_vectors), batch_size):
+            batch = all_vectors[start : start + batch_size]
+            response = await self._jade_client.post(
+                f"/v1/databases/{self.database_id}/vectors/batch",
+                json={"vectors": batch},
+                headers=self._get_auth_headers(),
+                timeout=60,
+            )
+            response.raise_for_status()
+            log.info(
+                "vectors_stored",
+                doc_id=doc_id,
+                batch_start=start,
+                batch_end=start + len(batch),
+                total=len(all_vectors),
+            )
 
     async def _delete_vectors(self, doc_id: str) -> int:
         meta = self.db.get(doc_id)
