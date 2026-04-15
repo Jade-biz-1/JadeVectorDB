@@ -122,6 +122,7 @@ class ProductionRAGService:
         try:
             question_embedding = await self._generate_embedding(question)
             search_results = await self._search_vectors(question_embedding, category, top_k)
+            search_results = self._enrich_results(search_results)
             context = self._build_context(search_results)
             answer = await self._generate_answer(question, context)
             sources = self._extract_sources(search_results)
@@ -271,6 +272,9 @@ class ProductionRAGService:
                 embeddings.append(embedding)
                 self.db.update(doc_id, {"chunks_done": i + 1})
 
+            # Persist chunk texts in SQLite so search results can be enriched
+            self.db.chunks_insert_batch(doc_id, chunks)
+
             await self._store_vectors(doc_id, chunks, embeddings, category)
 
             self.db.update(doc_id, {
@@ -355,6 +359,7 @@ class ProductionRAGService:
                 except Exception:
                     pass
 
+            self.db.chunks_delete_for_doc(doc_id)
             self.db.delete(doc_id)
             asyncio.create_task(self._check_and_compact())
 
@@ -571,13 +576,21 @@ Answer:"""
 
     # ── Private: response helpers ─────────────────────────────
 
+    def _enrich_results(self, search_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Look up chunk text from SQLite and attach it to each search result."""
+        for result in search_results:
+            vector_id = result.get("vectorId", "")
+            chunk = self.db.chunk_get(vector_id) if vector_id else None
+            result["_chunk"] = chunk or {}
+        return search_results
+
     def _build_context(self, search_results: List[Dict[str, Any]]) -> str:
         parts = []
         for i, result in enumerate(search_results):
-            meta = result.get("vector", {}).get("metadata", {})
+            chunk = result.get("_chunk", {})
             parts.append(
-                f"[Source {i+1} - Page {meta.get('page', 'unknown')}, "
-                f"{meta.get('section', '')}]\n{meta.get('text', '')}\n"
+                f"[Source {i+1} - Page {chunk.get('page', 'unknown')}, "
+                f"{chunk.get('section', '')}]\n{chunk.get('text', '')}\n"
             )
         return "\n---\n".join(parts)
 
@@ -585,8 +598,8 @@ Answer:"""
         sources = []
         seen_docs: set = set()
         for result in search_results:
-            meta = result.get("vector", {}).get("metadata", {})
-            doc_id = meta.get("doc_id")
+            chunk = result.get("_chunk", {})
+            doc_id = chunk.get("doc_id")
             if doc_id in seen_docs:
                 continue
             seen_docs.add(doc_id)
@@ -594,10 +607,10 @@ Answer:"""
             sources.append(
                 SourceDocument(
                     doc_name=doc_meta.get("filename", "unknown"),
-                    page_numbers=str(meta.get("page", "unknown")),
-                    section=meta.get("section", ""),
-                    relevance=result.get("similarityScore", 0.0),
-                    excerpt=meta.get("text", "")[:200] + "...",
+                    page_numbers=str(chunk.get("page", "unknown")),
+                    section=chunk.get("section", ""),
+                    relevance=result.get("score", 0.0),
+                    excerpt=chunk.get("text", "")[:200] + "...",
                 )
             )
         return sources
@@ -605,7 +618,7 @@ Answer:"""
     def _calculate_confidence(self, search_results: List[Dict[str, Any]]) -> float:
         if not search_results:
             return 0.0
-        scores = [r.get("similarityScore", 0.0) for r in search_results[:3]]
+        scores = [r.get("score", 0.0) for r in search_results[:3]]
         return round(sum(scores) / len(scores), 2)
 
     def _get_auth_headers(self) -> Dict[str, str]:
