@@ -493,13 +493,23 @@ Answer:"""
         ]
         for start in range(0, len(all_vectors), batch_size):
             batch = all_vectors[start : start + batch_size]
-            response = await self._jade_client.post(
-                f"/v1/databases/{self.database_id}/vectors/batch",
-                json={"vectors": batch},
-                headers=self._get_auth_headers(),
-                timeout=60,
-            )
-            response.raise_for_status()
+            # Retry up to 3 times on transient disconnect errors
+            for attempt in range(3):
+                try:
+                    response = await self._jade_client.post(
+                        f"/v1/databases/{self.database_id}/vectors/batch",
+                        json={"vectors": batch},
+                        headers=self._get_auth_headers(),
+                        timeout=60,
+                    )
+                    response.raise_for_status()
+                    break
+                except (httpx.RemoteProtocolError, httpx.ConnectError) as e:
+                    if attempt == 2:
+                        raise
+                    wait = 2 ** attempt  # 1s, 2s
+                    log.warning("vectors_store_retry", doc_id=doc_id, attempt=attempt + 1, wait=wait, error=str(e))
+                    await asyncio.sleep(wait)
             log.info(
                 "vectors_stored",
                 doc_id=doc_id,
@@ -507,6 +517,8 @@ Answer:"""
                 batch_end=start + len(batch),
                 total=len(all_vectors),
             )
+            # Pace requests to avoid overwhelming JadeVectorDB
+            await asyncio.sleep(0.3)
 
     async def _delete_vectors(self, doc_id: str) -> int:
         meta = self.db.get(doc_id)
