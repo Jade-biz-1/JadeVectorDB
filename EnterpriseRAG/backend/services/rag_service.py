@@ -458,20 +458,32 @@ Instructions:
 
 Answer:"""
 
-        response = await self._ollama_client.post(
+        # Use streaming so bytes arrive incrementally — avoids read timeout
+        # on slow CPU inference where stream=False sends nothing until done.
+        import json as _json
+        tokens: List[str] = []
+        async with self._ollama_client.stream(
+            "POST",
             "/api/generate",
             json={
                 "model": settings.ollama_llm_model,
                 "prompt": prompt,
-                "stream": False,
+                "stream": True,
                 "options": {
                     "temperature": settings.llm_temperature,
                     "num_predict": settings.llm_max_tokens,
                 },
             },
-        )
-        response.raise_for_status()
-        return response.json()["response"]
+            timeout=settings.llm_timeout,
+        ) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if line:
+                    chunk = _json.loads(line)
+                    tokens.append(chunk.get("response", ""))
+                    if chunk.get("done"):
+                        break
+        return "".join(tokens)
 
     async def _store_vectors(
         self,
