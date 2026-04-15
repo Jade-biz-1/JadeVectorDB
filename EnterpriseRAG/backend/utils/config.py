@@ -77,7 +77,7 @@ class Settings(BaseSettings):
 
     # Timeouts (seconds)
     embedding_timeout: int = 30
-    llm_timeout: int = 300
+    llm_timeout: int = 600
     search_timeout: int = 10
 
     class Config:
