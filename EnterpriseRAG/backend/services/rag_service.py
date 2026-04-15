@@ -120,7 +120,7 @@ class ProductionRAGService:
         log.info("query_started", question=question[:120], category=category, top_k=top_k)
 
         try:
-            question_embedding = await self._generate_embedding(question)
+            question_embedding = await self._generate_embedding(question, is_query=True)
             search_results = await self._search_vectors(question_embedding, category, top_k)
             search_results = self._enrich_results(search_results)
             context = self._build_context(search_results)
@@ -405,10 +405,13 @@ class ProductionRAGService:
 
     # ── Private: JadeVectorDB / Ollama calls ─────────────────
 
-    async def _generate_embedding(self, text: str) -> List[float]:
+    async def _generate_embedding(self, text: str, is_query: bool = False) -> List[float]:
+        # nomic-embed-text requires task prefixes for retrieval quality:
+        # search_query: for questions, search_document: for indexed passages.
+        prefix = "search_query: " if is_query else "search_document: "
         response = await self._ollama_client.post(
             "/api/embeddings",
-            json={"model": settings.ollama_embedding_model, "prompt": text},
+            json={"model": settings.ollama_embedding_model, "prompt": prefix + text},
             timeout=settings.embedding_timeout,
         )
         response.raise_for_status()
