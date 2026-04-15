@@ -481,12 +481,12 @@ Answer:"""
                 "id": f"{doc_id}_chunk_{i}",
                 "values": embedding,
                 "metadata": {
-                    "doc_id": doc_id,
-                    "chunk_index": i,
-                    "text": chunk["text"],
-                    "page": chunk.get("page", "unknown"),
-                    "section": chunk.get("section", ""),
-                    "category": category,
+                    "doc_id": str(doc_id),
+                    "chunk_index": str(i),
+                    "text": str(chunk["text"]),
+                    "page": str(chunk.get("page", "unknown")),
+                    "section": str(chunk.get("section", "")),
+                    "category": str(category),
                 },
             }
             for i, (chunk, embedding) in enumerate(zip(chunks, embeddings))
