@@ -63,6 +63,11 @@ class MetadataDB:
                 )
             """)
             # Migrations from older schema
+            # Rename device_type → category FIRST (before adding category column)
+            try:
+                cur.execute("ALTER TABLE documents RENAME COLUMN device_type TO category")
+            except Exception:
+                pass
             for col, definition in [
                 ("file_path", "TEXT"),
                 ("category", "TEXT NOT NULL DEFAULT 'general'"),
@@ -71,11 +76,10 @@ class MetadataDB:
                     cur.execute(f"ALTER TABLE documents ADD COLUMN {col} {definition}")
                 except Exception:
                     pass  # Column already exists
-            # Rename device_type → category if upgrading from old schema
-            try:
-                cur.execute("ALTER TABLE documents RENAME COLUMN device_type TO category")
-            except Exception:
-                pass
+            # Drop orphaned device_type if category already exists (partial migration cleanup)
+            cols = {row[1] for row in cur.execute("PRAGMA table_info(documents)")}
+            if "device_type" in cols and "category" in cols:
+                cur.execute("ALTER TABLE documents DROP COLUMN device_type")
 
             # Stats table
             cur.execute("""
