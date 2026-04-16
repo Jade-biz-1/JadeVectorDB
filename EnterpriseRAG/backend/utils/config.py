@@ -46,7 +46,7 @@ class Settings(BaseSettings):
 
     # Ollama (Production Mode)
     ollama_url: str = "http://localhost:11434"
-    ollama_embedding_model: str = "nomic-embed-text"
+    ollama_embedding_model: str = "mxbai-embed-large"
     ollama_llm_model: str = "llama3.2:3b"
 
     # RAG Parameters
@@ -57,7 +57,7 @@ class Settings(BaseSettings):
 
     # Embeddings
     # nomic-embed-text → 768 dims; E5-small → 384 dims. Match your model.
-    embedding_dimension: int = 768  # nomic-embed-text default
+    embedding_dimension: int = 1024  # mxbai-embed-large default
 
     # LLM Parameters
     llm_temperature: float = 0.1

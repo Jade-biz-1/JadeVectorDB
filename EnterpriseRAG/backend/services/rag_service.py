@@ -406,12 +406,18 @@ class ProductionRAGService:
     # ── Private: JadeVectorDB / Ollama calls ─────────────────
 
     async def _generate_embedding(self, text: str, is_query: bool = False) -> List[float]:
-        # nomic-embed-text requires task prefixes for retrieval quality:
-        # search_query: for questions, search_document: for indexed passages.
-        prefix = "search_query: " if is_query else "search_document: "
+        # mxbai-embed-large: query prefix for retrieval, no prefix for documents.
+        # nomic-embed-text: "search_query:" / "search_document:" prefixes.
+        model = settings.ollama_embedding_model
+        if is_query and "mxbai" in model:
+            prompt = "Represent this sentence for searching relevant passages: " + text
+        elif "nomic" in model:
+            prompt = ("search_query: " if is_query else "search_document: ") + text
+        else:
+            prompt = text
         response = await self._ollama_client.post(
             "/api/embeddings",
-            json={"model": settings.ollama_embedding_model, "prompt": prefix + text},
+            json={"model": model, "prompt": prompt},
             timeout=settings.embedding_timeout,
         )
         response.raise_for_status()
@@ -494,51 +500,45 @@ Answer:"""
         chunks: List[Dict[str, Any]],
         embeddings: List[List[float]],
         category: str,
-        batch_size: int = 100,
     ):
-        all_vectors = [
-            {
-                "id": f"{doc_id}_chunk_{i}",
+        total = len(chunks)
+        log.info("vectors_store_started", doc_id=doc_id, total=total)
+        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+            vector_id = f"{doc_id}_chunk_{i}"
+            payload = {
+                "id": vector_id,
                 "values": embedding,
                 "metadata": {
                     "doc_id": str(doc_id),
                     "chunk_index": str(i),
-                    "text": str(chunk["text"]),
                     "page": str(chunk.get("page", "unknown")),
                     "section": str(chunk.get("section", "")),
                     "category": str(category),
                 },
             }
-            for i, (chunk, embedding) in enumerate(zip(chunks, embeddings))
-        ]
-        for start in range(0, len(all_vectors), batch_size):
-            batch = all_vectors[start : start + batch_size]
-            # Retry up to 3 times on transient disconnect errors
+            # Retry up to 3 times on transient errors
             for attempt in range(3):
                 try:
                     response = await self._jade_client.post(
-                        f"/v1/databases/{self.database_id}/vectors/batch",
-                        json={"vectors": batch},
+                        f"/v1/databases/{self.database_id}/vectors",
+                        json=payload,
                         headers=self._get_auth_headers(),
-                        timeout=60,
+                        timeout=30,
                     )
                     response.raise_for_status()
                     break
                 except (httpx.RemoteProtocolError, httpx.ConnectError) as e:
                     if attempt == 2:
                         raise
-                    wait = 2 ** attempt  # 1s, 2s
-                    log.warning("vectors_store_retry", doc_id=doc_id, attempt=attempt + 1, wait=wait, error=str(e))
+                    wait = 2 ** attempt
+                    log.warning("vector_store_retry", doc_id=doc_id, vector_id=vector_id, attempt=attempt + 1, error=str(e))
                     await asyncio.sleep(wait)
-            log.info(
-                "vectors_stored",
-                doc_id=doc_id,
-                batch_start=start,
-                batch_end=start + len(batch),
-                total=len(all_vectors),
-            )
-            # Pace requests to avoid overwhelming JadeVectorDB
-            await asyncio.sleep(0.3)
+
+            if (i + 1) % 100 == 0 or (i + 1) == total:
+                log.info("vectors_stored_progress", doc_id=doc_id, done=i + 1, total=total)
+            # Small pace to avoid overwhelming JadeVectorDB
+            if (i + 1) % 50 == 0:
+                await asyncio.sleep(0.1)
 
     async def _delete_vectors(self, doc_id: str) -> int:
         meta = self.db.get(doc_id)
