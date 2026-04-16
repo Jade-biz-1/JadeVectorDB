@@ -4,6 +4,7 @@ Production RAG service using JadeVectorDB + Ollama
 
 import asyncio
 import httpx
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +21,18 @@ from ..utils.config import settings
 from .document_processor import DocumentProcessor
 from .metadata_db import MetadataDB
 from ..logging_config import get_logger
+from ..metrics import (
+    rag_queries_total,
+    rag_query_duration_seconds,
+    rag_query_confidence,
+    rag_documents_processed_total,
+    rag_document_processing_duration_seconds,
+    rag_document_chunks,
+    rag_embedding_batch_duration_seconds,
+    rag_active_processing_tasks,
+    rag_stored_documents,
+    rag_stored_chunks,
+)
 
 log = get_logger(__name__)
 
@@ -55,6 +68,58 @@ class ProductionRAGService:
         await self._ollama_client.aclose()
         log.info("http_clients_closed")
 
+    async def ensure_ready(self) -> None:
+        """Resolve/create the JadeVectorDB database at startup.
+
+        JadeVectorDB generates an internal ID (e.g. db_<timestamp>) that is
+        different from the human-readable name we configure. This method lists
+        existing databases, finds the one matching our configured name, and
+        stores its actual ID. If it doesn't exist yet, it creates it.
+        """
+        try:
+            await self._ensure_database_id()
+        except Exception as e:
+            # Non-fatal at startup — the first real query will fail cleanly and
+            # the health endpoint will report degraded status.
+            log.error("ensure_ready_failed", error=str(e))
+
+    async def _ensure_database_id(self) -> None:
+        configured_name = settings.jadevectordb_database_id
+        resp = await self._jade_client.get(
+            "/v1/databases", headers=self._get_auth_headers(), timeout=10
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        for db in data.get("databases", []):
+            if db.get("name") == configured_name:
+                self.database_id = db["databaseId"]
+                log.info(
+                    "jadevectordb_database_found",
+                    name=configured_name,
+                    database_id=self.database_id,
+                )
+                return
+
+        # Database doesn't exist yet — create it
+        payload = {
+            "name": configured_name,
+            "description": "RAG document store for EnterpriseRAG",
+            "vectorDimension": settings.embedding_dimension,
+            "indexType": "HNSW",
+        }
+        create_resp = await self._jade_client.post(
+            "/v1/databases", json=payload, headers=self._get_auth_headers(), timeout=10
+        )
+        create_resp.raise_for_status()
+        self.database_id = create_resp.json()["databaseId"]
+        log.info(
+            "jadevectordb_database_created",
+            name=configured_name,
+            database_id=self.database_id,
+            vector_dimension=settings.embedding_dimension,
+        )
+
     # ── Public API ────────────────────────────────────────────
 
     async def query(
@@ -64,17 +129,23 @@ class ProductionRAGService:
         top_k: int = 5,
     ) -> QueryResponse:
         start_time = datetime.utcnow()
+        _t0 = time.perf_counter()
         self.db.increment_query_count()
         log.info("query_started", question=question[:120], category=category, top_k=top_k)
+        _cat = category or "all"
 
         try:
-            question_embedding = await self._generate_embedding(question)
+            question_embedding = await self._generate_embedding(question, is_query=True)
             search_results = await self._search_vectors(question_embedding, category, top_k)
+            search_results = self._enrich_results(search_results)
             context = self._build_context(search_results)
             answer = await self._generate_answer(question, context)
             sources = self._extract_sources(search_results)
             processing_time = int((datetime.utcnow() - start_time).total_seconds() * 1000)
             confidence = self._calculate_confidence(search_results)
+
+            rag_queries_total.labels(status="success", category=_cat).inc()
+            rag_query_confidence.observe(confidence)
 
             log.info(
                 "query_completed",
@@ -84,7 +155,7 @@ class ProductionRAGService:
             )
             self.db.log_query(
                 question=question,
-                category=category or "all",
+                category=_cat,
                 mode="production",
                 confidence=confidence,
                 processing_time_ms=processing_time,
@@ -96,7 +167,7 @@ class ProductionRAGService:
                 answer=answer,
                 sources=sources,
                 query=question,
-                category=category or "all",
+                category=_cat,
                 timestamp=datetime.utcnow().isoformat() + "Z",
                 confidence=confidence,
                 processing_time_ms=processing_time,
@@ -104,10 +175,11 @@ class ProductionRAGService:
             )
 
         except Exception as e:
+            rag_queries_total.labels(status="error", category=_cat).inc()
             log.error("query_failed", error=str(e), question=question[:120])
             self.db.log_query(
                 question=question,
-                category=category or "all",
+                category=_cat,
                 mode="production",
                 confidence=0.0,
                 processing_time_ms=0,
@@ -119,12 +191,14 @@ class ProductionRAGService:
                 answer=f"Error processing query: {str(e)}",
                 sources=[],
                 query=question,
-                category=category or "all",
+                category=_cat,
                 timestamp=datetime.utcnow().isoformat() + "Z",
                 confidence=0.0,
                 processing_time_ms=0,
                 mode="production",
             )
+        finally:
+            rag_query_duration_seconds.observe(time.perf_counter() - _t0)
 
     async def upload_document(
         self, filename: str, category: str = "general", file_content: bytes = b""
@@ -197,10 +271,28 @@ class ProductionRAGService:
             "message": f"Document '{meta['filename']}' is being reprocessed",
         }
 
+    def _refresh_doc_gauges(self) -> None:
+        """Update rag_stored_* gauges from the SQLite metadata store."""
+        try:
+            docs = self.db.list_all(limit=10_000)
+            counts: Dict[str, int] = {}
+            for d in docs:
+                counts[d.get("status", "unknown")] = counts.get(d.get("status", "unknown"), 0) + 1
+            for status in ("complete", "processing", "failed", "pending"):
+                rag_stored_documents.labels(status=status).set(counts.get(status, 0))
+            rag_stored_chunks.set(
+                sum(d.get("chunk_count", 0) for d in docs if d.get("status") == "complete")
+            )
+        except Exception:
+            pass
+
     async def _process_document(
         self, doc_id: str, filename: str, category: str, file_content: bytes
     ):
         log.info("document_processing_started", doc_id=doc_id, filename=filename)
+        rag_active_processing_tasks.inc()
+        _t0 = time.perf_counter()
+        _status = "failed"
         try:
             text = await self.doc_processor.extract_text(filename, file_content)
             chunks = await self.doc_processor.chunk_text(text)
@@ -209,15 +301,21 @@ class ProductionRAGService:
             log.info("document_chunked", doc_id=doc_id, total_chunks=total_chunks)
 
             embeddings = []
+            _embed_t0 = time.perf_counter()
             for i, chunk in enumerate(chunks):
                 try:
                     embedding = await self._generate_embedding(chunk["text"])
                 except Exception as embed_err:
                     raise RuntimeError(
-                        f"Embedding failed on chunk {i + 1}/{total_chunks}: {embed_err}"
+                        f"Embedding failed on chunk {i + 1}/{total_chunks}: "
+                        f"{type(embed_err).__name__}: {embed_err!r}"
                     ) from embed_err
                 embeddings.append(embedding)
                 self.db.update(doc_id, {"chunks_done": i + 1})
+            rag_embedding_batch_duration_seconds.observe(time.perf_counter() - _embed_t0)
+
+            # Persist chunk texts in SQLite so search results can be enriched
+            self.db.chunks_insert_batch(doc_id, chunks)
 
             await self._store_vectors(doc_id, chunks, embeddings, category)
 
@@ -229,10 +327,17 @@ class ProductionRAGService:
                 "error": None,
             })
             log.info("document_processing_complete", doc_id=doc_id, chunks=total_chunks)
+            _status = "success"
+            rag_document_chunks.observe(total_chunks)
 
         except Exception as e:
             log.error("document_processing_failed", doc_id=doc_id, error=str(e))
             self.db.update(doc_id, {"status": "failed", "error": str(e)})
+        finally:
+            rag_documents_processed_total.labels(status=_status).inc()
+            rag_document_processing_duration_seconds.observe(time.perf_counter() - _t0)
+            rag_active_processing_tasks.dec()
+            self._refresh_doc_gauges()
 
     async def get_processing_status(self, doc_id: str) -> ProcessingStatus:
         meta = self.db.get(doc_id)
@@ -303,6 +408,7 @@ class ProductionRAGService:
                 except Exception:
                     pass
 
+            self.db.chunks_delete_for_doc(doc_id)
             self.db.delete(doc_id)
             asyncio.create_task(self._check_and_compact())
 
@@ -348,10 +454,19 @@ class ProductionRAGService:
 
     # ── Private: JadeVectorDB / Ollama calls ─────────────────
 
-    async def _generate_embedding(self, text: str) -> List[float]:
+    async def _generate_embedding(self, text: str, is_query: bool = False) -> List[float]:
+        # mxbai-embed-large: query prefix for retrieval, no prefix for documents.
+        # nomic-embed-text: "search_query:" / "search_document:" prefixes.
+        model = settings.ollama_embedding_model
+        if is_query and "mxbai" in model:
+            prompt = "Represent this sentence for searching relevant passages: " + text
+        elif "nomic" in model:
+            prompt = ("search_query: " if is_query else "search_document: ") + text
+        else:
+            prompt = text
         response = await self._ollama_client.post(
             "/api/embeddings",
-            json={"model": settings.ollama_embedding_model, "prompt": text},
+            json={"model": model, "prompt": prompt},
             timeout=settings.embedding_timeout,
         )
         response.raise_for_status()
@@ -401,20 +516,32 @@ Instructions:
 
 Answer:"""
 
-        response = await self._ollama_client.post(
+        # Use streaming so bytes arrive incrementally — avoids read timeout
+        # on slow CPU inference where stream=False sends nothing until done.
+        import json as _json
+        tokens: List[str] = []
+        async with self._ollama_client.stream(
+            "POST",
             "/api/generate",
             json={
                 "model": settings.ollama_llm_model,
                 "prompt": prompt,
-                "stream": False,
+                "stream": True,
                 "options": {
                     "temperature": settings.llm_temperature,
                     "num_predict": settings.llm_max_tokens,
                 },
             },
-        )
-        response.raise_for_status()
-        return response.json()["response"]
+            timeout=settings.llm_timeout,
+        ) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if line:
+                    chunk = _json.loads(line)
+                    tokens.append(chunk.get("response", ""))
+                    if chunk.get("done"):
+                        break
+        return "".join(tokens)
 
     async def _store_vectors(
         self,
@@ -423,28 +550,44 @@ Answer:"""
         embeddings: List[List[float]],
         category: str,
     ):
-        vectors = [
-            {
-                "id": f"{doc_id}_chunk_{i}",
+        total = len(chunks)
+        log.info("vectors_store_started", doc_id=doc_id, total=total)
+        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+            vector_id = f"{doc_id}_chunk_{i}"
+            payload = {
+                "id": vector_id,
                 "values": embedding,
                 "metadata": {
-                    "doc_id": doc_id,
-                    "chunk_index": i,
-                    "text": chunk["text"],
-                    "page": chunk.get("page", "unknown"),
-                    "section": chunk.get("section", ""),
-                    "category": category,
+                    "doc_id": str(doc_id),
+                    "chunk_index": str(i),
+                    "page": str(chunk.get("page", "unknown")),
+                    "section": str(chunk.get("section", "")),
+                    "category": str(category),
                 },
             }
-            for i, (chunk, embedding) in enumerate(zip(chunks, embeddings))
-        ]
-        response = await self._jade_client.post(
-            f"/v1/databases/{self.database_id}/vectors/batch",
-            json={"vectors": vectors},
-            headers=self._get_auth_headers(),
-            timeout=60,
-        )
-        response.raise_for_status()
+            # Retry up to 3 times on transient errors
+            for attempt in range(3):
+                try:
+                    response = await self._jade_client.post(
+                        f"/v1/databases/{self.database_id}/vectors",
+                        json=payload,
+                        headers=self._get_auth_headers(),
+                        timeout=30,
+                    )
+                    response.raise_for_status()
+                    break
+                except (httpx.RemoteProtocolError, httpx.ConnectError) as e:
+                    if attempt == 2:
+                        raise
+                    wait = 2 ** attempt
+                    log.warning("vector_store_retry", doc_id=doc_id, vector_id=vector_id, attempt=attempt + 1, error=str(e))
+                    await asyncio.sleep(wait)
+
+            if (i + 1) % 100 == 0 or (i + 1) == total:
+                log.info("vectors_stored_progress", doc_id=doc_id, done=i + 1, total=total)
+            # Small pace to avoid overwhelming JadeVectorDB
+            if (i + 1) % 50 == 0:
+                await asyncio.sleep(0.1)
 
     async def _delete_vectors(self, doc_id: str) -> int:
         meta = self.db.get(doc_id)
@@ -472,7 +615,10 @@ Answer:"""
             stats = resp.json()
             total = stats.get("total_vectors", 0)
             deleted = stats.get("deleted_vectors", 0)
-            if total > 0 and (deleted / total) > 0.10:
+            remaining = total - deleted
+            # Skip compaction when no live vectors remain — compacting an
+            # empty index corrupts the HNSW structure in JadeVectorDB.
+            if total > 0 and remaining > 0 and (deleted / total) > 0.10:
                 await self._jade_client.post(
                     f"/v1/databases/{self.database_id}/compact",
                     headers=self._get_auth_headers(),
@@ -497,13 +643,21 @@ Answer:"""
 
     # ── Private: response helpers ─────────────────────────────
 
+    def _enrich_results(self, search_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Look up chunk text from SQLite and attach it to each search result."""
+        for result in search_results:
+            vector_id = result.get("vectorId", "")
+            chunk = self.db.chunk_get(vector_id) if vector_id else None
+            result["_chunk"] = chunk or {}
+        return search_results
+
     def _build_context(self, search_results: List[Dict[str, Any]]) -> str:
         parts = []
         for i, result in enumerate(search_results):
-            meta = result.get("vector", {}).get("metadata", {})
+            chunk = result.get("_chunk", {})
             parts.append(
-                f"[Source {i+1} - Page {meta.get('page', 'unknown')}, "
-                f"{meta.get('section', '')}]\n{meta.get('text', '')}\n"
+                f"[Source {i+1} - Page {chunk.get('page', 'unknown')}, "
+                f"{chunk.get('section', '')}]\n{chunk.get('text', '')}\n"
             )
         return "\n---\n".join(parts)
 
@@ -511,8 +665,8 @@ Answer:"""
         sources = []
         seen_docs: set = set()
         for result in search_results:
-            meta = result.get("vector", {}).get("metadata", {})
-            doc_id = meta.get("doc_id")
+            chunk = result.get("_chunk", {})
+            doc_id = chunk.get("doc_id")
             if doc_id in seen_docs:
                 continue
             seen_docs.add(doc_id)
@@ -520,10 +674,10 @@ Answer:"""
             sources.append(
                 SourceDocument(
                     doc_name=doc_meta.get("filename", "unknown"),
-                    page_numbers=str(meta.get("page", "unknown")),
-                    section=meta.get("section", ""),
-                    relevance=result.get("similarityScore", 0.0),
-                    excerpt=meta.get("text", "")[:200] + "...",
+                    page_numbers=str(chunk.get("page", "unknown")),
+                    section=chunk.get("section", ""),
+                    relevance=result.get("score", 0.0),
+                    excerpt=chunk.get("text", "")[:200] + "...",
                 )
             )
         return sources
@@ -531,7 +685,7 @@ Answer:"""
     def _calculate_confidence(self, search_results: List[Dict[str, Any]]) -> float:
         if not search_results:
             return 0.0
-        scores = [r.get("similarityScore", 0.0) for r in search_results[:3]]
+        scores = [r.get("score", 0.0) for r in search_results[:3]]
         return round(sum(scores) / len(scores), 2)
 
     def _get_auth_headers(self) -> Dict[str, str]:

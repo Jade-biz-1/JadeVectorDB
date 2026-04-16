@@ -63,6 +63,11 @@ class MetadataDB:
                 )
             """)
             # Migrations from older schema
+            # Rename device_type → category FIRST (before adding category column)
+            try:
+                cur.execute("ALTER TABLE documents RENAME COLUMN device_type TO category")
+            except Exception:
+                pass
             for col, definition in [
                 ("file_path", "TEXT"),
                 ("category", "TEXT NOT NULL DEFAULT 'general'"),
@@ -71,11 +76,10 @@ class MetadataDB:
                     cur.execute(f"ALTER TABLE documents ADD COLUMN {col} {definition}")
                 except Exception:
                     pass  # Column already exists
-            # Rename device_type → category if upgrading from old schema
-            try:
-                cur.execute("ALTER TABLE documents RENAME COLUMN device_type TO category")
-            except Exception:
-                pass
+            # Drop orphaned device_type if category already exists (partial migration cleanup)
+            cols = {row[1] for row in cur.execute("PRAGMA table_info(documents)")}
+            if "device_type" in cols and "category" in cols:
+                cur.execute("ALTER TABLE documents DROP COLUMN device_type")
 
             # Stats table
             cur.execute("""
@@ -124,6 +128,19 @@ class MetadataDB:
                 )
             """)
 
+            # Chunks table — stores text content keyed by vector ID
+            # (JadeVectorDB does not return custom metadata in search results)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS chunks (
+                    vector_id   TEXT PRIMARY KEY,
+                    doc_id      TEXT NOT NULL,
+                    chunk_index INTEGER NOT NULL,
+                    text        TEXT NOT NULL,
+                    page        TEXT NOT NULL DEFAULT 'unknown',
+                    section     TEXT NOT NULL DEFAULT ''
+                )
+            """)
+
             # Any document stuck in 'processing' or 'pending' at startup means
             # the server was killed mid-flight — mark them failed so users know.
             cur.execute(
@@ -131,6 +148,46 @@ class MetadataDB:
                 "error = 'Interrupted by server restart' "
                 "WHERE status IN ('processing', 'pending')"
             )
+
+    # ── Chunk text store ──────────────────────────────────────
+
+    def chunks_insert_batch(self, doc_id: str, chunks: List[Dict[str, Any]]):
+        """Persist chunk texts so they can be retrieved after a vector search."""
+        with self._cursor() as cur:
+            cur.executemany(
+                """
+                INSERT OR REPLACE INTO chunks
+                    (vector_id, doc_id, chunk_index, text, page, section)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        f"{doc_id}_chunk_{i}",
+                        doc_id,
+                        i,
+                        chunk["text"],
+                        str(chunk.get("page", "unknown")),
+                        str(chunk.get("section", "")),
+                    )
+                    for i, chunk in enumerate(chunks)
+                ],
+            )
+
+    def chunk_get(self, vector_id: str) -> Optional[Dict[str, Any]]:
+        """Return chunk metadata for a given vector_id, or None if not found."""
+        with self._cursor() as cur:
+            row = cur.execute(
+                "SELECT doc_id, chunk_index, text, page, section FROM chunks WHERE vector_id = ?",
+                (vector_id,),
+            ).fetchone()
+            if row:
+                return dict(row)
+            return None
+
+    def chunks_delete_for_doc(self, doc_id: str):
+        """Remove all chunks belonging to a document."""
+        with self._cursor() as cur:
+            cur.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
 
     # ── Document CRUD ─────────────────────────────────────────
 

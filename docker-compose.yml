@@ -119,7 +119,7 @@ services:
       FRONTEND_URL: http://localhost:${RAG_FRONTEND_PORT:-3002}
       JADEVECTORDB_URL: http://jadevectordb:8080
       JADEVECTORDB_API_KEY: ${JADEVECTORDB_API_KEY:-}
-      JADEVECTORDB_DATABASE_ID: ${JADEVECTORDB_DATABASE_ID:-maintenance_docs}
+      JADEVECTORDB_DATABASE_ID: ${JADEVECTORDB_DATABASE_ID:-rag_documents}
       OLLAMA_URL: http://ollama:11434
       OLLAMA_LLM_MODEL: ${OLLAMA_LLM_MODEL:-llama3.2:3b}
       OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
@@ -133,6 +133,11 @@ services:
       SEARCH_TIMEOUT: ${SEARCH_TIMEOUT:-10}
       METADATA_DB_PATH: /app/data/rag_metadata.db
       UPLOAD_DIR: /app/uploads
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production-use-a-long-random-string}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-480}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD:-Admin@1234}
     depends_on:
       jadevectordb:
         condition: service_healthy

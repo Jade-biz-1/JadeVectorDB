@@ -46,7 +46,7 @@ class Settings(BaseSettings):
 
     # Ollama (Production Mode)
     ollama_url: str = "http://localhost:11434"
-    ollama_embedding_model: str = "nomic-embed-text"
+    ollama_embedding_model: str = "mxbai-embed-large"
     ollama_llm_model: str = "llama3.2:3b"
 
     # RAG Parameters
@@ -56,7 +56,8 @@ class Settings(BaseSettings):
     similarity_threshold: float = 0.65
 
     # Embeddings
-    embedding_dimension: int = 384  # E5-small / nomic-embed-text
+    # nomic-embed-text → 768 dims; E5-small → 384 dims. Match your model.
+    embedding_dimension: int = 1024  # mxbai-embed-large default
 
     # LLM Parameters
     llm_temperature: float = 0.1
@@ -76,7 +77,7 @@ class Settings(BaseSettings):
 
     # Timeouts (seconds)
     embedding_timeout: int = 30
-    llm_timeout: int = 60
+    llm_timeout: int = 600
     search_timeout: int = 10
 
     class Config:

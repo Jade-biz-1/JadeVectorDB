@@ -51,6 +51,7 @@ export const authAPI = {
     const response = await api.post('/api/auth/change-password', {
       current_password: currentPassword,
       new_password: newPassword,
+      confirm_password: newPassword,
     });
     return response.data;
   },

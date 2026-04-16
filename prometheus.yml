@@ -15,6 +15,11 @@ scrape_configs:
     static_configs:
       - targets: ['jadevectordb:8080']
 
+  - job_name: 'rag-backend'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['rag-backend:8000']
+
   - job_name: 'grafana'
     static_configs:
       - targets: ['grafana:3000']
