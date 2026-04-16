@@ -69,28 +69,67 @@ describe('BatchOperations page', () => {
     expect(removeButtons).toHaveLength(2);
   });
 
-  it('calls storeVectorsBatch on upload submit with a selected database', async () => {
-    vectorApi.storeVectorsBatch.mockResolvedValueOnce({ count: 1 });
+  it('calls storeVector for each vector on upload submit', async () => {
+    vectorApi.storeVector.mockResolvedValue({ id: 'test-vec-1' });
     render(<BatchOperations />);
     await waitFor(() => screen.getByText('TestDB'));
 
-    // Select the database
-    const dbSelect = screen.getByRole('combobox');
-    fireEvent.change(dbSelect, { target: { value: 'db-1' } });
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'db-1' } });
 
-    // The upload form requires BOTH id and values — use fireEvent.change to set them
-    const idInput = screen.getByPlaceholderText('Vector ID');
-    const valuesInput = screen.getByPlaceholderText('Comma-separated or JSON array');
-    fireEvent.change(idInput, { target: { value: 'test-vec-1' } });
-    fireEvent.change(valuesInput, { target: { value: '0.1, 0.2, 0.3' } });
+    fireEvent.change(screen.getByPlaceholderText('Vector ID'), { target: { value: 'test-vec-1' } });
+    fireEvent.change(screen.getByPlaceholderText('Comma-separated or JSON array'), { target: { value: '0.1, 0.2, 0.3' } });
 
     fireEvent.click(screen.getByRole('button', { name: /upload vectors/i }));
 
     await waitFor(() => {
-      expect(vectorApi.storeVectorsBatch).toHaveBeenCalledWith(
+      expect(vectorApi.storeVector).toHaveBeenCalledWith(
         'db-1',
-        expect.arrayContaining([expect.objectContaining({ id: 'test-vec-1' })])
+        expect.objectContaining({ id: 'test-vec-1' })
       );
+    });
+  });
+
+  it('shows success message with vector count after upload', async () => {
+    vectorApi.storeVector.mockResolvedValue({});
+    render(<BatchOperations />);
+    await waitFor(() => screen.getByText('TestDB'));
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'db-1' } });
+    fireEvent.change(screen.getByPlaceholderText('Vector ID'), { target: { value: 'v1' } });
+    fireEvent.change(screen.getByPlaceholderText('Comma-separated or JSON array'), { target: { value: '0.1, 0.2' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /upload vectors/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Successfully uploaded 1 vector/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows partial failure message when some vectors fail', async () => {
+    vectorApi.storeVector
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error('Server error'));
+
+    render(<BatchOperations />);
+    await waitFor(() => screen.getByText('TestDB'));
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'db-1' } });
+
+    // Add two vector rows
+    fireEvent.change(screen.getByPlaceholderText('Vector ID'), { target: { value: 'v1' } });
+    fireEvent.change(screen.getByPlaceholderText('Comma-separated or JSON array'), { target: { value: '0.1, 0.2' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /add vector/i }));
+
+    const idInputs = screen.getAllByPlaceholderText('Vector ID');
+    const valInputs = screen.getAllByPlaceholderText('Comma-separated or JSON array');
+    fireEvent.change(idInputs[1], { target: { value: 'v2' } });
+    fireEvent.change(valInputs[1], { target: { value: '0.3, 0.4' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /upload vectors/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Uploaded 1 vector.*1 failed/i)).toBeInTheDocument();
     });
   });
 });

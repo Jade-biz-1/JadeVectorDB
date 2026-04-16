@@ -53,12 +53,15 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        JADEVECTORDB_URL: http://jadevectordb:8080
     image: jadevectordb/ui:local
     container_name: jadevectordb-ui
     ports:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://jadevectordb:8080
+      - JADEVECTORDB_URL=http://jadevectordb:8080
     networks:
       - jadevectordb_network
     depends_on:

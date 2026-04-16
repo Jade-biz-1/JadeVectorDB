@@ -1,19 +1,21 @@
 /** @type {import('next').NextConfig} */
+const JADEVECTORDB_URL = process.env.JADEVECTORDB_URL || 'http://localhost:8080';
+
 const nextConfig = {
   reactStrictMode: true,
   async rewrites() {
     return [
       {
         source: '/api/health',
-        destination: 'http://localhost:8080/health',
+        destination: `${JADEVECTORDB_URL}/health`,
       },
       {
         source: '/api/status',
-        destination: 'http://localhost:8080/status',
+        destination: `${JADEVECTORDB_URL}/status`,
       },
       {
         source: '/api/:path*',
-        destination: 'http://localhost:8080/v1/:path*',
+        destination: `${JADEVECTORDB_URL}/v1/:path*`,
       },
     ]
   },

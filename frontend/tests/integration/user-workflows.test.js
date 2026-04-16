@@ -323,7 +323,7 @@ describe('Workflow: Batch Vector Upload', () => {
 
   it('uploads vectors to the selected database', async () => {
     databaseApi.listDatabases.mockResolvedValue({ databases: DATABASES });
-    vectorApi.storeVectorsBatch.mockResolvedValueOnce({ count: 1, stored: 1 });
+    vectorApi.storeVector.mockResolvedValue({ id: 'batch-v-1' });
 
     render(<BatchOperations />);
     await waitFor(() => screen.getByText('AlphaDB'));
@@ -338,9 +338,9 @@ describe('Workflow: Batch Vector Upload', () => {
     fireEvent.click(screen.getByRole('button', { name: /upload vectors/i }));
 
     await waitFor(() => {
-      expect(vectorApi.storeVectorsBatch).toHaveBeenCalledWith(
+      expect(vectorApi.storeVector).toHaveBeenCalledWith(
         'db-alpha',
-        expect.arrayContaining([expect.objectContaining({ id: 'batch-v-1' })])
+        expect.objectContaining({ id: 'batch-v-1' })
       );
     });
   });

@@ -4,6 +4,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+ARG JADEVECTORDB_URL=http://localhost:8080
+ENV JADEVECTORDB_URL=${JADEVECTORDB_URL}
 RUN npm run build
 
 FROM node:20-alpine AS runner
