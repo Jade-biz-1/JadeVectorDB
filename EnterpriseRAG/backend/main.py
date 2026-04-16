@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from .api import query, admin
 from .api import users as users_api
@@ -17,6 +18,7 @@ from .logging_config import configure_logging, get_logger
 from .services.rag_service import production_service
 from .services.metadata_db import MetadataDB
 from .security import hash_password
+from . import metrics as _metrics  # noqa: F401 — registers all metric objects
 
 # Initialise structured logging before anything else
 configure_logging()
@@ -86,6 +88,13 @@ app = FastAPI(
 # ── Rate limiter ──────────────────────────────────────────────
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ── Prometheus metrics (/metrics) ─────────────────────────────
+Instrumentator(
+    should_group_status_codes=True,
+    should_ignore_untemplated=True,
+    excluded_handlers=["/metrics", "/api/health"],
+).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 # ── CORS ──────────────────────────────────────────────────────
 app.add_middleware(
