@@ -87,25 +87,31 @@ export default function BatchOperations() {
         throw new Error('No valid vectors to upload');
       }
 
-      // Simulate progress
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += 10;
-        if (progress >= 100) {
-          clearInterval(interval);
-        } else {
-          setProgress(progress);
-        }
-      }, 200);
+      // Store vectors one by one — the batch endpoint is known to silently
+      // drop all vectors, so we use the reliable single-vector endpoint.
+      let stored = 0;
+      let failed = 0;
+      const total = processedVectors.length;
 
-      // Perform batch upload
-      const response = await vectorApi.storeVectorsBatch(selectedDatabase, processedVectors);
-      clearInterval(interval);
+      for (const vec of processedVectors) {
+        try {
+          await vectorApi.storeVector(selectedDatabase, vec);
+          stored++;
+        } catch (err) {
+          console.error(`Failed to store vector ${vec.id}:`, err);
+          failed++;
+        }
+        setProgress(Math.round(((stored + failed) / total) * 100));
+      }
+
       setProgress(100);
       setResults({
-        success: true,
-        inserted: response.count,
-        message: `Successfully uploaded ${response.count} vectors`
+        success: stored > 0,
+        inserted: stored,
+        failed,
+        message: failed === 0
+          ? `Successfully uploaded ${stored} vector${stored !== 1 ? 's' : ''}`
+          : `Uploaded ${stored} vector${stored !== 1 ? 's' : ''}, ${failed} failed`
       });
     } catch (error) {
       console.error('Error uploading vectors:', error);
