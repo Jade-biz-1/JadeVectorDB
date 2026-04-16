@@ -267,7 +267,8 @@ class ProductionRAGService:
                     embedding = await self._generate_embedding(chunk["text"])
                 except Exception as embed_err:
                     raise RuntimeError(
-                        f"Embedding failed on chunk {i + 1}/{total_chunks}: {embed_err}"
+                        f"Embedding failed on chunk {i + 1}/{total_chunks}: "
+                        f"{type(embed_err).__name__}: {embed_err!r}"
                     ) from embed_err
                 embeddings.append(embedding)
                 self.db.update(doc_id, {"chunks_done": i + 1})
