@@ -944,7 +944,7 @@ Result<std::string> PersistentDatabasePersistence::create_database(const Databas
     indexes_by_db_[database_id] = std::unordered_map<std::string, Index>();
     
     // Create vector file for this database
-    if (!vector_store_->create_vector_file(database_id, new_db.vectorDimension, 1000)) {
+    if (!vector_store_->create_vector_file(database_id, new_db.vectorDimension, 50000)) {
         LOG_ERROR(logger_, "Failed to create vector file for database: " << database_id);
         databases_.erase(database_id);
         RETURN_ERROR(ErrorCode::INTERNAL_ERROR, "Failed to create vector storage file");

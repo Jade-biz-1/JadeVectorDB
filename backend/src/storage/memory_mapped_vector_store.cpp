@@ -456,12 +456,18 @@ uint64_t MemoryMappedVectorStore::allocate_vector_space(DatabaseFile* db_file, s
     
     // No suitable free block found, allocate from end
     uint64_t current_used = header->vector_count * header->dimension * sizeof(float);
-    
+
     if (current_used + size > header->data_capacity) {
-        // Need to grow data section
-        return 0;
+        // Data section full — grow it (doubles capacity until it fits)
+        if (!resize_data_section(db_file, std::max(header->data_capacity * 2,
+                                                    current_used + size))) {
+            return 0;  // Resize failed
+        }
+        // Re-read header pointer: resize_data_section remaps the file
+        header = db_file->header;
+        current_used = header->vector_count * header->dimension * sizeof(float);
     }
-    
+
     return header->data_offset + current_used;
 }
 
@@ -956,6 +962,99 @@ bool MemoryMappedVectorStore::resize_index(DatabaseFile* db_file) {
     sync_file(new_mapped, new_total_size, true);
     
     return true;
+}
+
+bool MemoryMappedVectorStore::resize_data_section(DatabaseFile* db_file, size_t new_data_capacity) {
+    if (!db_file || !db_file->header) return false;
+
+    auto* old_header = db_file->header;
+
+    // Save old layout values before unmapping
+    size_t old_data_capacity   = old_header->data_capacity;
+    size_t index_capacity      = old_header->index_capacity;
+    size_t index_size          = index_capacity * INDEX_ENTRY_SIZE;
+    uint64_t old_data_offset   = old_header->data_offset;
+    uint64_t old_strings_offset= old_header->vector_ids_offset;
+    size_t   string_size       = index_capacity * 64;
+
+    // New layout: HEADER | INDEX | NEW_DATA | STRINGS
+    // data_offset doesn't change (INDEX size stays the same)
+    uint64_t new_data_offset   = old_data_offset;       // same
+    uint64_t new_strings_offset= new_data_offset + new_data_capacity;
+    size_t   new_total_size    = HEADER_SIZE + index_size + new_data_capacity + string_size;
+
+    // Unmap current file
+    unmap_file(db_file->mapped_memory, db_file->mapped_size);
+    db_file->mapped_memory = nullptr;
+    db_file->header        = nullptr;
+
+    // Grow the physical file
+    if (!db_file->handle->resize(new_total_size)) {
+        // Try to restore old mapping on failure
+        void* restored = map_file(db_file->handle.get(), db_file->file_size);
+        if (restored) {
+            db_file->mapped_memory = restored;
+            db_file->header = reinterpret_cast<VectorFileHeader*>(restored);
+        }
+        return false;
+    }
+
+    // Map the enlarged file
+    void* new_mapped = map_file(db_file->handle.get(), new_total_size);
+    if (!new_mapped) return false;
+
+    db_file->mapped_memory = new_mapped;
+    db_file->mapped_size   = new_total_size;
+    db_file->file_size     = new_total_size;
+
+    auto* new_header = reinterpret_cast<VectorFileHeader*>(new_mapped);
+
+    // Shift the strings section to its new position (after the larger data section).
+    // Use memmove because src and dst may overlap when the data section grows.
+    if (new_strings_offset != old_strings_offset && string_size > 0) {
+        char* old_str_ptr = static_cast<char*>(new_mapped) + old_strings_offset;
+        char* new_str_ptr = static_cast<char*>(new_mapped) + new_strings_offset;
+        std::memmove(new_str_ptr, old_str_ptr, string_size);
+    }
+
+    // Update every index entry whose string_offset pointed into the old strings section
+    auto* index_base = reinterpret_cast<VectorIndexEntry*>(
+        static_cast<char*>(new_mapped) + HEADER_SIZE);
+    for (size_t i = 0; i < index_capacity; i++) {
+        auto* entry = &index_base[i];
+        if (entry->vector_id_hash != 0 && entry->string_offset >= old_strings_offset) {
+            uint64_t string_index = (entry->string_offset - old_strings_offset) / 64;
+            entry->string_offset  = new_strings_offset + string_index * 64;
+        }
+    }
+
+    // Update header fields
+    new_header->data_capacity      = new_data_capacity;
+    new_header->vector_ids_offset  = new_strings_offset;
+    // data_offset and index_offset are unchanged
+
+    db_file->header = new_header;
+
+    sync_file(new_mapped, new_total_size, true);
+    return true;
+}
+
+bool MemoryMappedVectorStore::ensure_capacity(DatabaseFile* db_file, size_t additional_vectors) {
+    if (!db_file || !db_file->header) return false;
+
+    auto* header = db_file->header;
+    size_t needed = additional_vectors * header->dimension * sizeof(float);
+    uint64_t current_used = header->vector_count * header->dimension * sizeof(float);
+
+    if (current_used + needed <= header->data_capacity) return true;
+
+    // Double capacity until it fits
+    size_t new_capacity = header->data_capacity > 0 ? header->data_capacity : needed;
+    while (current_used + needed > new_capacity) {
+        new_capacity *= 2;
+    }
+
+    return resize_data_section(db_file, new_capacity);
 }
 
 // Platform-specific mmap operations
