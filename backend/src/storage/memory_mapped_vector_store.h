@@ -277,6 +277,7 @@ private:
     void* get_vector_data_pointer(DatabaseFile* db_file, uint64_t offset);
     uint64_t allocate_vector_space(DatabaseFile* db_file, size_t size);
     void merge_adjacent_free_blocks(DatabaseFile* db_file);
+    bool resize_data_section(DatabaseFile* db_file, size_t new_data_capacity);
     
     // Platform-specific helpers
     void* map_file(FileHandle* handle, size_t size);
