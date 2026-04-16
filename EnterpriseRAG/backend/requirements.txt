@@ -29,6 +29,9 @@ structlog>=24.1.0
 # Rate limiting
 slowapi>=0.1.9
 
+# Observability
+prometheus-fastapi-instrumentator>=6.3.0
+
 # Authentication (JWT + password hashing)
 # bcrypt must be <4.0.0 — passlib reads bcrypt.__about__ which was removed in 4.x
 python-jose[cryptography]>=3.3.0

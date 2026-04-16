@@ -4,6 +4,7 @@ Production RAG service using JadeVectorDB + Ollama
 
 import asyncio
 import httpx
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +21,18 @@ from ..utils.config import settings
 from .document_processor import DocumentProcessor
 from .metadata_db import MetadataDB
 from ..logging_config import get_logger
+from ..metrics import (
+    rag_queries_total,
+    rag_query_duration_seconds,
+    rag_query_confidence,
+    rag_documents_processed_total,
+    rag_document_processing_duration_seconds,
+    rag_document_chunks,
+    rag_embedding_batch_duration_seconds,
+    rag_active_processing_tasks,
+    rag_stored_documents,
+    rag_stored_chunks,
+)
 
 log = get_logger(__name__)
 
@@ -116,8 +129,10 @@ class ProductionRAGService:
         top_k: int = 5,
     ) -> QueryResponse:
         start_time = datetime.utcnow()
+        _t0 = time.perf_counter()
         self.db.increment_query_count()
         log.info("query_started", question=question[:120], category=category, top_k=top_k)
+        _cat = category or "all"
 
         try:
             question_embedding = await self._generate_embedding(question, is_query=True)
@@ -129,6 +144,9 @@ class ProductionRAGService:
             processing_time = int((datetime.utcnow() - start_time).total_seconds() * 1000)
             confidence = self._calculate_confidence(search_results)
 
+            rag_queries_total.labels(status="success", category=_cat).inc()
+            rag_query_confidence.observe(confidence)
+
             log.info(
                 "query_completed",
                 processing_time_ms=processing_time,
@@ -137,7 +155,7 @@ class ProductionRAGService:
             )
             self.db.log_query(
                 question=question,
-                category=category or "all",
+                category=_cat,
                 mode="production",
                 confidence=confidence,
                 processing_time_ms=processing_time,
@@ -149,7 +167,7 @@ class ProductionRAGService:
                 answer=answer,
                 sources=sources,
                 query=question,
-                category=category or "all",
+                category=_cat,
                 timestamp=datetime.utcnow().isoformat() + "Z",
                 confidence=confidence,
                 processing_time_ms=processing_time,
@@ -157,10 +175,11 @@ class ProductionRAGService:
             )
 
         except Exception as e:
+            rag_queries_total.labels(status="error", category=_cat).inc()
             log.error("query_failed", error=str(e), question=question[:120])
             self.db.log_query(
                 question=question,
-                category=category or "all",
+                category=_cat,
                 mode="production",
                 confidence=0.0,
                 processing_time_ms=0,
@@ -172,12 +191,14 @@ class ProductionRAGService:
                 answer=f"Error processing query: {str(e)}",
                 sources=[],
                 query=question,
-                category=category or "all",
+                category=_cat,
                 timestamp=datetime.utcnow().isoformat() + "Z",
                 confidence=0.0,
                 processing_time_ms=0,
                 mode="production",
             )
+        finally:
+            rag_query_duration_seconds.observe(time.perf_counter() - _t0)
 
     async def upload_document(
         self, filename: str, category: str = "general", file_content: bytes = b""
@@ -250,10 +271,28 @@ class ProductionRAGService:
             "message": f"Document '{meta['filename']}' is being reprocessed",
         }
 
+    def _refresh_doc_gauges(self) -> None:
+        """Update rag_stored_* gauges from the SQLite metadata store."""
+        try:
+            docs = self.db.list_all(limit=10_000)
+            counts: Dict[str, int] = {}
+            for d in docs:
+                counts[d.get("status", "unknown")] = counts.get(d.get("status", "unknown"), 0) + 1
+            for status in ("complete", "processing", "failed", "pending"):
+                rag_stored_documents.labels(status=status).set(counts.get(status, 0))
+            rag_stored_chunks.set(
+                sum(d.get("chunk_count", 0) for d in docs if d.get("status") == "complete")
+            )
+        except Exception:
+            pass
+
     async def _process_document(
         self, doc_id: str, filename: str, category: str, file_content: bytes
     ):
         log.info("document_processing_started", doc_id=doc_id, filename=filename)
+        rag_active_processing_tasks.inc()
+        _t0 = time.perf_counter()
+        _status = "failed"
         try:
             text = await self.doc_processor.extract_text(filename, file_content)
             chunks = await self.doc_processor.chunk_text(text)
@@ -262,6 +301,7 @@ class ProductionRAGService:
             log.info("document_chunked", doc_id=doc_id, total_chunks=total_chunks)
 
             embeddings = []
+            _embed_t0 = time.perf_counter()
             for i, chunk in enumerate(chunks):
                 try:
                     embedding = await self._generate_embedding(chunk["text"])
@@ -272,6 +312,7 @@ class ProductionRAGService:
                     ) from embed_err
                 embeddings.append(embedding)
                 self.db.update(doc_id, {"chunks_done": i + 1})
+            rag_embedding_batch_duration_seconds.observe(time.perf_counter() - _embed_t0)
 
             # Persist chunk texts in SQLite so search results can be enriched
             self.db.chunks_insert_batch(doc_id, chunks)
@@ -286,10 +327,17 @@ class ProductionRAGService:
                 "error": None,
             })
             log.info("document_processing_complete", doc_id=doc_id, chunks=total_chunks)
+            _status = "success"
+            rag_document_chunks.observe(total_chunks)
 
         except Exception as e:
             log.error("document_processing_failed", doc_id=doc_id, error=str(e))
             self.db.update(doc_id, {"status": "failed", "error": str(e)})
+        finally:
+            rag_documents_processed_total.labels(status=_status).inc()
+            rag_document_processing_duration_seconds.observe(time.perf_counter() - _t0)
+            rag_active_processing_tasks.dec()
+            self._refresh_doc_gauges()
 
     async def get_processing_status(self, doc_id: str) -> ProcessingStatus:
         meta = self.db.get(doc_id)
