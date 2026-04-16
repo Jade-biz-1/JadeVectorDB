@@ -4,6 +4,7 @@
 
 By the end of this exercise, you will be able to:
 - Import multiple vectors efficiently using loops
+- Use the built-in `import` and `export` commands for production workloads
 - Use the sample data files provided
 - Process JSON data for batch imports
 - Handle errors during batch operations
@@ -121,7 +122,82 @@ done
 vector="$vector]"
 ```
 
-### Step 6: Batch Search Testing
+### Step 6: Using the Built-in Import/Export Commands
+
+The manual loop approach above is great for understanding how batch operations work. For production workloads, JadeVectorDB provides built-in `import` and `export` commands with automatic progress tracking and error reporting.
+
+**Import from JSON (the fast way):**
+```bash
+jade-db import \
+  --database-id batch_products \
+  --file ../../sample-data/products.json \
+  --format json \
+  --batch-size 100
+```
+
+The `--format` flag is optional — the CLI auto-detects JSON or CSV from the file extension.
+
+**Import from CSV:**
+```bash
+jade-db import \
+  --database-id batch_products \
+  --file vectors.csv \
+  --batch-size 50
+```
+
+**Export all vectors to JSON:**
+```bash
+jade-db export \
+  --database-id batch_products \
+  --file backup.json
+```
+
+**Export to CSV:**
+```bash
+jade-db export \
+  --database-id batch_products \
+  --file backup.csv \
+  --format csv
+```
+
+**Export a specific subset of vectors:**
+```bash
+jade-db export \
+  --database-id batch_products \
+  --file subset.json \
+  --vector-ids "laptop_001,laptop_002,phone_001"
+```
+
+**Task:** Use `jade-db import` to re-import the sample data into a fresh database and verify the count matches your manual import from Step 2:
+
+```bash
+# Create a fresh database to compare
+jade-db create-db \
+  --name batch_products_v2 \
+  --description "Testing built-in import" \
+  --dimension 8 \
+  --index-type HNSW
+
+# Import using the built-in command
+jade-db import \
+  --database-id batch_products_v2 \
+  --file ../../sample-data/products.json
+
+# Verify the result
+jade-db list-vectors --database-id batch_products_v2
+```
+
+**When to use each approach:**
+
+| Approach | Use when |
+|----------|----------|
+| Manual loop (`jade-db store`) | Learning, custom transformation logic, conditional imports |
+| `jade-db import` | Production data loads, large files, CI/CD pipelines |
+| `jade-db export` | Backups, migrations, sharing datasets |
+
+---
+
+### Step 7: Batch Search Testing
 
 After importing all vectors:
 
@@ -136,7 +212,7 @@ for i in {1..10}; do
 done
 ```
 
-### Step 7: Performance Comparison
+### Step 8: Performance Comparison
 
 **Task:** Measure the time taken to import:
 - 10 vectors
@@ -162,8 +238,10 @@ bash verify.sh
 ```
 
 Expected outcomes:
-- ✅ All 8 products from sample data imported successfully
+- ✅ All 8 products from sample data imported successfully (manual loop)
+- ✅ All 8 products imported again using `jade-db import` (built-in command)
 - ✅ 100 synthetic vectors created and imported
+- ✅ Export produces a valid JSON/CSV file
 - ✅ Error handling works correctly
 - ✅ Performance metrics collected
 
@@ -181,6 +259,8 @@ Expected outcomes:
 3. **Use progress indicators** for long operations
 4. **Handle failures gracefully** without stopping the entire process
 5. **Measure performance** to understand system limits
+6. **Use built-in `import`/`export` for production** — they handle batching, progress, and error reporting automatically
+7. **Tune `--batch-size`** based on vector dimension: larger dimensions → smaller batch size (e.g. 1024-dim → batch-size 25–50)
 
 ## Next Steps
 

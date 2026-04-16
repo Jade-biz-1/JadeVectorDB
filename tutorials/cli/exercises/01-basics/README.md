@@ -9,6 +9,7 @@ By the end of this exercise, you will be able to:
 - Retrieve vectors by ID
 - Perform basic similarity searches
 - Check system health
+- Format CLI output as JSON, YAML, table, or CSV
 
 ## Prerequisites
 
@@ -147,6 +148,47 @@ jade-db search \
 **Task:** Perform the same search but only return results with similarity > 0.9
 
 **Hint:** Add `--threshold 0.9` parameter
+
+### Step 9: Control Output Format
+
+Every `jade-db` command accepts a `--format` flag that controls how results are printed. This is useful for reading output in the terminal, scripting, or passing results to other tools.
+
+**Available formats:** `json` (default), `yaml`, `table`, `csv`
+
+**List your databases in each format:**
+
+```bash
+# Default — machine-readable JSON
+jade-db list-dbs --format json
+
+# Human-readable table (great for the terminal)
+jade-db list-dbs --format table
+
+# YAML (useful for config files and Kubernetes workflows)
+jade-db list-dbs --format yaml
+
+# CSV (pipe into spreadsheets or other tools)
+jade-db list-dbs --format csv
+```
+
+**Use table format for health checks:**
+```bash
+jade-db health --format table
+jade-db status --format table
+```
+
+**Pipe JSON output to `jq` for further processing:**
+```bash
+# Get just the database IDs
+jade-db list-dbs --format json | jq -r '.[].id'
+
+# Count how many databases exist
+jade-db list-dbs --format json | jq 'length'
+```
+
+**Task:** Run `jade-db list-dbs` in all four formats and compare the output. Then use `--format json` with `jq` to extract only the `name` field from each database.
+
+✅ **Checkpoint:** You should see the same data presented four different ways. The `table` format is easiest to read; `json` is best for scripting.
 
 ## Verification
 
