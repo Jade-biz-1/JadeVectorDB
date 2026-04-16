@@ -1,12 +1,13 @@
 # JadeVectorDB - Status Dashboard
 
-**Last Updated**: 2026-02-12
-**Current Phase**: Post-Phase 16 - Maintenance & Stability
-**Overall Progress**: 100% complete (360/360 tasks)
+**Last Updated**: 2026-04-16
+**Current Phase**: Phase 19 — Storage Fixes, RAG Embedding Quality & Observability (branch: `runAndFix`)
+**Overall Progress**: 365/365 tasks (360 original + 5 Phase 19 tasks)
 **Phase 16 Status**: ✅ COMPLETE (22/22 tasks)
+**Phase 19 Status**: ✅ COMPLETE (5/5 tasks)
 **Build Status**: ✅ PASSING
 **Automated Tests**: ✅ 16/16 test suites passing (100%)
-**Status**: **All phases complete. Test infrastructure fully operational with all pre-existing failures resolved.**
+**Status**: **All phases complete. Phase 19 storage + observability fixes live on `runAndFix` branch.**
 
 ---
 
@@ -284,10 +285,15 @@ Comprehensive automated test suite created for all Sprint 2.3 persistence featur
 
 ---
 
-## ✅ Recently Completed (Last 7 Days)
+## ✅ Recently Completed (April 2026 — runAndFix branch)
 
 | Task | Title | Completion Date | Notes |
 |------|-------|-----------------|-------|
+| T19.05 | Prometheus + Grafana observability | 2026-04-16 | `/metrics` on rag-backend; 2 pre-built Grafana dashboards |
+| T19.04 | Improve embedding error logging | 2026-04-16 | Exception type + repr now included in error messages |
+| T19.03 | Switch EnterpriseRAG to mxbai-embed-large | 2026-04-16 | Correct retrieval; confidence 0.57–0.77 on test queries |
+| T19.02 | Auto-growing data section in JadeVectorDB | 2026-04-15 | Fixes hard 1,000-vector limit; initial capacity raised to 50,000 |
+| T19.01 | Document & work around batch endpoint bug | 2026-04-15 | Single-vector endpoint used; README ⚠️ note added |
 | TEST-FIX | Resolve all pre-existing test failures | 2026-02-12 | 16/16 suites passing, auth deadlock fixed |
 | T219 | Authentication handlers in REST API | 2025-12-05 | All 5 endpoints implemented |
 | T220 | User management handlers | 2025-12-05 | All 5 endpoints implemented |
@@ -311,9 +317,10 @@ Comprehensive automated test suite created for all Sprint 2.3 persistence featur
 *None at this time*
 
 ### Known Issues:
-1. **Testing**: All 16/16 test suites passing — monitor for regressions
-2. **Runtime Crash**: Duplicate route handler issue resolved (fixed 2025-12-12) — ensure latest branch
-3. **Database ID Mismatch**: Database IDs in list response don't match individual get endpoint
+1. **Batch vector endpoint silent data loss**: `POST /v1/databases/{id}/vectors/batch` returns 201 but never persists vectors — use single-vector endpoint as workaround (documented in README)
+2. **Testing**: All 16/16 test suites passing — monitor for regressions
+3. **Runtime Crash**: Duplicate route handler issue resolved (fixed 2025-12-12) — ensure latest branch
+4. **Database ID Mismatch**: Database IDs in list response don't match individual get endpoint
 
 ### Technical Debt:
 1. Simple API (`rest_api_simple.cpp`) needs update or deprecation (T238)
@@ -495,5 +502,5 @@ Comprehensive automated test suite created for all Sprint 2.3 persistence featur
 
 ---
 
-**Dashboard Updated**: 2026-02-12
+**Dashboard Updated**: 2026-04-16
 **Next Dashboard Review**: Daily during active development
