@@ -16,6 +16,7 @@ A high-performance distributed vector database designed for storing, retrieving,
 - ✅ SQLite database for users, groups, roles, permissions, and metadata  
 - ✅ Memory-mapped files for high-performance vector storage
 - ✅ Write-Ahead Logging (WAL) for data durability
+- ✅ Auto-growing data section — vector storage expands on demand (no hard capacity limit)
 - ✅ Index resize mechanism with data integrity protection
 - ✅ Database backup and restore functionality
 - ✅ Free list management for efficient space reuse
@@ -239,6 +240,46 @@ Check the logs for:
 
 ---
 
+---
+
+## 🤖 EnterpriseRAG — Reference Application
+
+`EnterpriseRAG/` is a production-ready Retrieval-Augmented Generation application built on top of JadeVectorDB. It demonstrates how to use JadeVectorDB as a vector store in a real AI workload.
+
+### Stack
+- **Backend**: FastAPI (Python) with JWT auth, rate limiting, and structured logging
+- **Frontend**: React + Vite admin UI
+- **Vector store**: JadeVectorDB
+- **LLM & Embeddings**: Ollama (`llama3.2:3b` + `mxbai-embed-large`)
+- **Observability**: Prometheus metrics (`/metrics`) + Grafana dashboards
+
+### Quick Start
+
+```bash
+# Copy env and start all services
+cp EnterpriseRAG/.env.docker .env
+docker compose up --build
+```
+
+| Service | URL |
+|---------|-----|
+| RAG UI | http://localhost:3002 |
+| RAG API | http://localhost:8000/docs |
+| Grafana | http://localhost:3001 (admin/admin) |
+| Prometheus | http://localhost:9090 |
+| JadeVectorDB | http://localhost:8081 |
+
+### Key Features
+- PDF and DOCX document ingestion with automatic chunking and embedding
+- Semantic search with configurable top-k and category filtering
+- User management with role-based access (admin / viewer)
+- Pre-built Grafana dashboards for both the RAG application and JadeVectorDB
+- Mock mode for development without Ollama (`MODE=mock` in `.env`)
+
+See [`EnterpriseRAG/README.md`](EnterpriseRAG/README.md) for full documentation.
+
+---
+
 ### 🤝 **Join Our Development Team!**
 
 We're looking for passionate developers, testers, designers, and documentation writers to help make JadeVectorDB even better. 
@@ -248,7 +289,7 @@ Whether you're a seasoned developer or just starting out, there are ways to cont
 - **Testers**: Help us identify issues and improve reliability across platforms  
 - **UI/UX Designers**: Enhance the user experience and interface design
 - **Technical Writers**: Improve documentation and user guides
-- **Translators**: Help make DupFinder available in more languages
+- **Translators**: Help make JadeVectorDB available in more languages
 
 **Ready to contribute?** Get in touch with the project maintainer or check out our [Contributing Guidelines](#contributing).
 
@@ -373,7 +414,7 @@ The server will start on port 8080 by default.
 - `GET /v1/databases/{databaseId}/vectors/{vectorId}` - Retrieve vector
 - `PUT /v1/databases/{databaseId}/vectors/{vectorId}` - Update vector
 - `DELETE /v1/databases/{databaseId}/vectors/{vectorId}` - Delete vector
-- `POST /v1/databases/{databaseId}/vectors/batch` - Batch store vectors
+- `POST /v1/databases/{databaseId}/vectors/batch` - Batch store vectors ⚠️ *(known issue: returns 201 but does not persist vectors — use single-vector endpoint)*
 - `POST /v1/databases/{databaseId}/vectors/batch-get` - Batch retrieve vectors
 
 ### Search
@@ -987,11 +1028,10 @@ Complete documentation is available in the `docs/` directory:
 
 ## Next Steps
 
-1. **Containerization** - Docker images and Kubernetes deployment
-2. **Performance Tuning** - Fine-tuning indexing algorithms and system parameters
-3. **Monitoring** - Prometheus metrics and Grafana dashboards
-4. **Security** - Enhanced authentication and encryption
-5. **Production Deployment** - Configuration management and deployment scripts
+1. **Fix batch vector endpoint** - `POST /v1/databases/{databaseId}/vectors/batch` returns 201 but silently drops vectors; single-vector endpoint works correctly
+2. **Performance Tuning** - Fine-tuning HNSW indexing parameters and benchmarking at scale
+3. **Distributed Phase 2** - Multi-node testing and production validation of the implemented distributed services
+4. **Enhanced Security** - Rate limiting per API key, token rotation policies
 
 ## Contributing
 
