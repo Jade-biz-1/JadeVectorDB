@@ -74,7 +74,7 @@ JADE_PORT=$(grep -E "^JADEVECTORDB_PORT=" "$ENV_FILE" | cut -d'=' -f2)
 # Fall back to docker-compose defaults if not set in .env
 ADMIN_USER="${ADMIN_USER:-admin}"
 ADMIN_PASS="${ADMIN_PASS:-Admin@1234}"
-JADE_PORT="${JADE_PORT:-8081}"
+JADE_PORT="${JADE_PORT:-8080}"
 JADE_URL="http://localhost:${JADE_PORT}"
 
 info "Admin user  : ${ADMIN_USER}"
