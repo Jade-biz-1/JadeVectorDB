@@ -253,12 +253,24 @@ Check the logs for:
 - **LLM & Embeddings**: Ollama (`llama3.2:3b` + `mxbai-embed-large`)
 - **Observability**: Prometheus metrics (`/metrics`) + Grafana dashboards
 
-### Quick Start
+### First-Run Setup (Bootstrap)
+
+On a **fresh deployment**, JadeVectorDB must be running before an API key can be created — but `rag-backend` needs that key to start. The bootstrap script handles this chicken-and-egg problem automatically:
 
 ```bash
-# Copy env and start all services
-cp EnterpriseRAG/.env.docker .env
-docker compose up --build
+bash scripts/bootstrap.sh
+```
+
+The script will:
+1. Copy `EnterpriseRAG/.env.docker` → `.env` if no `.env` exists
+2. Skip key generation if `JADEVECTORDB_API_KEY` is already set in `.env`
+3. Start JadeVectorDB alone and wait until healthy
+4. Log in as admin, generate a service API key, and write it to `.env`
+5. Start the full stack
+
+**Subsequent runs** (key already in `.env`):
+```bash
+docker compose up -d
 ```
 
 | Service | URL |
@@ -267,7 +279,9 @@ docker compose up --build
 | RAG API | http://localhost:8000/docs |
 | Grafana | http://localhost:3001 (admin/admin) |
 | Prometheus | http://localhost:9090 |
-| JadeVectorDB | http://localhost:8081 |
+| JadeVectorDB | http://localhost:8080 |
+
+> **Requirements**: Docker + docker compose, python3 (for JSON parsing in the bootstrap script).
 
 ### Key Features
 - PDF and DOCX document ingestion with automatic chunking and embedding

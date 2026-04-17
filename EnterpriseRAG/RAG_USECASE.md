@@ -1,0 +1,3967 @@
+# RAG Use Case: Document Q&A System
+
+## Executive Summary
+
+This document outlines the architecture and implementation strategy for a **Retrieval-Augmented Generation (RAG)** system designed to help users access organizational documents, knowledge bases, and reference materials. The system uses JadeVectorDB as the vector database, Ollama for local LLM inference, and operates entirely offline for data privacy and cost efficiency.
+
+**Target Scale**: Medium (100-1000 documents, 1000-10000 pages)
+**Deployment**: Local workstation/laptop
+**Language**: English only
+**LLM**: Ollama (local, offline)
+
+---
+
+## Table of Contents
+
+1. [Use Case Overview](#use-case-overview)
+2. [User Management](#user-management)
+3. [System Architecture](#system-architecture)
+4. [Component Details](#component-details)
+5. [JadeVectorDB Capability Assessment](#jadevectordb-capability-assessment)
+6. [Required Enhancements](#required-enhancements)
+7. [Technology Stack](#technology-stack)
+8. [Implementation Roadmap](#implementation-roadmap)
+9. [Best Practices](#best-practices)
+10. [Performance Considerations](#performance-considerations)
+11. [Cost Analysis](#cost-analysis)
+12. [References](#references)
+
+---
+
+## Use Case Overview
+
+### Problem Statement
+
+Users need quick access to specific procedures, policies, and technical specifications buried within hundreds of PDF and DOCX documents. Traditional keyword search is inefficient and often misses semantically relevant information.
+
+### Solution
+
+A RAG-based Q&A system that:
+1. **Ingests** PDF and DOCX documents
+2. **Chunks** documents into semantically meaningful segments
+3. **Embeds** text chunks into high-dimensional vectors
+4. **Stores** vectors and metadata in JadeVectorDB
+5. **Retrieves** relevant context based on user questions
+6. **Generates** accurate, context-aware answers using a local LLM
+
+### User Workflow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      User Journey                           │
+└─────────────────────────────────────────────────────────────┘
+
+User → Asks Question → System Searches Docs →
+  → Retrieves Relevant Sections → LLM Generates Answer →
+    → User Gets Answer + Source References
+```
+
+### Key Benefits
+
+- **Offline Operation**: No internet required, works in air-gapped or restricted environments
+- **Data Privacy**: Sensitive documents never leave local infrastructure
+- **Zero Ongoing Costs**: No API fees for embeddings or LLM inference
+- **Fast Responses**: Local processing with sub-second retrieval
+- **Source Attribution**: Every answer includes references to source documents
+
+---
+
+## User Management
+
+The RAG system enforces **admin-controlled user provisioning**. There is no self-registration. All accounts are created by an administrator, and every new user is required to change their password on first login.
+
+### Design Principles
+
+- **No self-registration**: only administrators create accounts
+- **System-generated initial passwords**: never set by humans, shown once at creation
+- **Forced first-login password change**: users cannot bypass the change-password screen
+- **Admin password reset**: admins can reset any user's password; the new password is shown once
+- **Deployment bootstrap**: a default `admin` account is created on first startup, requiring an immediate password change
+
+---
+
+### Data Model
+
+```python
+class User:
+    id: UUID                    # Primary key
+    username: str               # Unique, login identifier
+    email: str                  # Unique, for notifications
+    hashed_password: str        # bcrypt-hashed
+    role: Literal['admin', 'user']
+    must_change_password: bool  # True until user changes it
+    created_by: UUID            # FK → User (admin who created)
+    created_at: datetime
+    last_login: datetime | None
+    is_active: bool             # Soft delete / disable
+```
+
+---
+
+### REST API Endpoints
+
+All user management endpoints require a valid JWT with `role=admin`, except the two auth endpoints.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/auth/login` | None | Returns JWT + `must_change_password` flag |
+| `POST` | `/api/auth/change-password` | Any user | Changes own password; clears `must_change_password` flag |
+| `GET` | `/api/users` | Admin | List all users (paginated) |
+| `POST` | `/api/users` | Admin | Create user; returns `{ user, generated_password }` |
+| `DELETE` | `/api/users/{id}` | Admin | Deactivate user (soft delete) |
+| `POST` | `/api/users/{id}/reset-password` | Admin | Generate new password; returns it once |
+
+**Login response:**
+```json
+{
+  "access_token": "eyJ...",
+  "token_type": "bearer",
+  "must_change_password": true,
+  "user": { "id": "...", "username": "alice", "role": "user" }
+}
+```
+
+**Create user request / response:**
+```json
+// POST /api/users
+{ "username": "alice", "email": "alice@example.com", "role": "user" }
+
+// Response (generated_password shown ONCE — not stored in plaintext)
+{
+  "user": { "id": "...", "username": "alice", "role": "user", "must_change_password": true },
+  "generated_password": "Kx9#mPqR2v"
+}
+```
+
+---
+
+### Frontend Behavior
+
+**Login page:**
+- Standard username + password form
+- No "Register" or "Sign up" link
+
+**Post-login redirect:**
+- If `must_change_password === true` → redirect to `/change-password` (no bypass)
+- Otherwise → redirect to home / dashboard
+
+**Change Password page (`/change-password`):**
+- Fields: new password + confirm password
+- On success: clears flag, redirects to home
+- Users cannot navigate away without changing password while flag is set
+
+**Admin Users page (`/admin/users`):**
+- Table of all users: username, email, role, status, last login
+- **Create User** button: form with username / email / role; on submit shows generated password in a modal ("Copy this password — it will not be shown again")
+- **Reset Password** button per row: on confirm, shows new generated password once in a modal
+- **Deactivate / Reactivate** toggle per row
+
+---
+
+### Deployment Bootstrap
+
+On first startup (or when no users exist in the database), the system automatically creates a default admin account:
+
+```bash
+# bootstrap_admin.py — runs at application startup if user table is empty
+python scripts/bootstrap_admin.py
+```
+
+```python
+# bootstrap_admin.py
+import os
+from models import User, db
+
+DEFAULT_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+DEFAULT_PASSWORD = os.getenv("ADMIN_DEFAULT_PASSWORD", "Admin@1234")
+
+def bootstrap():
+    if db.query(User).count() == 0:
+        admin = User(
+            username=DEFAULT_USERNAME,
+            email="admin@localhost",
+            hashed_password=hash_password(DEFAULT_PASSWORD),
+            role="admin",
+            must_change_password=True,
+            created_by=None,
+            is_active=True
+        )
+        db.add(admin)
+        db.commit()
+        print(f"✓ Default admin created: {DEFAULT_USERNAME} / {DEFAULT_PASSWORD}")
+        print("  → Admin must change password on first login.")
+
+if __name__ == "__main__":
+    bootstrap()
+```
+
+**Environment variables for bootstrap:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ADMIN_USERNAME` | `admin` | Initial admin username |
+| `ADMIN_DEFAULT_PASSWORD` | `Admin@1234` | Initial admin password (change immediately) |
+
+> **Security note:** Change `ADMIN_DEFAULT_PASSWORD` before deploying to any shared or production environment. The bootstrap script will not overwrite an existing admin account.
+
+---
+
+## System Architecture
+
+### High-Level Architecture
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                        RAG System Architecture                     │
+└────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────┐
+│                     1. DOCUMENT INGESTION PIPELINE                 │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│  ┌─────────┐      ┌──────────────┐      ┌─────────────────┐        │
+│  │ PDF/    │ ───> │ Text         │ ───> │ Semantic        │        │
+│  │ DOCX    │      │ Extraction   │      │ Chunking        │        │
+│  │ Files   │      │ (PyMuPDF,    │      │ (LangChain)     │        │
+│  └─────────┘      │  python-docx)│      └─────────────────┘        │
+│                   └──────────────┘               │                 │
+│                                                  │                 │
+│                                                  v                 │
+│                            ┌──────────────────────────────┐        │
+│                            │ Metadata Extraction          │        │
+│                            │ - Document name              │        │
+│                            │ - Section/chapter            │        │
+│                            │ - Page numbers               │        │
+│                            │ - Category / topic tag       │        │
+│                            └──────────────────────────────┘        │
+│                                       │                            │
+└───────────────────────────────────────┼────────────────────────────┘
+                                        │
+                                        v
+┌───────────────────────────────────────┼────────────────────────────┐
+│                     2. EMBEDDING GENERATION                        │
+├───────────────────────────────────────┼────────────────────────────┤
+│                                       │                            │
+│                            ┌──────────────────────┐                │
+│                            │ Local Embedding Model│                │
+│                            │ (e5-small or         │                │
+│                            │  nomic-embed-text    │                │
+│                            │  via Ollama)         │                │
+│                            └──────────────────────┘                │
+│                                       │                            │
+│                                       v                            │
+│                            ┌──────────────────────┐                │
+│                            │ 384-dim vectors      │                │
+│                            └──────────────────────┘                │
+└───────────────────────────────────────┼────────────────────────────┘
+                                        │
+                                        v
+┌───────────────────────────────────────┼────────────────────────────┐
+│                     3. VECTOR STORAGE (JadeVectorDB)               │
+├───────────────────────────────────────┼────────────────────────────┤
+│                                       │                            │
+│  ┌────────────────────────────────────────────────────────────┐    │
+│  │                    JadeVectorDB                            │    │
+│  │                                                            │    │
+│  │  Database: "rag_documents"                                 │    │
+│  │  Dimension: 384                                            │    │
+│  │  Index Type: HNSW (for fast similarity search)             │    │
+│  │                                                            │    │
+│  │  Storage:                                                  │    │
+│  │  ┌──────────────────────┬──────────────────────────────┐   │    │
+│  │  │ Vector Embeddings    │ Metadata                     │   │    │
+│  │  │ (384-dim floats)     │ - doc_id                     │   │    │
+│  │  │                      │ - doc_name                   │   │    │
+│  │  │                      │ - chunk_id                   │   │    │
+│  │  │                      │ - page_numbers               │   │    │
+│  │  │                      │ - section                    │   │    │
+│  │  │                      │ - text (original chunk)      │   │    │
+│  │  │                      │ - category                   │   │    │
+│  │  └──────────────────────┴──────────────────────────────┘   │    │
+│  └────────────────────────────────────────────────────────────┘    │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                     4. QUERY PROCESSING PIPELINE                     │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  User Question                                                       │
+│       │                                                              │
+│       v                                                              │
+│  ┌─────────────────────┐                                            │
+│  │ Query Embedding     │  (Same embedding model)                    │
+│  └─────────────────────┘                                            │
+│       │                                                              │
+│       v                                                              │
+│  ┌─────────────────────────────────────────────┐                    │
+│  │ Similarity Search in JadeVectorDB           │                    │
+│  │ - Cosine similarity                         │                    │
+│  │ - Retrieve top-k chunks (k=5-10)           │                    │
+│  │ - Optional: metadata filtering              │                    │
+│  │   (category, section, etc.)                │                    │
+│  └─────────────────────────────────────────────┘                    │
+│       │                                                              │
+│       v                                                              │
+│  ┌─────────────────────────────────────────────┐                    │
+│  │ Retrieved Context Chunks                     │                    │
+│  │ - Chunk 1 (similarity: 0.89)                │                    │
+│  │ - Chunk 2 (similarity: 0.85)                │                    │
+│  │ - Chunk 3 (similarity: 0.82)                │                    │
+│  │ - ...                                        │                    │
+│  └─────────────────────────────────────────────┘                    │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                     5. ANSWER GENERATION (LLM)                       │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌─────────────────────────────────────────────┐                    │
+│  │ Prompt Construction                          │                    │
+│  │                                              │                    │
+│  │ System: You are a helpful assistant...       │                    │
+│  │                                              │                    │
+│  │                                              │                    │
+│  │ Context: [Retrieved chunks 1-5]             │                    │
+│  │                                              │                    │
+│  │ Question: [User question]                    │                    │
+│  │                                              │                    │
+│  │ Instructions: Answer based on context,       │                    │
+│  │              cite sources, indicate if       │                    │
+│  │              information is not found        │                    │
+│  └─────────────────────────────────────────────┘                    │
+│       │                                                              │
+│       v                                                              │
+│  ┌─────────────────────────────────────────────┐                    │
+│  │ Ollama (Local LLM)                           │                    │
+│  │ - llama3.2 or mistral                        │                    │
+│  │ - Runs locally, no internet needed          │                    │
+│  └─────────────────────────────────────────────┘                    │
+│       │                                                              │
+│       v                                                              │
+│  ┌─────────────────────────────────────────────┐                    │
+│  │ Generated Answer + Source Citations          │                    │
+│  │                                              │                    │
+│  │ Answer: "To complete this procedure,         │                    │
+│  │          follow these steps: 1) ..."         │                    │
+│  │                                              │                    │
+│  │ Sources:                                     │                    │
+│  │ - ProductManual.pdf, Page 45                 │                    │
+│  │ - Procedures_Guide.docx, Section 3.2        │                    │
+│  └─────────────────────────────────────────────┘                    │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                     6. USER INTERFACE                                │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  Option 1: Web UI (Streamlit/Gradio)                               │
+│  ┌────────────────────────────────────────┐                        │
+│  │ ┌────────────────────────────────────┐ │                        │
+│  │ │ Question: [Text input box]         │ │                        │
+│  │ └────────────────────────────────────┘ │                        │
+│  │ [Ask] [Clear]                           │                        │
+│  │                                         │                        │
+│  │ Answer:                                 │                        │
+│  │ ┌────────────────────────────────────┐ │                        │
+│  │ │ [Generated answer with formatting] │ │                        │
+│  │ │                                    │ │                        │
+│  │ │ Sources:                           │ │                        │
+│  │ │ • Doc1.pdf, Page 45               │ │                        │
+│  │ │ • Doc2.docx, Section 3.2          │ │                        │
+│  │ └────────────────────────────────────┘ │                        │
+│  └────────────────────────────────────────┘                        │
+│                                                                      │
+│  Option 2: CLI Interface (for power users)                         │
+│  $ rag-query "What is the approval process for expense reports?"   │
+│                                                                      │
+│  Option 3: REST API (for integration with existing tools)          │
+│  POST /api/v1/query                                                 │
+│  { "question": "What is the onboarding procedure?" }               │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### Data Flow
+
+```
+Document Ingestion (One-time setup):
+PDF/DOCX → Parse → Chunk → Embed → Store in JadeVectorDB
+
+Query Processing (Runtime):
+User Question → Embed → Search JadeVectorDB → Retrieve Context →
+  → Send to Ollama → Generate Answer → Display to User
+```
+
+---
+
+## Component Details
+
+### 1. Document Processing Pipeline
+
+#### Text Extraction
+
+**For PDF Files:**
+- **Primary**: PyMuPDF (fitz) - Fast, accurate, handles complex layouts
+- **Alternative**: pdfplumber - Good for tables and structured data
+- **Fallback**: OCR with Tesseract for scanned PDFs
+
+**For DOCX Files:**
+- **Primary**: python-docx - Official Python library for Word documents
+- **Features**: Extract text, preserve formatting, extract tables
+
+#### Chunking Strategy
+
+Based on [2025 RAG best practices](https://medium.com/@adnanmasood/chunking-strategies-for-retrieval-augmented-generation-rag-a-comprehensive-guide-5522c4ea2a90), **semantic chunking** is recommended for structured organizational documents:
+
+**Approach: Hybrid Semantic Chunking**
+
+```python
+Chunking Parameters:
+- Base chunk size: 512 tokens (~400 words)
+- Overlap: 50 tokens (10%) to preserve context
+- Respect boundaries: Sections, paragraphs, numbered lists
+- Preserve structure: Keep procedure steps together
+```
+
+**Why This Works:**
+- Organizational documents have clear structure (sections, procedures, policies)
+- Semantic coherence ensures complete procedure steps stay together
+- Overlap prevents information loss at chunk boundaries
+- Optimized size balances context vs. specificity
+
+**Implementation:**
+```python
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=512,
+    chunk_overlap=50,
+    length_function=len,
+    separators=[
+        "\n\n\n",  # Section breaks
+        "\n\n",    # Paragraph breaks
+        "\n",      # Line breaks
+        ". ",      # Sentences
+        " ",       # Words
+        ""         # Characters
+    ]
+)
+```
+
+#### Metadata Extraction
+
+Each chunk includes rich metadata for filtering and source attribution:
+
+```json
+{
+  "vector_id": "doc_123_chunk_45",
+  "vector": [0.123, 0.456, ...],  // 384-dim embedding
+  "metadata": {
+    "doc_id": "employee_handbook_v3",
+    "doc_name": "Employee Handbook",
+    "doc_type": "pdf",
+    "source_path": "/docs/hr/employee_handbook.pdf",
+    "chunk_id": 45,
+    "page_numbers": [23, 24],
+    "section": "Chapter 3: Policies",
+    "subsection": "3.2 Expense Reimbursement",
+    "category": "hr",
+    "text": "To submit an expense report, follow these steps: 1) Log into the portal...",
+    "chunk_length": 487,
+    "created_at": "2025-01-02T10:30:00Z"
+  }
+}
+```
+
+### 2. Embedding Generation
+
+#### Recommended Model: E5-Small
+
+Based on [2025 benchmarks](https://supermemory.ai/blog/best-open-source-embedding-models-benchmarked-and-ranked/), **E5-Small** is optimal for this use case:
+
+**Specifications:**
+- **Parameters**: 118M
+- **Dimensions**: 384
+- **Max tokens**: 512
+- **Performance**: 100% Top-5 accuracy, <30ms latency
+- **Size**: ~500MB on disk
+
+**Why E5-Small?**
+- Excellent accuracy for RAG tasks
+- Fast inference on laptop CPUs
+- Small memory footprint (ideal for local deployment)
+- 384 dimensions balance accuracy and storage efficiency
+
+**Alternative: Nomic-Embed-Text (via Ollama)**
+- Pre-integrated with Ollama
+- Competitive performance
+- Slightly larger (768 dimensions)
+
+#### Integration Options
+
+**Option 1: Direct via Sentence Transformers (Recommended)**
+```python
+from sentence_transformers import SentenceTransformer
+
+model = SentenceTransformer('intfloat/e5-small-v2')
+embeddings = model.encode(texts, convert_to_numpy=True)
+```
+
+**Option 2: Via Ollama API**
+```python
+import ollama
+
+response = ollama.embeddings(
+    model='nomic-embed-text',
+    prompt='Your text here'
+)
+embedding = response['embedding']
+```
+
+### 3. Vector Storage (JadeVectorDB)
+
+#### Database Configuration
+
+```json
+{
+  "name": "rag_documents",
+  "description": "Organizational documents for Q&A retrieval",
+  "vectorDimension": 384,
+  "indexType": "HNSW",
+  "distance_metric": "cosine",
+  "config": {
+    "hnsw_m": 16,
+    "hnsw_ef_construction": 200,
+    "hnsw_ef_search": 100
+  }
+}
+```
+
+#### Storage Structure
+
+**For 1000 documents, ~10,000 pages:**
+
+Estimated metrics:
+- Chunks: ~50,000 (5 chunks/page average)
+- Vectors: 50,000 × 384 dimensions × 4 bytes = ~77 MB (vectors only)
+- Metadata: ~50,000 × 2 KB = ~100 MB
+- **Total storage**: ~200-300 MB (highly manageable)
+
+#### Index Type: HNSW
+
+JadeVectorDB's HNSW (Hierarchical Navigable Small World) index is ideal for this use case:
+
+**Advantages:**
+- Sub-50ms search for 1M vectors (per JadeVectorDB specs)
+- Excellent recall (>95% at top-10)
+- Memory-efficient graph structure
+- Incremental updates (add new docs without full reindex)
+
+**Search Performance:**
+- For 50,000 chunks: <10ms latency
+- Recall@10: >95%
+- Throughput: 1000+ queries/second
+
+### 4. Query Processing
+
+#### Query Enhancement
+
+Before embedding the user question, apply these enhancements:
+
+**1. Query Expansion (Optional)**
+```python
+# Expand abbreviations common in your domain
+expansions = {
+    "HR": "human resources",
+    "PO": "purchase order",
+    "SOP": "standard operating procedure"
+}
+```
+
+**2. Instruction Prefix (for E5 models)**
+```python
+# E5 models benefit from instruction prefix
+query_prefix = "query: "
+expanded_query = query_prefix + user_question
+```
+
+#### Retrieval Strategy
+
+**Hybrid Retrieval (Recommended for 2025):**
+
+```python
+# 1. Vector similarity search
+vector_results = jadevectordb.search(
+    database_id="rag_documents",
+    query_vector=query_embedding,
+    top_k=10,
+    threshold=0.7  # Minimum similarity
+)
+
+# 2. Optional: Metadata filtering by category
+filtered_results = [
+    r for r in vector_results
+    if not category_filter or r['metadata'].get('category') == category_filter
+]
+
+# 3. Re-rank by recency (if time-sensitive)
+sorted_results = sorted(
+    filtered_results,
+    key=lambda x: (x['similarity'], x['metadata']['created_at']),
+    reverse=True
+)
+
+# 4. Select top-5 for context
+top_chunks = sorted_results[:5]
+```
+
+**Context Window Management:**
+
+```python
+# llama3.2:3b has a 128K token context window.
+# For fast CPU inference, operate within a practical 8K budget:
+# Budget allocation (8K operating window):
+# - System prompt:      ~150 tokens
+# - Retrieved context: ~2500 tokens (500 tokens × 5 chunks)
+# - User question:      ~100 tokens
+# - Answer generation: ~1000 tokens  (max_tokens=1024)
+# - Safety headroom:    ~250 tokens
+# Total:               ~4000 tokens  (well within 8K)
+#
+# Scale up to 25+ chunks or longer answers when using the full 128K window.
+
+max_context_tokens = 2500
+selected_chunks = []
+current_tokens = 0
+
+for chunk in top_chunks:
+    chunk_tokens = estimate_tokens(chunk['text'])
+    if current_tokens + chunk_tokens <= max_context_tokens:
+        selected_chunks.append(chunk)
+        current_tokens += chunk_tokens
+    else:
+        break
+```
+
+### 5. Answer Generation (Ollama)
+
+#### LLM Selection
+
+**Recommended Models (via Ollama):**
+
+| Model | Size | Context | Speed | Best For |
+|-------|------|---------|-------|----------|
+| **llama3.2:3b** | 2GB | 8K tokens | Fast | Laptops, quick answers |
+| **mistral:7b** | 4GB | 8K tokens | Medium | Balanced performance |
+| **llama3.1:8b** | 4.7GB | 128K tokens | Medium | Long context, detailed answers |
+
+**For your use case (laptop deployment):** **llama3.2:3b** is recommended
+- Small enough to run smoothly on 8GB RAM
+- Fast inference (~50 tokens/sec on CPU)
+- Sufficient quality for technical Q&A
+
+#### Prompt Engineering
+
+**System Prompt:**
+```python
+system_prompt = """You are a helpful assistant. Answer questions based ONLY on the provided documentation context.
+
+Your role:
+- Answer questions based ONLY on the provided documentation
+- Provide step-by-step instructions clearly and concisely
+- Always cite source documents (document name and page number)
+- If the information is not in the provided context, say "I don't have that information in the available documentation"
+- Use accurate terminology from the source material
+- Format procedures as numbered lists for clarity
+
+Guidelines:
+- Be precise and factual
+- Highlight any warnings or important notes mentioned in the documentation
+- If multiple procedures exist, present the official/recommended one first
+"""
+```
+
+**User Prompt Template:**
+```python
+user_prompt_template = """Context from documentation:
+
+{context_chunks}
+
+Question: {user_question}
+
+Please provide a detailed answer based on the context above. Include source references (document name and page number) for your answer.
+
+Answer:"""
+```
+
+**Full Prompt Construction:**
+```python
+context_text = "\n\n---\n\n".join([
+    f"Source: {chunk['metadata']['doc_name']}, Page {chunk['metadata']['page_numbers']}\n"
+    f"Section: {chunk['metadata']['section']}\n\n"
+    f"{chunk['metadata']['text']}"
+    for chunk in retrieved_chunks
+])
+
+full_prompt = user_prompt_template.format(
+    context_chunks=context_text,
+    user_question=user_question
+)
+```
+
+#### Ollama Integration
+
+```python
+import ollama
+
+response = ollama.chat(
+    model='llama3.2:3b',
+    messages=[
+        {'role': 'system', 'content': system_prompt},
+        {'role': 'user', 'content': full_prompt}
+    ],
+    options={
+        'temperature': 0.1,  # Low for factual accuracy
+        'top_p': 0.9,
+        'num_ctx': 8192,     # Practical operating window (model supports 128K)
+        'max_tokens': 1024
+    }
+)
+
+answer = response['message']['content']
+```
+
+### 6. User Interface
+
+#### FastAPI + React Web UI (Production-Grade)
+
+**Architecture:**
+- **Backend**: FastAPI REST API (Python)
+- **Frontend**: React SPA (JavaScript)
+- **Deployment**: Single server with static file serving
+
+**Advantages:**
+- Professional, modern interface
+- Clear separation of concerns (API + UI)
+- Auto-generated API documentation
+- Mobile-responsive design
+- Reusable API for future integrations
+- Supports history, file upload for new docs
+
+**Example Interface:**
+```python
+import streamlit as st
+
+st.title("📄 Document Q&A")
+
+# Category filter (optional)
+category_filter = st.selectbox(
+    "Filter by category (optional)",
+    options=["All"] + get_unique_categories()
+)
+
+# Question input
+question = st.text_area("Ask a question about your documents:")
+
+if st.button("Get Answer"):
+    with st.spinner("Searching documentation..."):
+        # 1. Embed query
+        query_embedding = embed_text(question)
+
+        # 2. Search JadeVectorDB
+        category = None if category_filter == "All" else category_filter
+        results = search_database(query_embedding, category)
+
+        # 3. Generate answer
+        answer = generate_answer(question, results)
+
+        # 4. Display
+        st.success("Answer:")
+        st.markdown(answer['text'])
+
+        st.info("Sources:")
+        for source in answer['sources']:
+            st.write(f"• {source['doc_name']}, Page {source['page']}")
+```
+
+#### Option 2: CLI Interface
+
+For users who prefer command-line:
+
+```bash
+$ rag-query "What is the process for submitting an expense report?"
+
+Searching documentation...
+Found 5 relevant sections.
+
+Answer:
+To submit an expense report, follow these steps:
+
+1. Log into the employee portal at portal.company.com
+2. Navigate to Finance → Expense Reports → New Report
+3. Attach receipts and fill in the required fields
+4. Submit for manager approval within 30 days of the expense
+
+⚠️  NOTE: Expenses over $500 require additional VP approval.
+
+Sources:
+• Employee_Handbook.pdf, Page 67
+• Finance_Procedures.docx, Section 4.2
+
+Query time: 0.8s
+```
+
+#### Option 3: REST API
+
+For integration with existing business systems:
+
+```python
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.post("/api/v1/query")
+async def query_documents(request: QueryRequest):
+    # 1. Embed query
+    embedding = embed_text(request.question)
+
+    # 2. Search
+    results = jadevectordb.search(
+        database_id="rag_documents",
+        query_vector=embedding,
+        top_k=10
+    )
+
+    # 3. Generate answer
+    answer = ollama_generate(request.question, results)
+
+    return {
+        "answer": answer,
+        "sources": extract_sources(results),
+        "confidence": calculate_confidence(results)
+    }
+```
+
+---
+
+## JadeVectorDB Capability Assessment
+
+### Current Capabilities (✅ Ready to Use)
+
+Based on the documentation review, JadeVectorDB provides:
+
+1. **✅ Vector Storage**
+   - High-performance storage with memory-mapped files
+   - 384-dimension vectors (perfect for E5-small)
+   - Metadata storage (critical for source attribution)
+
+2. **✅ Similarity Search**
+   - Cosine similarity (ideal for text embeddings)
+   - HNSW indexing for fast retrieval
+   - Top-k search with threshold filtering
+   - Sub-50ms search for 1M vectors (spec from README)
+
+3. **✅ Metadata Filtering**
+   - Complex filters with AND/OR logic
+   - Range queries for numeric metadata
+   - Essential for device-type filtering
+
+4. **✅ Batch Operations**
+   - Batch vector insertion
+   - Critical for initial document ingestion
+   - Bulk retrieval for multi-query scenarios
+
+5. **✅ REST API**
+   - Well-documented HTTP API
+   - Easy integration with Python pipeline
+   - Multiple client libraries (Python CLI, Shell CLI)
+
+6. **✅ Persistence**
+   - Hybrid SQLite + memory-mapped storage
+   - ACID guarantees for metadata
+   - WAL (Write-Ahead Logging) for durability
+
+7. **✅ Database Management**
+   - Multi-database support (can separate by department/device type)
+   - Custom configurations per database
+   - Schema validation
+
+8. **✅ Authentication & Security**
+   - JWT-based authentication
+   - API key management
+   - RBAC (Role-Based Access Control)
+   - Audit logging
+
+### Capability Gaps (⚠️ Requires Custom Development)
+
+The following components are **NOT** part of JadeVectorDB and need to be developed:
+
+1. **⚠️ Document Processing Pipeline**
+   - PDF/DOCX parsing
+   - Text extraction
+   - Chunking logic
+   - Metadata extraction
+   - **Action**: Build separate Python pipeline
+
+2. **⚠️ Embedding Generation**
+   - JadeVectorDB has `/v1/embeddings/generate` endpoint, but:
+     - Current implementation details unclear from docs
+     - May not support E5-small or Ollama models
+   - **Action**: Use external embedding service (Sentence Transformers or Ollama)
+
+3. **⚠️ RAG Orchestration Layer**
+   - Query processing logic
+   - Context assembly
+   - LLM integration
+   - Answer formatting
+   - **Action**: Build custom Python application
+
+4. **⚠️ User Interface**
+   - No built-in Q&A interface
+   - Web frontend is for database management, not RAG
+   - **Action**: Build Streamlit/FastAPI UI
+
+5. **⚠️ LLM Integration**
+   - No Ollama integration
+   - No prompt management
+   - **Action**: Direct Ollama API integration
+
+### Enhancement Recommendations
+
+While not critical for MVP, these enhancements would improve the system:
+
+1. **Hybrid Search** (Vector + Keyword)
+   - Current: Pure vector similarity
+   - Enhancement: Add BM25 keyword search, combine scores
+   - Benefit: Better handling of exact model numbers, part codes
+
+2. **Re-ranking**
+   - Current: Simple cosine similarity ranking
+   - Enhancement: Add cross-encoder re-ranking
+   - Benefit: Improved relevance of top results
+
+3. **Query Analytics**
+   - Track common questions
+   - Identify documentation gaps
+   - Monitor answer quality
+
+4. **Document Update Tracking**
+   - Version control for documents
+   - Incremental re-indexing
+   - Change notifications
+
+5. **Feedback Loop**
+   - User ratings on answers
+   - Collect ground-truth Q&A pairs
+   - Fine-tune retrieval thresholds
+
+---
+
+## Required Enhancements
+
+### 1. Document Ingestion Service
+
+**Purpose**: Parse PDFs/DOCX, chunk, embed, and store in JadeVectorDB
+
+**Components:**
+
+```python
+# document_processor.py
+
+class DocumentProcessor:
+    def __init__(self, jadevectordb_client, embedding_model):
+        self.db_client = jadevectordb_client
+        self.embedder = embedding_model
+
+    def process_pdf(self, pdf_path: str) -> List[Dict]:
+        """Extract text from PDF, chunk, and prepare for storage."""
+        import fitz  # PyMuPDF
+
+        doc = fitz.open(pdf_path)
+        chunks = []
+
+        for page_num, page in enumerate(doc):
+            text = page.get_text()
+            page_chunks = self.chunk_text(text, page_num + 1)
+            chunks.extend(page_chunks)
+
+        return chunks
+
+    def process_docx(self, docx_path: str) -> List[Dict]:
+        """Extract text from DOCX, chunk, and prepare for storage."""
+        from docx import Document
+
+        doc = Document(docx_path)
+        full_text = "\n".join([para.text for para in doc.paragraphs])
+        chunks = self.chunk_text(full_text)
+
+        return chunks
+
+    def chunk_text(self, text: str, page_num: int = None) -> List[Dict]:
+        """Apply semantic chunking strategy."""
+        from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=512,
+            chunk_overlap=50,
+            separators=["\n\n\n", "\n\n", "\n", ". ", " ", ""]
+        )
+
+        chunks = splitter.split_text(text)
+
+        return [
+            {
+                'text': chunk,
+                'page_num': page_num,
+                'chunk_id': i
+            }
+            for i, chunk in enumerate(chunks)
+        ]
+
+    def embed_and_store(self, document_path: str, metadata: Dict):
+        """Full pipeline: parse → chunk → embed → store."""
+
+        # 1. Parse
+        if document_path.endswith('.pdf'):
+            chunks = self.process_pdf(document_path)
+        elif document_path.endswith('.docx'):
+            chunks = self.process_docx(document_path)
+        else:
+            raise ValueError(f"Unsupported file type: {document_path}")
+
+        # 2. Embed
+        texts = [chunk['text'] for chunk in chunks]
+        embeddings = self.embedder.encode(texts)
+
+        # 3. Store in JadeVectorDB
+        vectors = []
+        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+            vector = {
+                'id': f"{metadata['doc_id']}_chunk_{i}",
+                'values': embedding.tolist(),
+                'metadata': {
+                    **metadata,
+                    'chunk_id': i,
+                    'text': chunk['text'],
+                    'page_num': chunk.get('page_num'),
+                    'chunk_length': len(chunk['text'])
+                }
+            }
+            vectors.append(vector)
+
+        # Batch insert
+        self.db_client.batch_store_vectors(
+            database_id="rag_documents",
+            vectors=vectors
+        )
+
+        return len(vectors)
+```
+
+**Batch Processing Script:**
+
+```python
+# ingest_documents.py
+
+from pathlib import Path
+from document_processor import DocumentProcessor
+from sentence_transformers import SentenceTransformer
+from jadevectordb import JadeVectorDBClient
+
+def ingest_all_documents(docs_directory: str):
+    # Initialize
+    db_client = JadeVectorDBClient("http://localhost:8080")
+    embedder = SentenceTransformer('intfloat/e5-small-v2')
+    processor = DocumentProcessor(db_client, embedder)
+
+    # Find all PDFs and DOCX files
+    docs_path = Path(docs_directory)
+    files = list(docs_path.glob("**/*.pdf")) + list(docs_path.glob("**/*.docx"))
+
+    print(f"Found {len(files)} documents to process...")
+
+    for file_path in files:
+        print(f"Processing: {file_path.name}")
+
+        # Extract metadata from filename or directory structure
+        metadata = {
+            'doc_id': file_path.stem,
+            'doc_name': file_path.name,
+            'doc_type': file_path.suffix[1:],  # pdf or docx
+            'source_path': str(file_path),
+            'category': file_path.parent.name,  # Derive from parent directory
+            'created_at': datetime.now().isoformat()
+        }
+
+        try:
+            num_chunks = processor.embed_and_store(str(file_path), metadata)
+            print(f"  ✓ Stored {num_chunks} chunks")
+        except Exception as e:
+            print(f"  ✗ Error: {e}")
+
+    print("Ingestion complete!")
+
+if __name__ == "__main__":
+    ingest_all_documents("/path/to/documents")
+```
+
+### 2. RAG Query Service
+
+**Purpose**: Handle user queries, retrieve context, generate answers
+
+```python
+# rag_service.py
+
+from sentence_transformers import SentenceTransformer
+from jadevectordb import JadeVectorDBClient
+import ollama
+
+class RAGService:
+    def __init__(self):
+        self.db_client = JadeVectorDBClient("http://localhost:8080")
+        self.embedder = SentenceTransformer('intfloat/e5-small-v2')
+        self.llm_model = "llama3.2:3b"
+
+    def query(self, question: str, category_filter: str = None, top_k: int = 5):
+        """Full RAG pipeline."""
+
+        # 1. Embed question
+        query_embedding = self.embedder.encode(f"query: {question}")
+
+        # 2. Search JadeVectorDB
+        search_results = self.db_client.search(
+            database_id="rag_documents",
+            query_vector=query_embedding.tolist(),
+            top_k=top_k * 2,  # Retrieve more for filtering
+            threshold=0.65
+        )
+
+        # 3. Optional: Filter by category
+        if category_filter:
+            search_results = [
+                r for r in search_results
+                if r['metadata'].get('category') == category_filter
+            ]
+
+        # 4. Take top-k after filtering
+        top_results = search_results[:top_k]
+
+        # 5. Build context
+        context = self._build_context(top_results)
+
+        # 6. Generate answer with Ollama
+        answer = self._generate_answer(question, context)
+
+        # 7. Format response
+        return {
+            'answer': answer,
+            'sources': self._extract_sources(top_results),
+            'confidence': self._calculate_confidence(top_results)
+        }
+
+    def _build_context(self, results: List[Dict]) -> str:
+        """Assemble retrieved chunks into LLM context."""
+        context_parts = []
+
+        for i, result in enumerate(results):
+            meta = result['metadata']
+            context_parts.append(
+                f"--- Source {i+1} ---\n"
+                f"Document: {meta['doc_name']}\n"
+                f"Page: {meta.get('page_num', 'N/A')}\n"
+                f"Section: {meta.get('section', 'N/A')}\n\n"
+                f"{meta['text']}\n"
+            )
+
+        return "\n\n".join(context_parts)
+
+    def _generate_answer(self, question: str, context: str) -> str:
+        """Use Ollama to generate answer."""
+
+        system_prompt = """You are a helpful assistant. Answer questions based ONLY on the
+provided documentation context. Always cite the source document and page number.
+If the answer is not in the context, say so explicitly.
+Format step-by-step instructions as numbered lists."""
+
+        user_prompt = f"""Context from documentation:
+
+{context}
+
+Question: {question}
+
+Provide a detailed answer based on the context above. Include source references.
+
+Answer:"""
+
+        response = ollama.chat(
+            model=self.llm_model,
+            messages=[
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_prompt}
+            ],
+            options={'temperature': 0.1}
+        )
+
+        return response['message']['content']
+
+    def _extract_sources(self, results: List[Dict]) -> List[Dict]:
+        """Extract source citations."""
+        sources = []
+        for result in results:
+            meta = result['metadata']
+            sources.append({
+                'doc_name': meta['doc_name'],
+                'page': meta.get('page_num', 'N/A'),
+                'section': meta.get('section', 'N/A'),
+                'similarity': result.get('similarity', 0.0)
+            })
+        return sources
+
+    def _calculate_confidence(self, results: List[Dict]) -> str:
+        """Simple confidence heuristic."""
+        if not results:
+            return "No relevant information found"
+
+        avg_similarity = sum(r.get('similarity', 0) for r in results) / len(results)
+
+        if avg_similarity > 0.85:
+            return "High"
+        elif avg_similarity > 0.70:
+            return "Medium"
+        else:
+            return "Low"
+```
+
+### 3. Web Interface (Streamlit)
+
+**Purpose**: User-friendly web interface for querying documents
+
+```python
+# app.py
+
+import streamlit as st
+from rag_service import RAGService
+
+st.set_page_config(page_title="Document Q&A", page_icon="📄", layout="wide")
+
+# Initialize RAG service (cached)
+@st.cache_resource
+def load_rag_service():
+    return RAGService()
+
+rag = load_rag_service()
+
+# UI Layout
+st.title("📄 Document Q&A System")
+st.markdown("Ask questions about your organization's documents and procedures.")
+
+# Sidebar: Filters
+with st.sidebar:
+    st.header("Filters")
+
+    category_filter = st.selectbox(
+        "Category (Optional)",
+        options=["All"] + get_unique_categories()  # Dynamic from DB metadata
+    )
+
+    top_k = st.slider("Number of sources to retrieve", 3, 10, 5)
+
+    st.markdown("---")
+    st.info("💡 Tip: Be specific in your questions for better results.")
+
+# Main area: Question input
+question = st.text_area(
+    "Your Question:",
+    placeholder="e.g., What is the process for submitting a leave request?",
+    height=100
+)
+
+col1, col2, col3 = st.columns([1, 1, 4])
+
+with col1:
+    ask_button = st.button("🔍 Get Answer", type="primary")
+
+with col2:
+    clear_button = st.button("Clear")
+
+if clear_button:
+    st.rerun()
+
+if ask_button and question:
+    with st.spinner("🔎 Searching documentation and generating answer..."):
+        # Query RAG system
+        category = None if category_filter == "All" else category_filter
+        result = rag.query(question, category_filter=category, top_k=top_k)
+
+        # Display answer
+        st.success("✅ Answer Generated")
+
+        # Answer box
+        st.markdown("### 📝 Answer")
+        st.markdown(result['answer'])
+
+        # Confidence indicator
+        confidence = result['confidence']
+        confidence_color = {
+            'High': '🟢',
+            'Medium': '🟡',
+            'Low': '🔴'
+        }
+        st.markdown(f"**Confidence:** {confidence_color.get(confidence, '⚪')} {confidence}")
+
+        # Sources
+        st.markdown("### 📚 Sources")
+        for i, source in enumerate(result['sources'], 1):
+            with st.expander(f"Source {i}: {source['doc_name']} (Similarity: {source['similarity']:.2%})"):
+                st.write(f"**Page:** {source['page']}")
+                st.write(f"**Section:** {source['section']}")
+
+        # Feedback (optional)
+        st.markdown("---")
+        st.markdown("### 📊 Was this answer helpful?")
+        col_fb1, col_fb2, col_fb3 = st.columns([1, 1, 4])
+        with col_fb1:
+            st.button("👍 Yes")
+        with col_fb2:
+            st.button("👎 No")
+
+# Session history (optional)
+if 'history' not in st.session_state:
+    st.session_state.history = []
+
+if ask_button and question:
+    st.session_state.history.append({
+        'question': question,
+        'answer': result['answer'][:100] + "..."  # Truncated
+    })
+
+# Display history in sidebar
+with st.sidebar:
+    if st.session_state.history:
+        st.markdown("---")
+        st.header("Recent Questions")
+        for i, item in enumerate(reversed(st.session_state.history[-5:]), 1):
+            with st.expander(f"{i}. {item['question'][:30]}..."):
+                st.write(item['answer'])
+```
+
+**To run:**
+```bash
+streamlit run app.py
+```
+
+### 4. CLI Tool (Optional)
+
+```python
+#!/usr/bin/env python3
+# rag_cli.py
+
+import click
+from rag_service import RAGService
+
+@click.command()
+@click.argument('question')
+@click.option('--category', '-c', default=None, help='Filter by document category')
+@click.option('--top-k', '-k', default=5, help='Number of sources to retrieve')
+def query(question, category, top_k):
+    """Query the document knowledge base."""
+
+    click.echo(f"\n🔍 Searching for: {question}\n")
+
+    rag = RAGService()
+    result = rag.query(question, category_filter=category, top_k=top_k)
+
+    # Print answer
+    click.echo("📝 Answer:")
+    click.echo("─" * 80)
+    click.echo(result['answer'])
+    click.echo("─" * 80)
+
+    # Print sources
+    click.echo("\n📚 Sources:")
+    for i, source in enumerate(result['sources'], 1):
+        click.echo(f"  {i}. {source['doc_name']}, Page {source['page']} "
+                   f"(Similarity: {source['similarity']:.1%})")
+
+    # Print confidence
+    click.echo(f"\n💡 Confidence: {result['confidence']}\n")
+
+if __name__ == '__main__':
+    query()
+```
+
+**Usage:**
+```bash
+chmod +x rag_cli.py
+./rag_cli.py "What is the expense reimbursement policy?"
+./rag_cli.py "Onboarding checklist" --category hr --top-k 8
+```
+
+---
+
+## Technology Stack
+
+### Complete Stack Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Technology Stack                         │
+└─────────────────────────────────────────────────────────────┘
+
+Layer 1: Data Storage
+├─ JadeVectorDB (vector database)
+│  ├─ HNSW indexing
+│  ├─ SQLite persistence
+│  └─ Memory-mapped vector storage
+└─ File system (original PDFs/DOCX)
+
+Layer 2: Embedding & Retrieval
+├─ Sentence Transformers (embedding generation)
+│  └─ Model: intfloat/e5-small-v2
+└─ JadeVectorDB Python Client (vector search)
+
+Layer 3: Language Model
+└─ Ollama (local LLM serving)
+   └─ Model: llama3.2:3b
+
+Layer 4: Document Processing
+├─ PyMuPDF (fitz) - PDF parsing
+├─ python-docx - DOCX parsing
+├─ LangChain - Text chunking
+└─ NumPy - Vector operations
+
+Layer 5: Orchestration
+└─ Custom Python RAG service
+   ├─ Query processing
+   ├─ Context assembly
+   └─ Response formatting
+
+Layer 6: User Interface
+├─ Option 1: Streamlit (web UI)
+├─ Option 2: Click (CLI)
+└─ Option 3: FastAPI (REST API)
+```
+
+---
+
+## Detailed Technology Specifications
+
+### 1. Embedding Models (Local/Offline)
+
+#### 1.1 E5-Small-v2 (**Recommended for Production**)
+
+**Model Information:**
+- **Full Name:** intfloat/e5-small-v2
+- **Parameters:** 118 million
+- **Embedding Dimensions:** 384
+- **Max Input Tokens:** 512 tokens
+- **Architecture:** 12 layers, 12 attention heads
+- **Model Size on Disk:** ~500 MB
+- **License:** MIT
+
+**Performance Metrics (2025-2026 Benchmarks):**
+- **MTEB Accuracy:** 100% Top-5 accuracy in RAG retrieval tasks
+- **Latency:** <30ms per embedding generation (CPU)
+- **Speed:** 50-100 embeddings/second on modern CPUs
+- **Quality:** Competitive with models 5× larger despite smallest size
+
+**Why E5-Small-v2 is Optimal:**
+- Best balance of accuracy and speed for production RAG systems
+- Small memory footprint suitable for laptop deployment (500MB)
+- 384 dimensions provide optimal balance between accuracy and storage efficiency
+- CPU-friendly for offline deployment
+- Despite smallest specifications (118M params), achieved best RAG benchmark results
+
+**Usage Requirements:**
+- **Query Prefix:** Must use `"query: "` prefix for search queries
+- **Document Prefix:** Use `"passage: "` prefix for document chunks (optional)
+- **Example:**
+  ```python
+  from sentence_transformers import SentenceTransformer
+
+  model = SentenceTransformer('intfloat/e5-small-v2')
+
+  # For queries
+  query_embedding = model.encode("query: What is the expense reimbursement policy?")
+
+  # For documents (prefix optional but recommended)
+  doc_embedding = model.encode("passage: To submit an expense report...")
+  ```
+
+**JadeVectorDB Compatibility:** ✅ Perfect - 384 dimensions fully supported
+
+**Sources:**
+- [intfloat/e5-small-v2 on Hugging Face](https://huggingface.co/intfloat/e5-small-v2)
+- [Best Open Source Embedding Models Benchmarked (2025)](https://research.aimultiple.com/open-source-embedding-models/)
+
+---
+
+#### 1.2 Nomic-Embed-Text (via Ollama)
+
+**Model Information:**
+- **Model Name:** nomic-embed-text (via Ollama)
+- **Embedding Dimensions:**
+  - Standard: 1,024 dimensions
+  - Matryoshka support: 768, 512, 384, 256 dimensions
+- **Max Context Length:** 8,192 tokens
+- **Model Size:** 0.5 GB memory footprint
+- **Training Data:** >1.6 billion text pairs
+
+**Performance Metrics (2025-2026):**
+- **MTEB Retrieval Score:** 53.01 (2025), projected 64.68+ (2026)
+- **Accuracy:** Surpasses OpenAI text-embedding-ada-002 and text-embedding-3-small
+- **Speed Benchmarks:**
+  - RTX 4090 (24GB GPU): 12,450 tokens/sec (batch size 256)
+  - Apple M2 Max (96GB RAM): 9,340 tokens/sec (batch size 128)
+  - Intel i9-13900K (64GB RAM): 3,250 tokens/sec (batch size 32)
+
+**Advanced Features:**
+- **Multilingual:** Supports ~100 languages
+- **Long Context:** 8,192 tokens (vs 512 for E5-small)
+- **Matryoshka Embeddings:** Flexible dimension reduction (1024→768→512→384)
+- **MoE Variant:** Nomic-Embed-Text-v2-MoE (first general-purpose MoE text embedding)
+
+**2025-2026 Performance Roadmap:**
+- **Inference Speed:** 12,450 → 18,000 (Q4 2025) → 25,000 tok/sec (Q2 2026)
+- **Context Length:** 8,192 → 32,768 (Q4 2025) → 128,000 tokens (Q2 2026)
+- **MTEB Score:** 64.68 → 68.50 (Q4 2025) → 72.00 (Q2 2026)
+
+**Ollama Integration:**
+```bash
+# Pull model
+ollama pull nomic-embed-text
+
+# Python usage
+import ollama
+
+response = ollama.embeddings(
+    model='nomic-embed-text',
+    prompt='Your text here'
+)
+embedding = response['embedding']  # 1024-dim vector
+```
+
+**JadeVectorDB Compatibility:**
+- ⚠️ Default 1,024 dimensions requires database configuration
+- ✅ Can use 384 dimensions with Matryoshka truncation
+- **Recommendation:** Configure JadeVectorDB with 1,024 dimensions OR use E5-small for 384-dim deployments
+
+**Use Cases:**
+- Multilingual documentation (100+ languages)
+- Long context documents (>512 tokens per chunk)
+- Advanced RAG scenarios requiring higher accuracy
+
+**Sources:**
+- [nomic-embed-text on Ollama](https://ollama.com/library/nomic-embed-text)
+- [Ollama Embedded Models: Complete Guide for 2025](https://collabnix.com/ollama-embedded-models-the-complete-technical-guide-for-2025-enterprise-deployment/)
+
+---
+
+#### 1.3 Alternative Embedding Models
+
+**BGE Models (BAAI General Embedding) - Multilingual Alternative**
+
+**bge-small-en-v1.5:**
+- **Dimensions:** 384
+- **Languages:** English-focused
+- **Performance:** Competitive with E5-small
+- **Use Case:** Good alternative to E5-small for English-only deployments
+
+**BGE-M3 (Advanced Multi-functionality):**
+- **Dimensions:** 1,024
+- **Features:** Dense, multi-vector, and sparse retrieval
+- **Languages:** 100+ languages
+- **Granularity:** Short sentences to 8,192 token documents
+- **Use Case:** Advanced multilingual RAG with hybrid search
+
+**all-MiniLM-L6-v2 (NOT Recommended for 2025+):**
+- **Dimensions:** 384
+- **Parameters:** 22.7 million
+- **Performance:** 56% Top-5, 28% Top-1 accuracy (lowest in benchmarks)
+- **Speed:** Very fast (14.7ms per 1K tokens)
+- **Architecture:** 2019-era, outdated
+- **Verdict:** ❌ Do NOT use for new RAG systems - replaced by E5 and modern models
+
+**Recommendation:** Stick with E5-small-v2 for English, or BGE-M3 for multilingual needs. Avoid all-MiniLM-L6-v2.
+
+---
+
+#### 1.4 CPU vs GPU Performance for Embeddings
+
+**CPU Performance (Intel i9, AMD Ryzen 7, Apple M2):**
+- **E5-small-v2:** 30-50ms per embedding, 50-100 embeddings/sec
+- **Nomic-embed-text:** 60-100ms per embedding (due to larger model)
+- **Batch Processing:** Can process 50-100 embeddings/second
+- **Use Case:** Suitable for query-time embedding (1-2 queries/sec) and offline batch indexing
+
+**GPU Performance (RTX 4070/4090, Apple M2 GPU):**
+- **E5-small-v2:** 10-20× faster than CPU
+- **Batch Processing:** 500-1,000+ embeddings/second
+- **Use Case:** Very large-scale indexing (>100K documents)
+
+**Recommendation for RAG:**
+- **Query-time:** CPU is sufficient (<50ms acceptable)
+- **Indexing 50K chunks:** CPU is practical (1-2 minutes total)
+- **Indexing 500K+ chunks:** GPU accelerates significantly but not required
+
+**Verdict:** CPU-only deployment is practical and cost-effective for medium-scale RAG (50K-100K chunks).
+
+---
+
+### 2. LLM Models via Ollama
+
+#### 2.1 Llama 3.2 Models
+
+**Llama 3.2 1B - Ultra-Lightweight**
+
+**Specifications:**
+- **Parameters:** 1 billion
+- **Context Window:** 128,000 tokens
+- **Languages:** English, German, French, Italian, Portuguese, Hindi, Spanish, Thai
+- **Training Data:** Up to 9 trillion tokens (cutoff: December 2023)
+- **Architecture:** Optimized transformer, auto-regressive
+
+**Memory Requirements:**
+- **8K Context:** 1.8 GB GPU memory
+- **128K Context:** ~4-5 GB (with KV cache)
+- **Q4_K_M Quantized:** ~1.0 GB
+
+**Performance:**
+- **CPU (Intel i9):** 20-30 tokens/sec
+- **GPU (RTX 4090):** 100-150+ tokens/sec
+- **Response Time:** <1 second for 100-token answers
+
+**Quantization Options:**
+```bash
+ollama pull llama3.2:1b           # Full precision
+ollama pull llama3.2:1b-q4_K_M    # 4-bit (recommended)
+ollama pull llama3.2:1b-q8_0      # 8-bit
+```
+
+**Use Cases:**
+- Ultra-lightweight deployment on 4-8GB RAM devices
+- Edge computing and laptops with limited RAM
+- Quick testing and development
+- Simple Q&A tasks
+
+---
+
+**Llama 3.2 3B - Recommended for RAG**
+
+**Specifications:**
+- **Parameters:** 3 billion
+- **Context Window:** 128,000 tokens
+- **Languages:** Same 8 languages as 1B
+- **Training:** Includes distilled knowledge from Llama 3.1 8B and 70B models
+
+**Memory Requirements:**
+- **8K Context:** 3.4 GB GPU memory
+- **Full 128K Context:** ~8-10 GB (with KV cache)
+- **Q4_K_M Quantized:** ~1.5-2 GB
+
+**Performance:**
+- **CPU (Intel i9/Ryzen 7):** 40-50 tokens/sec
+- **GPU (RTX 4070):** 80-120 tokens/sec
+- **Response Time:** ~2-3 seconds for 100-150 token answers
+
+**Quantization Options:**
+```bash
+ollama pull llama3.2:3b           # Full precision (~2GB)
+ollama pull llama3.2:3b-q4_K_M    # 4-bit (~1.5GB) - RECOMMENDED
+ollama pull llama3.2:3b-q5_K_M    # 5-bit (~1.8GB)
+```
+
+**Why Llama 3.2 3B is BEST for RAG:**
+- ✅ **Optimal Balance:** Quality vs. speed vs. memory
+- ✅ **Fast CPU Performance:** 40-50 tokens/sec feels responsive
+- ✅ **Small Memory Footprint:** Runs comfortably on 8GB RAM systems
+- ✅ **128K Context:** Can handle extensive retrieved context
+- ✅ **Quality:** Distilled from larger models, excellent for technical Q&A
+- ✅ **Offline:** Works perfectly without internet
+
+**Recommended Configuration for RAG:**
+- **Model:** llama3.2:3b-q4_K_M
+- **Temperature:** 0.1 (low for factual accuracy)
+- **Max Tokens:** 1024 (sufficient for most answers)
+- **Context Budget:** 2000-3000 tokens for retrieved chunks
+
+**Sources:**
+- [Llama 3.2 Model Cards](https://www.llama.com/docs/model-cards-and-prompt-formats/llama3_2/)
+- [llama3.2 on Ollama](https://ollama.com/library/llama3.2)
+
+---
+
+#### 2.2 Llama 3.1 8B - High-Quality Alternative
+
+**Specifications:**
+- **Parameters:** 8 billion
+- **Context Window:** 128,000 tokens
+- **Languages:** 8 languages (same as Llama 3.2)
+- **Architecture:** Grouped-Query Attention (GQA) for efficient long-context processing
+- **Training Data:** High-quality instruction tuning
+
+**Memory Requirements:**
+- **Standard Operations:** 7.6 GB GPU memory
+- **Full 128K Context:** ~12 GB VRAM (with KV cache)
+- **Q4_K_M Quantized:** ~5 GB
+- **Q5_K_M Quantized:** ~5.5 GB
+
+**Performance:**
+- **CPU (Intel i9):** 10-15 tokens/sec
+- **GPU (RTX 4070 12GB):** 40-60 tokens/sec
+- **Response Time:** 6-10 seconds for 100-token answers on CPU
+
+**Quantization Options:**
+```bash
+ollama pull llama3.1:8b           # Full precision (~4.7GB)
+ollama pull llama3.1:8b-q4_K_M    # 4-bit (~5GB) - RECOMMENDED
+ollama pull llama3.1:8b-q5_K_M    # 5-bit (~5.5GB) - Higher quality
+ollama pull llama3.1:8b-q8_0      # 8-bit (~8GB) - Max quality
+```
+
+**Use Cases:**
+- When you need higher quality responses than 3B models
+- Complex reasoning and multi-step procedures
+- Available RAM: 16GB+
+- Can tolerate 6-10 sec response times
+
+**Tradeoffs vs Llama 3.2 3B:**
+- ✅ **Better Quality:** More accurate, nuanced answers
+- ✅ **Better Reasoning:** Handles complex multi-step procedures
+- ❌ **Slower:** 10-15 tok/sec vs 40-50 tok/sec on CPU
+- ❌ **More Memory:** 5-8GB vs 2GB
+
+**Recommendation:** Use Llama 3.1 8B if you have 16GB+ RAM and can tolerate slightly longer response times for higher quality.
+
+**Sources:**
+- [llama3.1:8b on Ollama](https://ollama.com/library/llama3.1:8b)
+- [Llama 3.1 8B: GPU VRAM Requirements](https://apxml.com/models/llama-3-1-8b)
+
+---
+
+#### 2.3 Mistral 7B - Balanced Alternative
+
+**Specifications:**
+- **Parameters:** 7.3 billion
+- **Context Window:**
+  - v0.3: 32,768 tokens
+  - v0.2: 32,768 tokens
+  - v0.1: 4,096 tokens (use v0.2+ for RAG)
+- **License:** Apache 2.0
+- **Architecture:** Sliding window attention for efficient long-context
+
+**Memory Requirements:**
+- **Q4_K_M:** ~4 GB minimum
+- **Q5_K_M:** ~5-6 GB
+- **Full Precision:** ~14 GB
+
+**Quantization Performance:**
+
+| Quantization | File Size | Bits/Weight | Quality Retention | Speed (CPU) | Use Case |
+|--------------|-----------|-------------|-------------------|-------------|----------|
+| Q4_K_M | ~4 GB | 4.5 bpw | 90-95% | 45-55 tok/sec | **Recommended** - Best balance |
+| Q5_K_M | ~5.1 GB | 5.5 bpw | >95% | 35-45 tok/sec | Higher quality |
+| Q8_0 | ~7-8 GB | 8 bpw | >99% | 20-30 tok/sec | Maximum quality |
+
+**Performance:**
+- **CPU (Intel i5/i7, Ryzen 5/7):** 5-8 tokens/sec (Q4_K_M: 45-55 tok/sec reported)
+- **GPU (RTX 3060/4060):** 25-45 tokens/sec (Q4_K_M)
+- **Response Time:** ~2-4 seconds for 100-token answers (Q4_K_M on modern CPU)
+
+**Quantization Recommendations:**
+- **Q4_K_M:** Default choice - imperceptible quality loss, optimal speed
+- **Q5_K_M:** Use if you have 16-24GB RAM for 5% quality improvement
+- **Q8_0:** Only if memory permits and maximum quality needed
+
+**Ollama Commands:**
+```bash
+ollama pull mistral:7b-instruct-v0.3     # Latest version
+ollama pull mistral:7b-q4_K_M            # Quantized (recommended)
+ollama pull mistral:7b-q5_K_M            # Higher quality
+```
+
+**Why Mistral 7B:**
+- ✅ **Apache 2.0 License:** Fully open, no restrictions
+- ✅ **32K Context:** Large enough for extensive RAG context
+- ✅ **Efficient Architecture:** Sliding window attention
+- ✅ **Balanced:** Good quality/speed tradeoff
+
+**Tradeoffs:**
+- Slightly slower than Llama 3.2 3B on CPU
+- Better quality than Llama 3.2 3B
+- Requires more RAM than Llama 3.2 3B
+
+**Sources:**
+- [Mistral 7B Announcement](https://mistral.ai/news/announcing-mistral-7b)
+- [Better quantized models for Mistral-7B](https://github.com/ggml-org/llama.cpp/discussions/4364)
+
+---
+
+#### 2.4 Qwen 2.5 Models - Advanced Long-Context
+
+**Model Sizes:** 0.5B, 1.5B, 3B, 7B, 14B, 32B, 72B
+
+**Context Window:**
+- **Standard Models:** 128K tokens (up to 8K token generation)
+- **Qwen2.5-1M Series (January 2025):** 1 million tokens
+- **Qwen3 Series (2025 roadmap):** 256K-1M tokens
+
+**Qwen 2.5 3B:**
+- **Memory:** ~2-3 GB (Q4_K_M)
+- **Performance:** 35-45 tokens/sec on CPU
+- **Context:** 128K tokens
+- **Use Case:** Alternative to Llama 3.2 3B
+
+**Qwen 2.5 7B:**
+- **Memory:** ~4-5 GB (Q4_K_M)
+- **Performance:** 12-18 tokens/sec on CPU
+- **Context:** 128K tokens
+- **Use Case:** Alternative to Mistral 7B / Llama 3.1 8B
+
+**Qwen2.5-1M (Ultra Long Context):**
+- **Context Length:** Up to 1 million tokens
+- **Equivalent to:** ~1 million English words, 10 novels, 150 hours of speech, 30K lines of code
+- **Performance:** 100% accuracy on 1M Passkey Retrieval task, 93.1 RULER benchmark
+- **Use Case:** Processing entire document collections in one context (experimental for RAG)
+
+**Key Features:**
+- **Multilingual:** 29+ languages
+- **Strong Performance:** Knowledge, coding, mathematics
+- **Instruction Following:** Excellent for generating long texts (>8K tokens)
+- **Structured Output:** JSON generation, structured data
+
+**Ollama Commands:**
+```bash
+ollama pull qwen2.5:3b
+ollama pull qwen2.5:7b
+ollama pull qwen2.5:14b
+```
+
+**Use Cases for RAG:**
+- **Standard RAG:** Qwen 2.5 3B or 7B (128K context)
+- **Multilingual:** Best choice for 29+ languages
+- **Ultra-long Context:** Qwen2.5-1M for experimental full-document retrieval
+
+**Sources:**
+- [Qwen2.5 on Ollama](https://ollama.com/library/qwen2.5)
+- [Extending Context Length to 1M Tokens](https://qwenlm.github.io/blog/qwen2.5-turbo/)
+
+---
+
+#### 2.5 Quantization Impact Summary
+
+**Understanding Quantization:**
+Quantization reduces model precision from 16-bit (FP16) to 8-bit, 5-bit, or 4-bit integers, reducing memory and increasing speed with minimal quality loss.
+
+| Quantization | Bits/Weight | Quality Retention | File Size (7B) | Speed vs FP16 | RAM/VRAM Required | Best For |
+|--------------|-------------|-------------------|----------------|---------------|-------------------|----------|
+| **Full FP16** | 16 | 100% (baseline) | ~14 GB | 1× (baseline) | 14+ GB | Research, benchmarking |
+| **Q8_0** | 8 | 99%+ | ~7-8 GB | 1.2-1.5× | 8-10 GB | Maximum quality |
+| **Q5_K_M** | 5.5 | 95%+ | ~5.1 GB | 1.8-2× | 6-8 GB | Balanced quality |
+| **Q4_K_M** | 4.5 | 90-95% | ~4 GB | 2-2.5× | 4-6 GB | **Production default** |
+| **Q3_K_M** | 3.5 | 85-90% | ~3 GB | 3× | 3-5 GB | Low-memory devices |
+
+**Recommendations by Hardware:**
+- **8GB RAM Laptop:** Llama 3.2 3B Q4_K_M (~2GB model + 2GB context + 4GB OS/apps)
+- **16GB RAM Workstation:** Llama 3.1 8B Q5_K_M or Mistral 7B Q5_K_M
+- **24GB+ RAM/VRAM:** Llama 3.1 8B Q8_0 or full precision 14B+ models
+
+**Quality vs Speed Tradeoff:**
+- **Q4_K_M:** Imperceptible quality loss for RAG tasks, 2× faster
+- **Q5_K_M:** Slight quality improvement, 1.8× faster
+- **Q8_0:** Near-perfect quality, slower but still faster than FP16
+
+**Verdict:** Q4_K_M is the sweet spot for production RAG systems - excellent quality retention with 2× speed improvement.
+
+---
+
+#### 2.6 CPU Performance Summary (2025)
+
+**Tokens Per Second Benchmarks (CPU-only):**
+
+| Model | Size | Quantization | CPU Type | Tokens/Sec | Use Case |
+|-------|------|--------------|----------|------------|----------|
+| Llama 3.2 1B | 1B | Q4_K_M | Intel i9 | 20-30 | Testing, edge |
+| **Llama 3.2 3B** | 3B | Q4_K_M | Intel i9 | **40-50** | **Production RAG** |
+| Llama 3.1 8B | 8B | Q4_K_M | Intel i9 | 10-15 | High-quality RAG |
+| Mistral 7B | 7.3B | Q4_K_M | Intel i5/i7 | 5-8 | Alternative |
+| Qwen 2.5 3B | 3B | Q4_K_M | AMD Ryzen 7 | 35-45 | Multilingual RAG |
+| Qwen 2.5 7B | 7B | Q4_K_M | AMD Ryzen 7 | 12-18 | Advanced RAG |
+
+**Target for Interactive RAG:** >20 tokens/sec (feels responsive at 0.05s per token)
+
+**Response Time Estimates:**
+- **100-token answer:**
+  - Llama 3.2 3B: ~2-3 seconds ✅
+  - Llama 3.1 8B: ~6-8 seconds ⚠️
+- **200-token answer:**
+  - Llama 3.2 3B: ~4-5 seconds ✅
+  - Llama 3.1 8B: ~13-15 seconds ⚠️
+
+**Recommendation:** Llama 3.2 3B Q4_K_M provides the best CPU performance for interactive RAG applications.
+
+**GPU Performance (for comparison):**
+- **RTX 4090:** 100-200+ tokens/sec for 3-8B models
+- **RTX 4070 12GB:** 50-100 tokens/sec
+- **Apple M2 Max:** 40-80 tokens/sec
+
+---
+
+### 3. Ollama Integration
+
+#### 3.1 Latest Version and Features (2025-2026)
+
+**Current Version:** Ollama 0.12.11+ (actively developed, frequent releases)
+
+**Core Capabilities:**
+- **Local LLM Serving:** Run 100+ open-source models locally
+- **Embedding Generation:** Built-in embedding API
+- **Model Management:** Simple pull/push/list/remove commands
+- **REST API:** Full HTTP API for integration
+- **OpenAI Compatibility:** Drop-in replacement for OpenAI API
+
+**Embedding API:**
+```python
+import ollama
+
+# Generate embeddings
+response = ollama.embeddings(
+    model='nomic-embed-text',
+    prompt='Your text here'
+)
+embedding = response['embedding']  # Returns L2-normalized vector
+```
+
+**Chat API:**
+```python
+import ollama
+
+# Chat completion
+response = ollama.chat(
+    model='llama3.2:3b',
+    messages=[
+        {'role': 'system', 'content': 'You are a helpful assistant.'},
+        {'role': 'user', 'content': 'Your question'}
+    ],
+    options={
+        'temperature': 0.1,
+        'max_tokens': 1024
+    }
+)
+answer = response['message']['content']
+```
+
+**REST API Endpoints:**
+```bash
+# Generate embeddings
+curl http://localhost:11434/api/embed \
+  -d '{"model": "nomic-embed-text", "input": "text"}'
+
+# Chat completion
+curl http://localhost:11434/api/chat \
+  -d '{
+    "model": "llama3.2:3b",
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'
+
+# OpenAI-compatible endpoint
+curl http://localhost:11434/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{"model": "nomic-embed-text", "input": "text"}'
+```
+
+**Advanced Features (2025):**
+- **Log Probabilities:** Token likelihood scores for confidence estimation
+- **Vulkan Acceleration:** Support for AMD, Intel GPUs, and integrated GPUs
+- **OpenAI Compatibility:** `/v1/*` endpoints match OpenAI API exactly
+- **Model Library:** 100+ pre-configured models (Llama, Mistral, Qwen, Gemma, etc.)
+
+**Model Management:**
+```bash
+# Download model
+ollama pull llama3.2:3b
+
+# List installed models
+ollama list
+
+# Model information
+ollama show llama3.2:3b
+
+# Remove model
+ollama rm llama3.2:1b
+
+# Run model interactively
+ollama run llama3.2:3b
+```
+
+**2025-2026 Roadmap (projected):**
+- Inference speed improvements (target: 25,000 tokens/sec by Q2 2026)
+- Memory optimization (90% efficiency improvements)
+- Extended context support (128K-256K tokens standard)
+- More embedding models (multilingual, domain-specific)
+
+**Sources:**
+- [Ollama Library](https://ollama.com/library)
+- [Ollama Documentation](https://github.com/ollama/ollama)
+- [Embedding models · Ollama Blog](https://ollama.com/blog/embedding-models)
+
+---
+
+#### 3.2 Integration with JadeVectorDB
+
+**Full RAG Pipeline Example:**
+
+```python
+import ollama
+from jadevectordb import JadeVectorDBClient
+from sentence_transformers import SentenceTransformer
+
+# Initialize clients
+db_client = JadeVectorDBClient("http://localhost:8080")
+embedder = SentenceTransformer('intfloat/e5-small-v2')
+
+# --- INDEXING PHASE ---
+
+# 1. Generate embedding for document chunk
+chunk_text = "To submit an expense report, follow these steps..."
+chunk_embedding = embedder.encode(f"passage: {chunk_text}")
+
+# 2. Store in JadeVectorDB
+db_client.store_vector(
+    database_id="rag_documents",
+    vector_id="chunk_001",
+    values=chunk_embedding.tolist(),
+    metadata={
+        "text": chunk_text,
+        "doc_name": "Employee Handbook",
+        "page": 23,
+        "section": "Expense Reimbursement"
+    }
+)
+
+# --- QUERY PHASE ---
+
+# 1. Embed user question
+question = "How do I submit an expense report?"
+query_embedding = embedder.encode(f"query: {question}")
+
+# 2. Search JadeVectorDB
+results = db_client.search(
+    database_id="rag_documents",
+    query_vector=query_embedding.tolist(),
+    top_k=5,
+    threshold=0.7
+)
+
+# 3. Build context from top results
+context = "\n\n".join([
+    f"Source: {r['metadata']['doc_name']}, Page {r['metadata']['page']}\n"
+    f"{r['metadata']['text']}"
+    for r in results
+])
+
+# 4. Generate answer with Ollama
+system_prompt = """You are a helpful assistant.
+Answer based ONLY on the provided documentation.
+Always cite sources with document name and page number."""
+
+response = ollama.chat(
+    model='llama3.2:3b',
+    messages=[
+        {'role': 'system', 'content': system_prompt},
+        {'role': 'user', 'content': f"Context:\n{context}\n\nQuestion: {question}"}
+    ],
+    options={'temperature': 0.1}
+)
+
+answer = response['message']['content']
+print(answer)
+```
+
+---
+
+### 4. Document Processing Libraries
+
+#### 4.1 PyMuPDF (fitz) - PDF Processing
+
+**Package Information:**
+- **Package Name:** PyMuPDF
+- **Import Name:** `pymupdf` (v1.24+) or `fitz` (legacy, still works)
+- **Latest Version:** 1.26.7 (as of 2025)
+- **License:** GNU AGPL / Commercial
+
+**Specifications:**
+- **Performance:** 15-20 pages/second extraction speed
+- **Memory:** Efficient handling of large multi-hundred-page PDFs
+- **Formats:** PDF, XPS, EPUB, MOBI, FB2, CBZ, SVG
+
+**Key Features:**
+- **Text Extraction:** Fast, accurate text extraction preserving layout
+- **OCR Support:** Built-in OCR for scanned PDFs (no external Tesseract needed)
+- **Table Detection:** Identify and extract tables
+- **Metadata:** Extract document properties, page count, etc.
+- **Images:** Extract embedded images
+- **Complex Layouts:** Handles multi-column layouts, headers/footers
+
+**Installation:**
+```bash
+pip install PyMuPDF==1.26.7
+```
+
+**Basic Usage:**
+```python
+import pymupdf  # or: import fitz
+
+# Open PDF
+doc = pymupdf.open("document.pdf")
+
+# Extract text from all pages
+full_text = ""
+for page in doc:
+    full_text += page.get_text()
+
+# Extract text with layout information
+for page in doc:
+    blocks = page.get_text("blocks")  # Returns text blocks with coordinates
+    for block in blocks:
+        print(f"Text: {block[4]}, Position: ({block[0]}, {block[1]})")
+
+# OCR for scanned PDFs
+scanned_page = doc[0]
+ocr_text = scanned_page.get_textpage_ocr()  # Built-in OCR
+
+doc.close()
+```
+
+**RAG Integration Example:**
+```python
+import pymupdf
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+def process_pdf_for_rag(pdf_path):
+    doc = pymupdf.open(pdf_path)
+    chunks = []
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=512,
+        chunk_overlap=50,
+        separators=["\n\n\n", "\n\n", "\n", ". ", " ", ""]
+    )
+
+    for page_num, page in enumerate(doc):
+        text = page.get_text()
+        page_chunks = splitter.split_text(text)
+
+        for chunk_id, chunk in enumerate(page_chunks):
+            chunks.append({
+                'text': chunk,
+                'metadata': {
+                    'source': pdf_path,
+                    'page': page_num + 1,
+                    'chunk_id': chunk_id,
+                    'doc_type': 'pdf'
+                }
+            })
+
+    doc.close()
+    return chunks
+```
+
+**Why PyMuPDF:**
+- ✅ **Fastest PDF parser** in Python ecosystem (2026 benchmarks)
+- ✅ **Built-in OCR** - no external dependencies
+- ✅ **Battle-tested** - used by major projects
+- ✅ **Comprehensive API** - advanced features available
+
+**Sources:**
+- [PyMuPDF Documentation](https://pymupdf.readthedocs.io/)
+- [Best Python PDF to Text Parser Libraries: 2026 Evaluation](https://unstract.com/blog/evaluating-python-pdf-to-text-libraries/)
+
+---
+
+#### 4.2 python-docx - DOCX Processing
+
+**Package Information:**
+- **Package Name:** python-docx
+- **Latest Version:** 1.2.0 (2025)
+- **License:** MIT (free and open-source)
+- **Python:** 3.6+
+
+**Specifications:**
+- **Formats:** Microsoft Word 2007+ (.docx only, NOT .doc)
+- **Features:** Read, create, modify .docx files
+
+**Capabilities:**
+- **Read:** Extract text, paragraphs, tables
+- **Create/Modify:** Add paragraphs, tables, images
+- **Formatting:** Access runs, styles, fonts
+- **Metadata:** Document properties (title, author, etc.)
+- **Tables:** Extract table content and structure
+- **Images:** Add images with aspect ratio control
+
+**Limitations:**
+- ❌ Only .docx (not .doc from Word 2003 and earlier)
+- ❌ Headers/footers manipulation not yet supported
+- ⚠️ Feature set still expanding (active development)
+
+**Installation:**
+```bash
+pip install python-docx==1.2.0
+```
+
+**Basic Usage:**
+```python
+from docx import Document
+
+# Open document
+doc = Document('manual.docx')
+
+# Extract all paragraphs
+paragraphs = [para.text for para in doc.paragraphs]
+full_text = '\n\n'.join(paragraphs)
+
+# Extract tables
+for table in doc.tables:
+    for row in table.rows:
+        row_data = [cell.text for cell in row.cells]
+        print(row_data)
+
+# Document properties
+print(f"Title: {doc.core_properties.title}")
+print(f"Author: {doc.core_properties.author}")
+```
+
+**RAG Integration Example:**
+```python
+from docx import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+def process_docx_for_rag(docx_path):
+    doc = Document(docx_path)
+
+    # Extract all paragraphs (filter empty ones)
+    paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
+    full_text = '\n\n'.join(paragraphs)
+
+    # Chunk the text
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=512,
+        chunk_overlap=50,
+        separators=["\n\n", "\n", ". ", " ", ""]
+    )
+
+    chunks = splitter.split_text(full_text)
+
+    return [
+        {
+            'text': chunk,
+            'metadata': {
+                'source': docx_path,
+                'chunk_id': i,
+                'doc_type': 'docx',
+                'title': doc.core_properties.title or 'Untitled'
+            }
+        }
+        for i, chunk in enumerate(chunks)
+    ]
+```
+
+**Sources:**
+- [python-docx on PyPI](https://pypi.org/project/python-docx/)
+- [python-docx Documentation](https://python-docx.readthedocs.io/)
+
+---
+
+#### 4.3 LangChain Text Splitters
+
+**Package Information:**
+- **Package:** langchain-text-splitters (or langchain core)
+- **Latest Version:** Actively maintained (2025-2026)
+- **License:** MIT
+
+**RecursiveCharacterTextSplitter (Recommended)**
+
+**How It Works:**
+Hierarchically splits text using a list of separators in order of preference:
+1. First tries `"\n\n\n"` (major section breaks)
+2. Then `"\n\n"` (paragraphs)
+3. Then `"\n"` (lines)
+4. Then `". "` (sentences)
+5. Finally `" "` (words) and `""` (characters)
+
+**Installation:**
+```bash
+pip install langchain-text-splitters
+# or
+pip install langchain
+```
+
+**Configuration for Document Q&A:**
+```python
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=512,           # ~400 words maximum
+    chunk_overlap=50,         # 10% overlap for context preservation
+    length_function=len,      # Measure by characters
+    separators=[
+        "\n\n\n",            # Major sections (e.g., "Chapter 1", "Chapter 2")
+        "\n\n",              # Paragraphs / procedure steps
+        "\n",                # Individual lines
+        ". ",                # Sentences
+        " ",                 # Words
+        ""                   # Characters (last resort)
+    ],
+    is_separator_regex=False
+)
+
+# Split text
+chunks = splitter.split_text(document_text)
+
+# Split with metadata preservation
+from langchain.docstore.document import Document
+
+documents = [Document(page_content=text, metadata={"source": "manual.pdf"})]
+split_docs = splitter.split_documents(documents)
+```
+
+**Key Parameters:**
+
+| Parameter | Purpose | Recommended Value | Notes |
+|-----------|---------|-------------------|-------|
+| `chunk_size` | Maximum chunk size | 512 characters | ~400 words, balances context vs specificity |
+| `chunk_overlap` | Overlap between chunks | 50 characters | ~10% overlap prevents information loss |
+| `length_function` | How to measure length | `len` | Can use token counters for precise control |
+| `separators` | Hierarchical split points | See above | Preserves document structure |
+
+**Why RecursiveCharacterTextSplitter?**
+- ✅ **Default Recommendation:** Works well out-of-box for most documents
+- ✅ **Semantic Preservation:** Keeps paragraphs, sentences, procedures intact
+- ✅ **Flexible:** Customizable separators for domain-specific needs
+- ✅ **Context Retention:** Overlap prevents loss at boundaries
+
+**Alternative Splitters:**
+
+**CharacterTextSplitter:** Fixed-length splitting (simpler, less intelligent)
+**TokenTextSplitter:** Splits by token count (for strict token limits)
+**MarkdownTextSplitter:** Preserves Markdown structure
+**Language-Specific:**
+  - `PythonCodeTextSplitter`
+  - `JavaScriptTextSplitter`
+  - etc.
+
+**Best Practices for RAG (2025-2026):**
+- **Chunk Size:** Start with 512 characters, adjust based on retrieval quality
+- **Overlap:** 10-20% of chunk size (50-100 characters for 512-char chunks)
+- **Separators:** Customize for your document type (procedures, manuals, etc.)
+- **Tune Based on Metrics:** Monitor retrieval recall and adjust chunk size
+
+**Sources:**
+- [Text splitters - LangChain Docs](https://docs.langchain.com/oss/python/integrations/splitters)
+- [Understanding RecursiveCharacterTextSplitter](https://dev.to/eteimz/understanding-langchains-recursivecharactertextsplitter-2846)
+
+---
+
+### 5. Vector Database Configuration (JadeVectorDB)
+
+#### 5.1 Supported Embedding Dimensions
+
+**Optimal Dimension for RAG:** 384 dimensions
+- Perfect match for E5-small-v2
+- Balanced accuracy and storage efficiency
+- Proven in production RAG systems
+
+**Flexible Dimension Support:**
+JadeVectorDB supports arbitrary dimensions configured per database:
+
+```json
+{
+  "name": "rag_documents",
+  "vectorDimension": 384,     // Configurable: 128, 256, 384, 768, 1024, 1536, etc.
+  "indexType": "HNSW",
+  "distance_metric": "cosine"
+}
+```
+
+**Common Configurations:**
+
+| Dimensions | Embedding Model | Storage (50K vectors) | Use Case |
+|------------|-----------------|----------------------|----------|
+| 384 | E5-small-v2, all-MiniLM, bge-small | 77 MB | **Recommended for RAG** |
+| 768 | BERT, bge-base, sentence-t5 | 154 MB | Higher accuracy needs |
+| 1024 | nomic-embed-text, BGE-M3 | 205 MB | Multilingual, long context |
+| 1536 | OpenAI text-embedding-3-small | 308 MB | Cloud API fallback |
+
+**Storage Calculation:**
+```
+Storage (bytes) = num_vectors × dimensions × 4 bytes (float32)
+
+Examples:
+- 50,000 vectors × 384 dims × 4 bytes = 76,800,000 bytes = ~77 MB
+- 50,000 vectors × 1024 dims × 4 bytes = 204,800,000 bytes = ~205 MB
+```
+
+**Total Database Size Estimates (including metadata):**
+
+| Vectors | Dimensions | Vector Storage | Metadata (~2KB/vector) | HNSW Index | Total |
+|---------|------------|----------------|------------------------|------------|-------|
+| 10,000 | 384 | 15 MB | 20 MB | 2 MB | ~40-50 MB |
+| 50,000 | 384 | 77 MB | 100 MB | 12 MB | ~200-300 MB |
+| 100,000 | 384 | 154 MB | 200 MB | 23 MB | ~400-500 MB |
+| 1,000,000 | 384 | 1.5 GB | 2 GB | 230 MB | ~4-5 GB |
+
+**Recommendation:** Use 384 dimensions with E5-small-v2 for optimal balance of accuracy, speed, and storage efficiency in RAG applications.
+
+---
+
+#### 5.2 HNSW Index Parameters and Tuning
+
+**HNSW (Hierarchical Navigable Small World)** is JadeVectorDB's primary indexing algorithm for fast approximate nearest neighbor search.
+
+**Core Parameters:**
+
+**M (Maximum Connections per Layer):**
+- **Definition:** Number of bidirectional links each node maintains in graph layers
+- **Range:** 5-48
+- **Default:** 16 (recommended for most use cases)
+- **Impact:**
+  - Higher M (24-48): Better recall, larger index size, slower index build
+  - Lower M (5-12): Faster build, smaller index, may reduce recall
+- **Recommendation for RAG:** M=16
+
+**efConstruction (Construction-Time Candidate List Size):**
+- **Definition:** Number of nearest neighbors explored during index building
+- **Range:** 100-800 (should be ≥ 2×M)
+- **Default:** 200
+- **Impact:**
+  - Higher efConstruction (400+): Higher quality index, better recall, much slower build
+  - Lower efConstruction (100-200): Faster build time, may reduce index quality
+- **Recommendation for RAG:** efConstruction=200
+
+**efSearch (Query-Time Candidate List Size):**
+- **Definition:** Size of dynamic candidate list during search
+- **Range:** 50-500+ (must be ≥ top-k)
+- **Default:** 100
+- **Impact:**
+  - Higher efSearch (200-500): Better recall, slower queries
+  - Lower efSearch (50-100): Faster queries, may reduce recall
+- **Recommendation for RAG (top-k=5-10):** efSearch=100
+
+**JadeVectorDB Configuration Example:**
+
+```json
+{
+  "name": "rag_documents",
+  "vectorDimension": 384,
+  "indexType": "HNSW",
+  "distance_metric": "cosine",
+  "config": {
+    "hnsw_m": 16,
+    "hnsw_ef_construction": 200,
+    "hnsw_ef_search": 100
+  }
+}
+```
+
+**Preset Configurations:**
+
+**High-Recall Setup (Offline batch analytics):**
+```json
+{
+  "hnsw_m": 24,
+  "hnsw_ef_construction": 400,
+  "hnsw_ef_search": 200
+}
+```
+- Index Build: Slower (minutes for 50K vectors)
+- Index Size: Larger memory footprint
+- Search Quality: >95% recall@10
+- Search Speed: 20-30ms
+- **Use Case:** When accuracy is paramount, build time doesn't matter
+
+**Real-Time Applications (Interactive RAG):**
+```json
+{
+  "hnsw_m": 12,
+  "hnsw_ef_construction": 200,
+  "hnsw_ef_search": 80
+}
+```
+- Index Build: Fast
+- Index Size: Smaller
+- Search Quality: 90-95% recall@10
+- Search Speed: <10ms
+- **Use Case:** Sub-second query responses
+
+**Balanced (Recommended for RAG):**
+```json
+{
+  "hnsw_m": 16,
+  "hnsw_ef_construction": 200,
+  "hnsw_ef_search": 100
+}
+```
+- Index Build: Moderate (1-2 minutes for 50K vectors)
+- Search Speed: 10-20ms
+- Recall: >95% recall@10
+- Memory: Reasonable footprint
+- **Use Case:** Most RAG applications (2-4 sec total response time acceptable)
+
+**Performance Expectations (JadeVectorDB with HNSW):**
+
+| Dataset Size | M | efSearch | Search Latency | Recall@10 | Index Memory |
+|--------------|---|----------|----------------|-----------|--------------|
+| 50K vectors | 16 | 100 | <10ms | >95% | ~300 MB |
+| 100K vectors | 16 | 100 | 10-20ms | >95% | ~600 MB |
+| 1M vectors | 16 | 100 | <50ms | >95% | ~5 GB |
+
+**From JadeVectorDB Docs:** "Sub-50ms search for 1M vectors" ✅
+
+**Tuning Strategy:**
+1. **Start with defaults** (M=16, efConstruction=200, efSearch=100)
+2. **Monitor metrics:**
+   - Measure recall@10 on test queries (should be >90%)
+   - Measure search latency (target <20ms for 50K vectors)
+3. **If recall too low (<90%):**
+   - Increase efSearch (100 → 150 → 200)
+   - OR increase M (16 → 24) and rebuild index
+4. **If queries too slow (>30ms):**
+   - Decrease efSearch (100 → 80 → 60)
+   - Note: Only do this if recall remains acceptable
+5. **For index rebuild optimization:**
+   - Increase efConstruction (200 → 400) for better quality (slower build)
+   - Decrease efConstruction (200 → 100) for faster build (may reduce quality)
+
+**Recall vs Latency Tradeoff:**
+- efSearch=50: ~5ms, 85-90% recall (too low)
+- efSearch=100: ~10ms, 95%+ recall ✅ **Recommended**
+- efSearch=200: ~20ms, 98%+ recall (diminishing returns)
+- efSearch=500: ~40ms, 99%+ recall (overkill for RAG)
+
+**Recommendation:** Use the balanced configuration (M=16, efConstruction=200, efSearch=100) for RAG. This provides >95% recall with <20ms search latency for datasets up to 100K vectors.
+
+**Sources:**
+- [HNSW Indexes with Postgres and pgvector](https://www.crunchydata.com/blog/hnsw-indexes-with-postgres-and-pgvector)
+- [A practical guide to selecting HNSW hyperparameters (OpenSearch)](https://opensearch.org/blog/a-practical-guide-to-selecting-hnsw-hyperparameters/)
+
+---
+
+## Recommended Technology Stack Summary
+
+### For Medium-Scale RAG (50K-100K chunks, 1,000 documents)
+
+**Embedding:**
+- **Model:** E5-small-v2 (intfloat/e5-small-v2)
+- **Dimensions:** 384
+- **Latency:** <30ms per embedding
+- **Why:** Best accuracy/speed/memory balance
+
+**LLM:**
+- **8GB RAM Laptop:** Llama 3.2 3B Q4_K_M
+- **16GB RAM Workstation:** Llama 3.1 8B Q5_K_M or Mistral 7B Q5_K_M
+- **Multilingual Needs:** Qwen 2.5 7B
+- **Why:** Fast CPU inference (40-50 tok/sec), excellent quality, small memory footprint
+
+**Document Processing:**
+- **PDF:** PyMuPDF 1.26.7 (fastest, built-in OCR)
+- **DOCX:** python-docx 1.2.0
+- **Chunking:** LangChain RecursiveCharacterTextSplitter (512 chars, 50 overlap)
+
+**Vector Database:**
+- **JadeVectorDB Configuration:**
+  - Dimensions: 384
+  - Index: HNSW (M=16, efConstruction=200, efSearch=100)
+  - Distance: Cosine similarity
+- **Expected Performance:** <20ms search for 50K vectors, >95% recall@10
+
+**Infrastructure:**
+- **CPU-Only:** Fully viable (no GPU required)
+- **Memory:** 6-8 GB total (model + database + OS)
+- **Storage:** 200-500 MB for 50K-100K chunks
+- **Response Time:** 2-4 seconds end-to-end (embedding + search + LLM generation)
+
+**Deployment:**
+- **Operating System:** Linux, macOS, Windows 10+
+- **Python:** 3.9+
+- **Ollama:** Latest version (0.12.11+)
+- **Offline:** Complete offline operation (no internet required after setup)
+
+This stack provides production-ready, offline RAG capability on standard laptop/workstation hardware with excellent performance and quality
+
+### Detailed Dependencies
+
+**Core Dependencies:**
+
+```txt
+# requirements.txt
+
+# Vector database client
+# (Assuming JadeVectorDB has a Python client, otherwise use requests)
+requests==2.31.0
+
+# Embedding models
+sentence-transformers==2.3.1
+torch==2.1.2  # CPU version for laptop deployment
+
+# LLM integration
+ollama==0.1.6
+
+# Document processing
+PyMuPDF==1.23.8  # PDF parsing
+python-docx==1.1.0  # DOCX parsing
+langchain==0.1.0  # Text splitting
+langchain-community==0.0.10
+
+# Web UI (choose one)
+streamlit==1.29.0  # Option 1: Web UI
+fastapi==0.109.0  # Option 3: REST API
+uvicorn==0.27.0  # For FastAPI
+
+# CLI (optional)
+click==8.1.7
+
+# Utilities
+numpy==1.26.3
+pandas==2.1.4
+tqdm==4.66.1  # Progress bars for batch processing
+python-dotenv==1.0.0  # Configuration management
+```
+
+**System Requirements:**
+
+```yaml
+Minimum (Laptop):
+  CPU: 4 cores, 2.5 GHz
+  RAM: 8 GB
+  Storage: 10 GB free space
+  OS: Linux, macOS, Windows 10+
+
+Recommended (Workstation):
+  CPU: 8 cores, 3.0 GHz
+  RAM: 16 GB
+  Storage: 50 GB SSD
+  OS: Linux Ubuntu 20.04+
+
+Software:
+  Python: 3.9+
+  Ollama: Latest version
+  JadeVectorDB: As per project build instructions
+```
+
+### Installation Script
+
+```bash
+#!/bin/bash
+# setup.sh - Setup RAG system
+
+echo "🚀 Setting up Document Q&A System"
+
+# 1. Install Python dependencies
+echo "📦 Installing Python packages..."
+pip install -r requirements.txt
+
+# 2. Install Ollama (if not already installed)
+if ! command -v ollama &> /dev/null; then
+    echo "📥 Installing Ollama..."
+    curl https://ollama.ai/install.sh | sh
+else
+    echo "✓ Ollama already installed"
+fi
+
+# 3. Pull LLM model
+echo "🤖 Downloading Llama 3.2 (3B) model..."
+ollama pull llama3.2:3b
+
+# 4. Download embedding model
+echo "📊 Downloading E5-Small embedding model..."
+python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/e5-small-v2')"
+
+# 5. Start JadeVectorDB (assumes it's already built)
+echo "🗄️  Starting JadeVectorDB..."
+cd backend/build
+./jadevectordb &
+JADEVECTORDB_PID=$!
+echo "JadeVectorDB started with PID: $JADEVECTORDB_PID"
+
+# 6. Create database
+echo "📁 Creating rag_documents database..."
+sleep 2  # Wait for JadeVectorDB to start
+python -c "
+from jadevectordb import JadeVectorDBClient
+client = JadeVectorDBClient('http://localhost:8080')
+client.create_database(
+    name='rag_documents',
+    description='Organizational documents for Q&A retrieval',
+    vectorDimension=384,
+    indexType='HNSW'
+)
+print('✓ Database created successfully')
+"
+
+echo ""
+echo "✅ Setup complete!"
+echo ""
+echo "Next steps:"
+echo "  1. Place your PDF/DOCX files in ./docs/"
+echo "  2. Run: python ingest_documents.py ./docs"
+echo "  3. Start UI: streamlit run app.py"
+echo ""
+```
+
+---
+
+## Implementation Roadmap
+
+### Overview
+
+| Phase | Duration | Focus | Key Deliverable |
+|-------|----------|-------|-----------------|
+| **Phase 1** | Week 1 | Foundation setup | Working JadeVectorDB + validation |
+| **Phase 2** | Week 2 | Document processing | Ingestion pipeline + 100+ chunks |
+| **Phase 3** | Week 3 | RAG core | End-to-end query pipeline |
+| **Phase 4** | Week 4 | Query UI (FastAPI + React) | Production web interface |
+| **Phase 5** | Week 5 | **Document management + optimization** | **Admin panel + tuning** |
+| **Phase 6** | Week 6 | Production deployment | Trained users + full launch |
+
+**Total Timeline:** 6 weeks (42 days)
+
+**Critical Path:** Phase 1 → Phase 2 → Phase 3 → Phase 4 (Query UI) → Phase 5 (Admin UI) → Phase 6
+
+---
+
+### Phase 1: Foundation (Week 1)
+
+**Goals:**
+- Set up development environment
+- Get JadeVectorDB running
+- Validate basic vector storage and retrieval
+
+**Tasks:**
+
+1. **Environment Setup**
+   - [ ] Install Python 3.9+
+   - [ ] Install Ollama
+   - [ ] Build and start JadeVectorDB
+   - [ ] Create Python virtual environment
+
+2. **Dependency Installation**
+   - [ ] Install all Python packages
+   - [ ] Download E5-Small embedding model
+   - [ ] Pull Llama 3.2 model via Ollama
+
+3. **JadeVectorDB Configuration**
+   - [ ] Create `rag_documents` database
+   - [ ] Configure HNSW index (M=16, ef_construction=200)
+   - [ ] Test basic vector insert/search operations
+
+4. **Validation**
+   - [ ] Store 10 sample vectors
+   - [ ] Run similarity search
+   - [ ] Verify metadata retrieval
+
+**Deliverables:**
+- Working JadeVectorDB instance
+- Configured environment
+- Basic search validation
+
+---
+
+### Phase 2: Document Processing (Week 2)
+
+**Goals:**
+- Build document ingestion pipeline
+- Process sample documents
+- Validate chunking strategy
+
+**Tasks:**
+
+1. **PDF Processing**
+   - [ ] Implement `process_pdf()` function
+   - [ ] Test with sample PDF documents
+   - [ ] Handle multi-column layouts
+   - [ ] Extract page numbers correctly
+
+2. **DOCX Processing**
+   - [ ] Implement `process_docx()` function
+   - [ ] Test with sample Word documents
+   - [ ] Preserve section headers
+   - [ ] Handle tables and lists
+
+3. **Chunking Implementation**
+   - [ ] Implement semantic chunking with LangChain
+   - [ ] Tune chunk size (test 256, 512, 1024 tokens)
+   - [ ] Validate chunk overlap
+   - [ ] Ensure procedure steps stay together
+
+4. **Metadata Extraction**
+   - [ ] Extract document name, type
+   - [ ] Derive category from directory structure or filename
+   - [ ] Track page numbers per chunk
+   - [ ] Detect section headers
+
+5. **Batch Ingestion**
+   - [ ] Create `ingest_documents.py` script
+   - [ ] Process 10-20 sample documents
+   - [ ] Monitor progress with tqdm
+   - [ ] Log errors and successes
+
+**Deliverables:**
+- Document processing pipeline
+- 100+ chunks stored in JadeVectorDB
+- Metadata validation report
+
+---
+
+### Phase 3: RAG Core (Week 3)
+
+**Goals:**
+- Implement query processing
+- Integrate Ollama for answer generation
+- Test end-to-end RAG flow
+
+**Tasks:**
+
+1. **Embedding Service**
+   - [ ] Create `embed_query()` function
+   - [ ] Add query prefix for E5 model
+   - [ ] Test embedding latency (<100ms target)
+
+2. **Retrieval Service**
+   - [ ] Implement vector similarity search
+   - [ ] Add metadata filtering (device type)
+   - [ ] Tune top-k parameter (test 5, 10, 15)
+   - [ ] Validate retrieval relevance
+
+3. **LLM Integration**
+   - [ ] Set up Ollama client
+   - [ ] Design system prompt
+   - [ ] Implement context assembly
+   - [ ] Test answer generation
+
+4. **RAG Service Class**
+   - [ ] Create `RAGService` class
+   - [ ] Implement full `query()` method
+   - [ ] Add source extraction
+   - [ ] Calculate confidence scores
+
+5. **Testing**
+   - [ ] Create test question set (20 questions)
+   - [ ] Validate answer accuracy
+   - [ ] Check source attribution
+   - [ ] Measure end-to-end latency (<3s target)
+
+**Deliverables:**
+- Working RAG pipeline
+- Test results for 20 questions
+- Performance benchmarks
+
+---
+
+### Phase 4: User Interface (Week 4)
+
+**Goals:**
+- Build FastAPI REST API backend
+- Create React frontend
+- Integrate and deploy as single server
+- Implement feedback collection
+
+**Tasks:**
+
+1. **Basic UI**
+   - [ ] Create Streamlit app structure
+   - [ ] Add question input box
+   - [ ] Display answers with formatting
+   - [ ] Show source citations
+
+2. **Filters & Configuration**
+   - [ ] Add device type filter
+   - [ ] Top-k slider
+   - [ ] Model selection (if multiple LLMs)
+
+3. **User Experience**
+   - [ ] Loading spinners
+   - [ ] Error handling and messages
+   - [ ] Clear button
+   - [ ] Question history
+
+4. **Feedback System**
+   - [ ] Thumbs up/down buttons
+   - [ ] Log feedback to file
+   - [ ] Optional: comment box
+
+5. **Deployment**
+   - [ ] Package as Docker container (optional)
+   - [ ] Create startup script
+   - [ ] Write user documentation
+
+**Deliverables:**
+- Production-ready web UI
+- User documentation
+- Deployment guide
+
+---
+
+### Phase 5: Document Management & Optimization (Week 5)
+
+**Goals:**
+- Add document management UI for admins
+- Improve retrieval accuracy
+- Optimize performance
+- Add monitoring
+
+---
+
+#### Days 1-3: Document Management UI ⏱️ 3 days
+
+**Goal:** Enable admins to upload, manage, and delete documents without CLI
+
+**Tasks:**
+
+1. **Day 1: Backend API for Document Management**
+   - [ ] Create upload endpoint (`POST /api/admin/documents/upload`)
+   - [ ] Implement file validation (PDF/DOCX only, size limits)
+   - [ ] Add background task processing with progress tracking
+   - [ ] Create document metadata storage (track uploaded docs)
+   - [ ] Implement document listing endpoint (`GET /api/admin/documents`)
+   - [ ] Add document deletion endpoint (`DELETE /api/admin/documents/{id}`)
+   - [ ] Add reprocess endpoint (`POST /api/admin/documents/{id}/reprocess`)
+
+2. **Day 2: Document Processing Pipeline Integration**
+   - [ ] Integrate PDF/DOCX extraction in upload handler
+   - [ ] Add chunking logic to background task
+   - [ ] Generate embeddings for uploaded documents
+   - [ ] Store vectors in JadeVectorDB with proper metadata
+   - [ ] Track processing status (pending/processing/complete/failed)
+   - [ ] Implement error handling and retry logic
+   - [ ] Add ingestion statistics (chunks created, time taken)
+   - [ ] Implement document deletion with vector cleanup
+   - [ ] Add background index compaction for optimization
+
+3. **Day 3: Frontend Document Management UI**
+   - [ ] Create `/admin/documents` page in React
+   - [ ] Build file upload component with drag-and-drop
+   - [ ] Add upload progress bar with real-time updates
+   - [ ] Create document list table (name, type, chunks, date, status)
+   - [ ] Add action buttons (reprocess, delete) per document
+   - [ ] Implement filtering by device type
+   - [ ] Add search/filter for document list
+   - [ ] Show processing status and error messages
+   - [ ] Add admin authentication/authorization check
+   - [ ] Add deletion confirmation dialog with chunk count
+   - [ ] Show system stats (total docs, total chunks, deletion percentage)
+
+**Code Example - Backend Upload Endpoint:**
+```python
+from fastapi import UploadFile, BackgroundTasks, HTTPException
+import shutil
+from pathlib import Path
+
+@app.post("/api/admin/documents/upload")
+async def upload_document(
+    file: UploadFile,
+    category: str,
+    background_tasks: BackgroundTasks
+):
+    # Validate file type
+    if not file.filename.endswith(('.pdf', '.docx')):
+        raise HTTPException(400, "Only PDF and DOCX files supported")
+
+    # Save uploaded file
+    upload_dir = Path("uploads")
+    upload_dir.mkdir(exist_ok=True)
+    file_path = upload_dir / file.filename
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # Create document record
+    doc_id = str(uuid.uuid4())
+    document = {
+        "id": doc_id,
+        "filename": file.filename,
+        "category": category,
+        "status": "pending",
+        "uploaded_at": datetime.now().isoformat()
+    }
+
+    # Store in database
+    documents_db[doc_id] = document
+
+    # Process in background
+    background_tasks.add_task(
+        process_document_async,
+        doc_id=doc_id,
+        file_path=str(file_path),
+        category=category
+    )
+
+    return {
+        "id": doc_id,
+        "status": "processing",
+        "message": f"Document {file.filename} uploaded successfully"
+    }
+
+async def process_document_async(doc_id: str, file_path: str, category: str):
+    """Background task to process uploaded document"""
+    try:
+        documents_db[doc_id]["status"] = "processing"
+
+        # 1. Extract text from PDF/DOCX
+        text = extract_text(file_path)
+
+        # 2. Chunk document semantically
+        chunks = chunk_document(text, chunk_size=512, overlap=50)
+
+        # 3. Generate embeddings
+        embeddings = generate_embeddings([c.text for c in chunks])
+
+        # 4. Store in JadeVectorDB
+        for chunk, embedding in zip(chunks, embeddings):
+            jadevectordb.store_vector(
+                database_id="rag_documents",
+                vector_id=f"{doc_id}_{chunk.id}",
+                values=embedding,
+                metadata={
+                    "doc_id": doc_id,
+                    "doc_name": Path(file_path).name,
+                    "category": category,
+                    "text": chunk.text,
+                    "page_numbers": chunk.pages,
+                    "section": chunk.section
+                }
+            )
+
+        # Update status
+        documents_db[doc_id]["status"] = "complete"
+        documents_db[doc_id]["chunk_count"] = len(chunks)
+        documents_db[doc_id]["processed_at"] = datetime.now().isoformat()
+
+    except Exception as e:
+        documents_db[doc_id]["status"] = "failed"
+        documents_db[doc_id]["error"] = str(e)
+
+@app.delete("/api/admin/documents/{doc_id}")
+async def delete_document(doc_id: str, background_tasks: BackgroundTasks):
+    """
+    Delete document and all its vector chunks from JadeVectorDB
+
+    This function:
+    1. Finds all chunks belonging to this document
+    2. Deletes each vector from JadeVectorDB (index updated automatically)
+    3. Removes document metadata
+    4. Triggers background index compaction if needed
+
+    **Important:** Deletion does NOT require immediate reindexing.
+    - HNSW indexes update incrementally
+    - Deleted vectors are marked and skipped in searches
+    - Background compaction runs if >10% of vectors are deleted
+    """
+    try:
+        # Verify document exists
+        if doc_id not in documents_db:
+            raise HTTPException(404, f"Document {doc_id} not found")
+
+        doc = documents_db[doc_id]
+
+        # 1. Find all chunk IDs for this document using metadata filter
+        all_chunks = []
+        offset = 0
+        batch_size = 100
+
+        while True:
+            batch = jadevectordb.list_vectors(
+                database_id="rag_documents",
+                filter={"doc_id": doc_id},
+                limit=batch_size,
+                offset=offset
+            )
+
+            if not batch:
+                break
+
+            all_chunks.extend(batch)
+            offset += batch_size
+
+        chunk_count = len(all_chunks)
+
+        # 2. Delete each vector from JadeVectorDB
+        # Index entries are automatically updated (no manual reindex needed)
+        deleted_count = 0
+        failed_chunks = []
+
+        for chunk in all_chunks:
+            try:
+                jadevectordb.delete_vector(
+                    database_id="rag_documents",
+                    vector_id=chunk['id']
+                )
+                deleted_count += 1
+            except Exception as e:
+                print(f"Failed to delete chunk {chunk['id']}: {e}")
+                failed_chunks.append(chunk['id'])
+
+        # 3. Remove document from metadata store
+        del documents_db[doc_id]
+
+        # 4. Schedule background index compaction check
+        # This runs asynchronously and doesn't block the response
+        background_tasks.add_task(
+            check_and_compact_index,
+            database_id="rag_documents"
+        )
+
+        return {
+            "success": True,
+            "doc_id": doc_id,
+            "doc_name": doc['filename'],
+            "chunks_found": chunk_count,
+            "chunks_deleted": deleted_count,
+            "chunks_failed": len(failed_chunks),
+            "message": f"Document deleted: {deleted_count}/{chunk_count} chunks removed. Index updated automatically.",
+            "note": "Background compaction scheduled if needed (happens automatically)"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Deletion failed: {str(e)}")
+
+
+async def check_and_compact_index(database_id: str):
+    """
+    Background task: Check if index needs compaction after deletions
+
+    **What is Compaction?**
+    - Physically removes deleted vector nodes from index
+    - Rebuilds index structure for efficiency
+    - Reclaims storage space
+
+    **When Does It Run?**
+    - Only if >10% of vectors have been deleted
+    - Runs in background (doesn't block queries)
+    - Takes 5-30 minutes depending on dataset size
+
+    **Is Reindexing Required?**
+    - NO for immediate deletions (index updates incrementally)
+    - YES for optimization after many deletions (this function)
+    - Searches work normally during compaction
+    """
+    try:
+        # Get database statistics
+        stats = jadevectordb.get_database_stats(database_id)
+
+        total_vectors = stats['total_vectors']
+        deleted_vectors = stats.get('deleted_vectors', 0)
+
+        # Calculate deletion percentage
+        deletion_ratio = deleted_vectors / total_vectors if total_vectors > 0 else 0
+
+        # Trigger compaction if >10% deleted
+        if deletion_ratio > 0.1:
+            print(f"Index compaction starting: {deleted_vectors} deleted out of {total_vectors} ({deletion_ratio:.1%})")
+
+            # This rebuilds the index, physically removing deleted nodes
+            # Queries continue to work during this process
+            jadevectordb.compact_index(
+                database_id=database_id,
+                index_type="HNSW"
+            )
+
+            print(f"Index compaction complete. Space reclaimed, index optimized.")
+
+            # Update stats
+            new_stats = jadevectordb.get_database_stats(database_id)
+            print(f"New vector count: {new_stats['total_vectors']} (freed {deleted_vectors} slots)")
+        else:
+            print(f"Compaction not needed: only {deletion_ratio:.1%} deleted")
+
+    except Exception as e:
+        print(f"Index compaction failed: {e}")
+        # Non-critical error - log but don't crash
+```
+
+**Key Implementation Notes:**
+
+1. **No Immediate Reindexing Required:**
+   - Vector deletion updates index incrementally
+   - Deleted vectors are marked and skipped in searches
+   - No query interruption or delay for users
+
+2. **Background Compaction (Automatic):**
+   - Runs only if >10% of vectors are deleted
+   - Physically removes deleted nodes
+   - Reclaims storage space
+   - Optimizes search performance
+
+3. **User Experience:**
+   - Click "Delete" → Immediate response
+   - Document and chunks removed instantly
+   - Searches exclude deleted content immediately
+   - Compaction happens silently in background
+
+4. **When Compaction Runs:**
+   - After deleting 10+ documents from 100-doc library (10%)
+   - After deleting 100+ documents from 1000-doc library (10%)
+   - Can be scheduled as a nightly background task
+```
+
+**Code Example - Frontend Upload Component:**
+```jsx
+// src/pages/AdminDocuments.jsx
+import { useState, useEffect } from 'react'
+
+function AdminDocuments() {
+  const [documents, setDocuments] = useState([])
+  const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+
+  useEffect(() => {
+    loadDocuments()
+  }, [])
+
+  const loadDocuments = async () => {
+    const response = await fetch('/api/admin/documents')
+    const data = await response.json()
+    setDocuments(data)
+  }
+
+  const handleUpload = async (file, category) => {
+    setUploading(true)
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('category', category)
+
+    const response = await fetch('/api/admin/documents/upload', {
+      method: 'POST',
+      body: formData
+    })
+
+    const result = await response.json()
+    alert(`Upload started: ${result.message}`)
+
+    setUploading(false)
+    loadDocuments() // Refresh list
+  }
+
+  const handleDelete = async (docId) => {
+    const doc = documents.find(d => d.id === docId)
+    const chunkCount = doc.chunk_count || 'unknown'
+
+    if (!confirm(
+      `Delete "${doc.filename}"?\n\n` +
+      `This will permanently remove:\n` +
+      `• Document metadata\n` +
+      `• ${chunkCount} vector chunks from JadeVectorDB\n` +
+      `• All index entries\n\n` +
+      `This action cannot be undone.`
+    )) return
+
+    try {
+      const response = await fetch(`/api/admin/documents/${docId}`, {
+        method: 'DELETE'
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        alert(
+          `✅ ${result.message}\n\n` +
+          `Deleted: ${result.chunks_deleted}/${result.chunks_found} chunks\n` +
+          `${result.note}`
+        )
+        loadDocuments() // Refresh list
+      }
+    } catch (error) {
+      alert(`❌ Deletion failed: ${error.message}`)
+    }
+  }
+
+  return (
+    <div className="admin-documents">
+      <h1>📚 Document Management</h1>
+
+      {/* Upload Section */}
+      <div className="upload-section">
+        <h2>Upload New Document</h2>
+        <FileUploadDropzone
+          onUpload={handleUpload}
+          uploading={uploading}
+          accept=".pdf,.docx"
+        />
+      </div>
+
+      {/* Document List */}
+      <div className="document-list">
+        <h2>Indexed Documents ({documents.length})</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Document Name</th>
+              <th>Category</th>
+              <th>Chunks</th>
+              <th>Status</th>
+              <th>Uploaded</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {documents.map(doc => (
+              <tr key={doc.id}>
+                <td>{doc.filename}</td>
+                <td>{doc.category}</td>
+                <td>{doc.chunk_count || '-'}</td>
+                <td>
+                  <StatusBadge status={doc.status} />
+                </td>
+                <td>{new Date(doc.uploaded_at).toLocaleDateString()}</td>
+                <td>
+                  {doc.status === 'complete' && (
+                    <>
+                      <button onClick={() => handleReprocess(doc.id)}>
+                        🔄 Reprocess
+                      </button>
+                      <button onClick={() => handleDelete(doc.id)}>
+                        🗑️ Delete
+                      </button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+```
+
+**Deliverables (Days 1-3):**
+- Working document upload endpoint with validation
+- Background processing pipeline with status tracking
+- Admin UI for document management
+- Document listing with filtering and search
+- **Production-ready deletion with:**
+  - Complete vector cleanup (all chunks removed)
+  - Automatic index updates (no manual reindex needed)
+  - Background compaction for optimization (>10% deletions)
+  - User-friendly confirmation dialogs
+- Reprocess functionality for updated documents
+- System statistics dashboard
+
+---
+
+#### Days 4-7: Optimization & Monitoring ⏱️ 4 days
+
+**Tasks:**
+
+1. **Day 4: Retrieval Tuning**
+   - [ ] Experiment with chunk sizes (256, 512, 1024 tokens)
+   - [ ] Test different top-k values (3, 5, 10, 15)
+   - [ ] Add re-ranking for better results (optional)
+   - [ ] Implement hybrid search (optional)
+   - [ ] Compare retrieval quality across configurations
+
+2. **Day 5: Performance Optimization**
+   - [ ] Cache embeddings for common queries
+   - [ ] Optimize batch processing for uploads
+   - [ ] Reduce LLM latency with prompt optimization
+   - [ ] Monitor memory usage during document processing
+   - [ ] Add connection pooling for JadeVectorDB
+
+3. **Day 6: Quality Improvements & Monitoring**
+   - [ ] Refine system prompt based on test queries
+   - [ ] Add query preprocessing (lowercase, strip, etc.)
+   - [ ] Handle technical abbreviations
+   - [ ] Improve source citation formatting
+   - [ ] Log all queries and responses
+   - [ ] Track answer quality metrics (feedback scores)
+   - [ ] Monitor system performance (latency, throughput)
+   - [ ] Set up alerts for errors
+
+4. **Day 7: Documentation & Testing**
+   - [ ] Write admin guide for document management
+   - [ ] Create troubleshooting FAQ
+   - [ ] Document common queries and expected answers
+   - [ ] Identify documentation gaps in source materials
+   - [ ] Test with 50+ real-world questions
+   - [ ] User acceptance testing with target users
+
+**Deliverables (Days 4-7):**
+- Optimized retrieval configuration
+- Performance benchmarks
+- Monitoring dashboard
+- Complete admin documentation
+- User testing results
+
+---
+
+### Phase 6: Production Deployment (Week 6)
+
+**Goals:**
+- Full document ingestion via UI
+- User training (query interface + admin tools)  
+- Production launch
+
+**Tasks:**
+
+1. **Days 1-2: Full Document Ingestion**
+   - [ ] Use document management UI to upload all 100-1000 PDFs/DOCX
+   - [ ] Monitor ingestion progress and errors
+   - [ ] Validate completeness (all documents processed)
+   - [ ] Create document inventory/index
+   - [ ] Backup vector database
+   - [ ] Test random sample queries across all documents
+
+2. **Days 3-4: User Training**
+   - [ ] Create training materials for end users
+     - How to ask effective questions
+     - Understanding source citations
+     - When to trust vs. verify answers
+   - [ ] Create admin training materials
+     - How to upload new documents
+     - How to manage document library
+     - How to interpret system stats
+   - [ ] Run pilot sessions with 5-10 users
+   - [ ] Collect feedback on usability
+   - [ ] Refine UI based on feedback
+
+3. **Day 5: Production Launch Preparation**
+   - [ ] Deploy to production server/workstation
+   - [ ] Set up automatic backups (daily vector DB snapshots)
+   - [ ] Configure monitoring and alerting
+   - [ ] Create support process documentation
+   - [ ] Set up issue tracking system
+   - [ ] Prepare rollback plan
+
+4. **Day 6-7: Launch & Iteration Planning**
+   - [ ] Go-live announcement and rollout
+   - [ ] Monitor first 24-48 hours closely
+   - [ ] Address any critical issues immediately
+   - [ ] Establish feedback collection process
+   - [ ] Create update schedule:
+     - Weekly: Review query logs, identify gaps
+     - Monthly: Update/add documentation based on gaps
+     - Quarterly: System optimization and re-tuning
+     - Continuous: User feedback collection and response
+
+**Deliverables:**
+- Production-deployed RAG system
+  - Query interface (port 8000)
+  - Admin panel (port 8000/admin)
+- Fully indexed document library (100-1000 docs)
+- Trained users (end users + admins)
+- Support documentation and processes
+- Update and iteration plan
+
+---
+
+## Best Practices
+
+### 1. Document Chunking
+
+Based on [recent RAG research](https://stackoverflow.blog/2024/12/27/breaking-up-is-hard-to-do-chunking-in-rag-applications/), follow these best practices:
+
+**✅ DO:**
+- Use semantic chunking for structured documents (manuals, policies, guides)
+- Preserve document structure (keep procedures together)
+- Use 50-100 token overlap to prevent context loss
+- Test multiple chunk sizes (256, 512, 1024) and evaluate
+- Keep chunk metadata rich (document, section, page, category)
+
+**❌ DON'T:**
+- Use fixed-size chunking without overlap
+- Split procedure steps across chunks
+- Make chunks too small (<100 tokens) or too large (>1000 tokens)
+- Ignore document structure (headings, lists, tables)
+
+### 2. Embedding Selection
+
+**✅ DO:**
+- Use E5-Small for balance of accuracy and speed
+- Add "query:" prefix for E5 models
+- Normalize embeddings before storage (if not auto-normalized)
+- Use same embedding model for indexing and querying
+- Consider model size vs. laptop resources
+
+**❌ DON'T:**
+- Mix embedding models (e.g., index with E5, query with nomic)
+- Use unnecessarily large models (e.g., 768-dim when 384-dim suffices)
+- Forget to update embeddings when documents change
+
+### 3. Retrieval Strategies
+
+**✅ DO:**
+- Start with top-k=5, adjust based on answer quality
+- Set similarity threshold (e.g., 0.65) to filter low-quality results
+- Use metadata filters when user specifies device type
+- Re-rank results by recency if documents have versions
+- Provide source citations with page numbers
+
+**❌ DON'T:**
+- Retrieve too many chunks (>10) - confuses LLM
+- Ignore metadata - it's crucial for source attribution
+- Trust low similarity scores (<0.6) - usually irrelevant
+
+### 4. Prompt Engineering
+
+**✅ DO:**
+- Instruct LLM to cite sources
+- Tell LLM to say "I don't know" if context lacks info
+- Use low temperature (0.1-0.2) for factual accuracy
+- Format procedures as numbered lists
+- Include safety warnings from documentation
+
+**❌ DON'T:**
+- Let LLM hallucinate when context is insufficient
+- Use high temperature (>0.5) - causes unreliable answers
+- Omit system prompt - it guides LLM behavior
+- Forget to include context in prompt
+
+### 5. System Maintenance
+
+**✅ DO:**
+- Log all queries for quality monitoring
+- Review low-confidence answers weekly
+- Update documents incrementally (don't re-index everything)
+- Collect user feedback systematically
+- Back up JadeVectorDB regularly
+
+**❌ DON'T:**
+- Ignore user feedback
+- Let document index get stale (>6 months without update)
+- Skip testing after adding new documents
+- Neglect performance monitoring
+
+### 6. User Experience
+
+**✅ DO:**
+- Show source documents and page numbers
+- Indicate confidence level
+- Provide loading feedback (spinners)
+- Allow filtering by device type
+- Show recent question history
+
+**❌ DON'T:**
+- Hide sources - transparency builds trust
+- Give vague answers without citations
+- Make users wait >5 seconds without feedback
+- Overwhelm with too many options
+
+---
+
+## Performance Considerations
+
+### Expected Performance Metrics
+
+Based on JadeVectorDB specs and component benchmarks:
+
+| Metric | Target | Expected |
+|--------|--------|----------|
+| **Document Ingestion** | | |
+| PDF parsing speed | >10 pages/sec | 15-20 pages/sec (PyMuPDF) |
+| Chunking speed | >1000 chunks/sec | 500-800 chunks/sec (LangChain) |
+| Embedding generation | >100 chunks/sec | 50-100 chunks/sec (E5-small, CPU) |
+| Batch insert to DB | >1000 vectors/sec | 500-1000 vectors/sec (JadeVectorDB) |
+| **Full ingestion (10,000 pages)** | <30 min | 15-25 min |
+| | | |
+| **Query Processing** | | |
+| Query embedding | <100ms | 30-50ms (E5-small) |
+| Vector search (50k chunks) | <50ms | 10-20ms (HNSW) |
+| LLM answer generation | <2s | 1.5-3s (Llama 3.2, CPU) |
+| **End-to-end latency** | <3s | 2-4s |
+| | | |
+| **Storage** | | |
+| Vectors (50k × 384 dims) | <100 MB | ~77 MB |
+| Metadata (50k chunks) | <200 MB | ~100-150 MB |
+| **Total database size** | <500 MB | ~200-300 MB |
+| | | |
+| **Memory Usage** | | |
+| JadeVectorDB | <500 MB | ~300-400 MB |
+| Embedding model | <500 MB | ~400 MB (E5-small) |
+| LLM model | <3 GB | ~2 GB (Llama 3.2:3b) |
+| Python application | <500 MB | ~200-300 MB |
+| **Total RAM** | <6 GB | 3-4 GB |
+
+### Optimization Strategies
+
+#### For Ingestion Speed
+
+1. **Parallel Processing**
+   ```python
+   from multiprocessing import Pool
+
+   def process_file(file_path):
+       # Process single file
+       pass
+
+   with Pool(processes=4) as pool:
+       pool.map(process_file, file_list)
+   ```
+
+2. **Batch Embeddings**
+   ```python
+   # Embed in batches of 32
+   for i in range(0, len(texts), 32):
+       batch = texts[i:i+32]
+       embeddings = model.encode(batch)
+   ```
+
+3. **Batch Database Inserts**
+   ```python
+   # Insert 100 vectors at a time
+   batch_size = 100
+   for i in range(0, len(vectors), batch_size):
+       batch = vectors[i:i+batch_size]
+       db_client.batch_store_vectors(database_id, batch)
+   ```
+
+#### For Query Speed
+
+1. **Embedding Caching**
+   ```python
+   from functools import lru_cache
+
+   @lru_cache(maxsize=1000)
+   def embed_cached(query: str):
+       return embedder.encode(query)
+   ```
+
+2. **Connection Pooling**
+   ```python
+   # Reuse JadeVectorDB client connection
+   @st.cache_resource
+   def get_db_client():
+       return JadeVectorDBClient("http://localhost:8080")
+   ```
+
+3. **Reduce Top-K**
+   - Start with top-k=5 instead of 10
+   - Only retrieve more if confidence is low
+
+4. **LLM Optimization**
+   ```python
+   # Use smaller, faster models for simple queries
+   # Use quantized models (Q4_K_M) for speed
+   ollama pull llama3.2:3b-q4_K_M
+   ```
+
+#### For Memory Management
+
+1. **Lazy Loading**
+   - Don't load all documents into memory
+   - Stream from disk as needed
+
+2. **Model Quantization**
+   - Use 4-bit quantized LLMs for lower memory usage
+   - E5-small already efficient (118M params)
+
+3. **Garbage Collection**
+   ```python
+   import gc
+
+   # After large batch operations
+   gc.collect()
+   ```
+
+### Scaling Considerations
+
+**If System Grows Beyond Medium Scale:**
+
+| Scaling Path | When | Solution |
+|-------------|------|----------|
+| **More documents** | >10,000 docs (>500k chunks) | Enable JadeVectorDB distributed mode with sharding |
+| **More users** | >10 concurrent users | Deploy multiple LLM replicas, load balance queries |
+| **Faster retrieval** | Need <5ms search | Use GPU for embedding, upgrade to distributed DB |
+| **Lower memory** | <4GB RAM available | Use quantized LLM (3-bit), smaller embedding model |
+
+**JadeVectorDB Distributed Mode:**
+
+Per the documentation, JadeVectorDB has full distributed capabilities (currently disabled by default):
+
+- **Sharding**: Distribute 500k+ vectors across multiple nodes
+- **Replication**: High availability with data redundancy
+- **Load balancing**: Distribute query load across cluster
+
+To enable (when needed):
+```bash
+export JADEVECTORDB_ENABLE_SHARDING=true
+export JADEVECTORDB_ENABLE_REPLICATION=true
+export JADEVECTORDB_NUM_SHARDS=4
+```
+
+---
+
+## Cost Analysis
+
+### One-Time Setup Costs
+
+| Item | Cost | Notes |
+|------|------|-------|
+| **Development Time** | | |
+| Developer (120 hours) | $12,000 | @$100/hr, 6 weeks |
+| Testing & QA | $2,000 | User testing, refinement |
+| Documentation | $1,000 | User guides, admin docs |
+| **Hardware** | | |
+| Laptop/Workstation | $0 | Use existing hardware |
+| Additional RAM (if needed) | $100 | 16GB upgrade |
+| Storage (if needed) | $50 | 1TB SSD |
+| **Software & Models** | | |
+| JadeVectorDB | $0 | Open source |
+| Ollama | $0 | Open source |
+| Python libraries | $0 | Open source |
+| LLM models | $0 | Local, open weights |
+| Embedding models | $0 | Open source |
+| **TOTAL SETUP** | **~$15,150** | |
+
+### Ongoing Operational Costs
+
+| Item | Monthly Cost | Annual Cost | Notes |
+|------|--------------|-------------|-------|
+| **Infrastructure** | | | |
+| Hosting (local) | $0 | $0 | Runs on existing hardware |
+| Cloud hosting (optional) | $0 | $0 | Not needed for local deployment |
+| Electricity | ~$5 | ~$60 | Negligible for laptop |
+| **API Costs** | | | |
+| Embedding API | $0 | $0 | Local E5-small model |
+| LLM API | $0 | $0 | Local Llama via Ollama |
+| **Maintenance** | | | |
+| Document updates | $200 | $2,400 | 2 hrs/month @$100/hr |
+| System monitoring | $100 | $1,200 | 1 hr/month |
+| User support | $200 | $2,400 | Ad-hoc assistance |
+| **TOTAL ANNUAL** | **~$505/mo** | **~$6,060** | |
+
+### Cost Comparison: Local RAG vs. Cloud API
+
+**Cloud-based Alternative (e.g., OpenAI API):**
+
+Assumptions:
+- 100 queries/day
+- Average 5 chunks @ 400 tokens each = 2000 tokens context
+- 300 tokens output per query
+- Embeddings: 50,000 chunks initially, 500 new/month
+
+| Service | Usage | Cost/Month | Annual Cost |
+|---------|-------|------------|-------------|
+| Embeddings (initial) | 50,000 chunks × 384 tokens | $1.92 | (one-time) |
+| Embeddings (ongoing) | 500 chunks/month | $0.19 | $2.28 |
+| LLM queries | 3000 queries × (2000 input + 300 output) | $207 | $2,484 |
+| **TOTAL** | | **~$209/month** | **~$2,506/year** |
+
+**Local RAG System:**
+- **Year 1**: $15,150 (setup) + $6,060 (ops) = **$21,210**
+- **Year 2+**: $6,060/year (ops only)
+
+**Break-even Analysis:**
+- Cloud: $2,506/year ongoing
+- Local: $21,210 year 1, $6,060 year 2+
+- **Break-even**: ~8 years if only considering direct costs
+
+**BUT: Key Advantages of Local System:**
+- **Data privacy**: Sensitive documents never leave premises
+- **Offline operation**: Works in air-gapped or restricted environments (critical!)
+- **No usage limits**: Unlimited queries, no rate limiting
+- **Predictable costs**: No surprise bills from usage spikes
+- **Customization**: Full control over models, prompts, data
+
+**For privacy-sensitive or offline deployments, local deployment is strongly recommended regardless of cost.**
+
+---
+
+## References
+
+### Research & Best Practices
+
+1. [Chunking Strategies for RAG - Comprehensive Guide (2025)](https://medium.com/@adnanmasood/chunking-strategies-for-retrieval-augmented-generation-rag-a-comprehensive-guide-5522c4ea2a90)
+2. [Breaking up is hard to do: Chunking in RAG applications - Stack Overflow](https://stackoverflow.blog/2024/12/27/breaking-up-is-hard-to-do-chunking-in-rag-applications/)
+3. [Complete Guide to Building a Robust RAG Pipeline 2025 - DhiWise](https://www.dhiwise.com/post/build-rag-pipeline-guide)
+4. [Enhancing Retrieval-Augmented Generation: Best Practices (arXiv 2025)](https://arxiv.org/abs/2501.07391)
+
+### Embedding Models
+
+5. [13 Best Embedding Models in 2025 - Elephas](https://elephas.app/blog/best-embedding-models)
+6. [Best Open-Source Embedding Models Benchmarked - Supermemory](https://supermemory.ai/blog/best-open-source-embedding-models-benchmarked-and-ranked/)
+7. [Sentence Transformers Documentation](https://sbert.net/)
+
+### Ollama & RAG Integration
+
+8. [RAG with Ollama and LangChain: Complete Document Q&A System 2025 - Markaicode](https://markaicode.com/rag-ollama-langchain-document-qa-system-2025/)
+9. [Building RAG Applications with Ollama and Python - Collabnix](https://collabnix.com/building-rag-applications-with-ollama-and-python-complete-2025-tutorial/)
+10. [Build a Local AI RAG App with Ollama and Python - Medium](https://auscunningham.medium.com/build-a-local-ai-rag-app-with-ollama-and-python-96f9df9c2a3e)
+
+### Document Processing
+
+11. [Best Python PDF to Text Parser Libraries: A 2026 Evaluation - Unstract](https://unstract.com/blog/evaluating-python-pdf-to-text-libraries/)
+12. [I Tested 7 Python PDF Extractors (2025 Edition) - DEV Community](https://dev.to/onlyoneaman/i-tested-7-python-pdf-extractors-so-you-dont-have-to-2025-edition-akm)
+
+### JadeVectorDB Documentation
+
+13. JadeVectorDB README.md - Project overview and capabilities
+14. JadeVectorDB BOOTSTRAP.md - Developer guide and architecture
+15. JadeVectorDB docs/COMPLETE_BUILD_SYSTEM_SETUP.md - Build and deployment
+
+---
+
+## Appendix A: Sample Code Repository Structure
+
+```
+rag-document-qa/
+├── README.md
+├── requirements.txt
+├── setup.sh
+├── .env.example
+│
+├── config/
+│   └── rag_config.yaml
+│
+├── src/
+│   ├── __init__.py
+│   ├── document_processor.py      # PDF/DOCX parsing and chunking
+│   ├── embedding_service.py        # E5-small embedding generation
+│   ├── vector_store.py             # JadeVectorDB client wrapper
+│   ├── rag_service.py              # Main RAG orchestration
+│   └── utils.py                    # Helper functions
+│
+├── scripts/
+│   ├── ingest_documents.py         # Batch document ingestion
+│   ├── create_database.py          # Initialize JadeVectorDB
+│   └── test_pipeline.py            # End-to-end testing
+│
+├── ui/
+│   ├── streamlit_app.py            # Web interface
+│   ├── cli.py                      # Command-line interface
+│   └── api.py                      # FastAPI REST API (optional)
+│
+├── tests/
+│   ├── test_document_processor.py
+│   ├── test_embedding.py
+│   ├── test_rag_service.py
+│   └── test_questions.json         # Test Q&A pairs
+│
+├── data/
+│   ├── raw_docs/                   # Original PDFs/DOCX
+│   ├── processed/                  # Parsed and chunked data
+│   └── logs/                       # Query logs, feedback
+│
+└── docs/
+    ├── SETUP.md                    # Setup instructions
+    ├── USER_GUIDE.md               # End-user documentation
+    └── ADMIN_GUIDE.md              # System administration
+```
+
+---
+
+## Appendix B: Quick Start Commands
+
+```bash
+# 1. Clone repository (assuming you've created this structure)
+git clone <repo-url>
+cd rag-document-qa
+
+# 2. Run setup script
+chmod +x setup.sh
+./setup.sh
+
+# 3. Place your documents
+mkdir -p data/raw_docs
+cp /path/to/your/pdfs/*.pdf data/raw_docs/
+cp /path/to/your/docx/*.docx data/raw_docs/
+
+# 4. Ingest documents
+python scripts/ingest_documents.py data/raw_docs/
+
+# 5. Test with a question
+python scripts/test_pipeline.py
+
+# 6. Launch web UI
+streamlit run ui/streamlit_app.py
+
+# Or use CLI
+python ui/cli.py "What is the expense reimbursement policy?"
+```
+
+---
+
+## Appendix C: Sample Test Questions
+
+Create `tests/test_questions.json`:
+
+```json
+[
+  {
+    "id": 1,
+    "question": "How do I submit an expense report?",
+    "expected_docs": ["Employee_Handbook.pdf"],
+    "expected_sections": ["Expense Reimbursement", "Finance Procedures"]
+  },
+  {
+    "id": 2,
+    "question": "What is the process for requesting parental leave?",
+    "expected_docs": ["HR_Policies.pdf"],
+    "expected_sections": ["Leave Policies", "Benefits"]
+  },
+  {
+    "id": 3,
+    "question": "What are the data security requirements for remote work?",
+    "expected_docs": ["IT_Security_Policy.pdf"],
+    "expected_sections": ["Security Guidelines", "Remote Work"]
+  },
+  {
+    "id": 4,
+    "question": "How do I request access to a new software system?",
+    "expected_docs": ["IT_Access_Request_Process.docx"],
+    "expected_sections": ["Access Management", "Onboarding"]
+  },
+  {
+    "id": 5,
+    "question": "What is the escalation process for customer complaints?",
+    "expected_docs": ["Customer_Service_Handbook.pdf"],
+    "expected_sections": ["Escalation Procedures", "Customer Handling"]
+  }
+]
+```
+
+---
+
+## Conclusion
+
+This RAG system design leverages JadeVectorDB's robust vector storage and retrieval capabilities alongside local LLMs (Ollama) to create a **privacy-preserving, cost-effective, and offline-capable** document Q&A system applicable to any organization or industry.
+
+### Key Takeaways
+
+**✅ JadeVectorDB is Well-Suited for This Use Case:**
+- Excellent vector storage with HNSW indexing
+- Rich metadata support for source attribution
+- Proven performance (sub-50ms for 1M vectors)
+- Persistent storage with ACID guarantees
+- Battle-tested architecture
+
+**⚠️ Custom Development Required:**
+- Document processing pipeline (PDF/DOCX parsing, chunking)
+- Embedding generation (via Sentence Transformers or Ollama)
+- RAG orchestration layer
+- User interface (Streamlit/CLI/API)
+- LLM integration (Ollama)
+
+**📊 Expected Outcomes:**
+- **Retrieval Latency**: <20ms for 50,000 chunks
+- **End-to-End Response**: 2-4 seconds
+- **Storage**: ~300MB for 50,000 chunks
+- **Accuracy**: >85% with proper chunking and top-k tuning
+- **Cost**: Zero ongoing API costs
+
+**🚀 Next Steps:**
+1. Review and approve this architecture
+2. Begin Phase 1: Foundation setup
+3. Process sample documents to validate pipeline
+4. Iterate based on user feedback
+
+---
+
+**Document Version**: 1.0
+**Date**: January 2, 2026
+**Author**: RAG System Design Team
+**Status**: Ready for Implementation

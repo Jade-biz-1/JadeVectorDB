@@ -50,10 +50,10 @@ describe('Batch Vector Operations Journey', () => {
   });
 
   it('uploads vectors to the selected database', () => {
-    cy.intercept('POST', '**/api/databases/db-1/vectors/batch*', {
-      statusCode: 200,
-      body: { count: 1, stored: 1 },
-    }).as('batchUpload');
+    cy.intercept('POST', '**/api/databases/db-1/vectors', {
+      statusCode: 201,
+      body: { id: 'e2e-vec-1' },
+    }).as('storeVector');
 
     cy.visit('/batch-operations');
     cy.wait('@getDatabases');
@@ -63,7 +63,7 @@ describe('Batch Vector Operations Journey', () => {
     cy.get('input[placeholder="Comma-separated or JSON array"]').type('0.1, 0.2, 0.3, 0.4');
     cy.contains('button', /upload vectors/i).click();
 
-    cy.wait('@batchUpload').its('request.body').should('be.an', 'array');
+    cy.wait('@storeVector').its('request.body').should('include.keys', 'id', 'values');
   });
 
   it('removes a vector row when Remove is clicked', () => {

@@ -129,12 +129,12 @@ $ curl -X POST http://localhost:8080/v1/api-keys \
   "message": "API key created successfully",
   "user_id": "user_admin_default",
   "created_at": "2025-12-22T08:50:27Z",
-  "api_key": "jadevdb_250bc59e1ab69382acbe6224826c370a"  # ← Use this
+  "api_key": "jadevdb_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # ← Use this
 }
 
 # 3. Test API key authentication
 $ curl http://localhost:8080/v1/databases \
-  -H "Authorization: Bearer jadevdb_250bc59e1ab69382acbe6224826c370a"
+  -H "Authorization: Bearer jadevdb_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 {
   "databases": [...],  # ← Works!
   "total": 4
