@@ -88,6 +88,12 @@ coverage/
 .env.staging.local
 .env.backup
 .env.example
+# Never commit files that may contain real credentials
+.env.docker
+**/.env.docker
+**/secrets.yml
+**/secrets.yaml
+**/.secrets
 
 # Database
 *.db
