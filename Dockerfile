@@ -62,7 +62,8 @@ ENV VERBOSE=false
 
 # Run the unified build script
 # All dependencies will be fetched from source via CMake FetchContent
-RUN chmod +x build.sh && \
+# Strip Windows CRLF line endings (files checked out on Windows have \r\n)
+RUN sed -i 's/\r$//' build.sh && chmod +x build.sh && \
     ./build.sh --type ${BUILD_TYPE} \
                --no-tests \
                --no-benchmarks \

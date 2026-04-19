@@ -67,13 +67,14 @@ if [ -n "$EXISTING_KEY" ]; then
 fi
 
 # ── Step 3: Read admin credentials from .env ──────────────────────────────────
-ADMIN_USER=$(grep -E "^ADMIN_USERNAME=" "$ENV_FILE" | cut -d'=' -f2)
-ADMIN_PASS=$(grep -E "^ADMIN_DEFAULT_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2)
+# Use JADEVECTORDB_ADMIN_* if set, otherwise fall back to generic ADMIN_* fields
+ADMIN_USER=$(grep -E "^JADEVECTORDB_ADMIN_USERNAME=" "$ENV_FILE" | cut -d'=' -f2)
+ADMIN_PASS=$(grep -E "^JADEVECTORDB_ADMIN_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2)
 JADE_PORT=$(grep -E "^JADEVECTORDB_PORT=" "$ENV_FILE" | cut -d'=' -f2)
 
 # Fall back to docker-compose defaults if not set in .env
 ADMIN_USER="${ADMIN_USER:-admin}"
-ADMIN_PASS="${ADMIN_PASS:-Admin@1234}"
+ADMIN_PASS="${ADMIN_PASS:-admin123}"
 JADE_PORT="${JADE_PORT:-8080}"
 JADE_URL="http://localhost:${JADE_PORT}"
 
@@ -84,6 +85,20 @@ echo ""
 # ── Step 4: Start JadeVectorDB only ──────────────────────────────────────────
 info "Starting JadeVectorDB (phase 1 of 2)..."
 docker compose up -d jadevectordb
+
+# ── Step 4b: Detect the actual host port from docker compose ─────────────────
+# This handles cases where docker-compose.yml maps a different host port
+# (e.g. "8081:8080") than the value in .env, making bootstrap robust to
+# port configuration drift.
+DETECTED_PORT=$(docker compose port jadevectordb 8080 2>/dev/null | cut -d':' -f2)
+if [ -n "$DETECTED_PORT" ]; then
+  if [ "$DETECTED_PORT" != "$JADE_PORT" ]; then
+    warn "docker-compose host port ($DETECTED_PORT) differs from JADEVECTORDB_PORT in .env ($JADE_PORT) — using detected port."
+  fi
+  JADE_PORT="$DETECTED_PORT"
+  JADE_URL="http://localhost:${JADE_PORT}"
+  info "JadeVectorDB (resolved): ${JADE_URL}"
+fi
 
 # ── Step 5: Wait for JadeVectorDB to be healthy ───────────────────────────────
 info "Waiting for JadeVectorDB to become healthy..."
@@ -110,8 +125,8 @@ LOGIN_RESPONSE=$(curl -s -X POST "${JADE_URL}/v1/auth/login" \
   -H "Content-Type: application/json" \
   -d "{\"username\":\"${ADMIN_USER}\",\"password\":\"${ADMIN_PASS}\"}")
 
-TOKEN=$(echo "$LOGIN_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('token',''))" 2>/dev/null)
-USER_ID=$(echo "$LOGIN_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('user_id',''))" 2>/dev/null)
+TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+USER_ID=$(echo "$LOGIN_RESPONSE" | grep -o '"user_id":"[^"]*"' | cut -d'"' -f4)
 
 if [ -z "$TOKEN" ] || [ -z "$USER_ID" ]; then
   echo ""
@@ -139,7 +154,8 @@ info "Writing API key to .env..."
 # Replace the empty or missing JADEVECTORDB_API_KEY line
 if grep -qE "^JADEVECTORDB_API_KEY=" "$ENV_FILE"; then
   # Line exists but empty — replace it
-  sed -i "" "s|^JADEVECTORDB_API_KEY=.*|JADEVECTORDB_API_KEY=${API_KEY}|" "$ENV_FILE"
+  # Use .bak suffix for cross-platform compatibility (macOS BSD sed + GNU sed)
+  sed -i.bak "s|^JADEVECTORDB_API_KEY=.*|JADEVECTORDB_API_KEY=${API_KEY}|" "$ENV_FILE" && rm -f "${ENV_FILE}.bak"
 else
   # Line missing entirely — append it
   echo "JADEVECTORDB_API_KEY=${API_KEY}" >> "$ENV_FILE"
