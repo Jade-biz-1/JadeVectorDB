@@ -210,11 +210,17 @@ Once you've completed this exercise, move on to:
 - **Exercise 2:** Batch Operations for efficient data import
 - **Exercise 3:** Metadata Filtering for advanced searches
 
+## See Also
+
+- `docs/cli-documentation.md` — full CLI reference with all 40+ commands and output format options
+- `cli/python/README.md` — Python CLI installation and usage guide
+- `cli/shell/README.md` — Shell CLI installation and usage guide
+
 ## Troubleshooting
 
 **Database not found error:**
 - Make sure you're using the correct database ID
-- List all databases with `jade-db list-db`
+- List all databases with `jade-db list-dbs`
 
 **Dimension mismatch error:**
 - Verify your vectors have exactly 8 values

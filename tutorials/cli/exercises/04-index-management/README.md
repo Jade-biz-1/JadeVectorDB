@@ -545,6 +545,13 @@ Expected outcomes:
 After completing this exercise:
 - **Exercise 5:** Advanced Workflows - Production monitoring, backup, and automation
 
+## See Also
+
+- `docs/cli-documentation.md` — full reference for `create-index`, `list-indexes`, and `delete-index` commands
+- `BUILD.md` — backend build options that affect index performance (Release vs Debug builds)
+- HNSW Paper: "Efficient and robust approximate nearest neighbor search using Hierarchical Navigable Small World graphs"
+- IVF Paper: "Product quantization for nearest neighbor search" (Jégou et al.)
+
 ## Troubleshooting
 
 **Index build takes too long:**

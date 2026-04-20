@@ -785,12 +785,18 @@ source config/production.conf
 
 ## Next Steps
 
-Congratulations! You've completed all CLI tutorials. Next:
+Continue with the Phase 16 exercises:
+- **Exercise 6:** User Management — create, update, and deactivate users via CLI
+- **Exercise 7:** API Key Management — create and rotate keys for programmatic access
+- **Exercise 8:** Advanced Features — hybrid search, reranking, embeddings, and analytics
 
-1. **Explore the Web Tutorial** for visual understanding
-2. **Read Production Documentation** for deployment best practices
-3. **Set up Monitoring** with Prometheus and Grafana
-4. **Implement CI/CD** for automated deployments
+## See Also
+
+- `docs/cli-documentation.md` — full CLI reference with all 40+ commands
+- `docs/LOCAL_DEPLOYMENT.md` — production deployment configuration
+- `docs/TROUBLESHOOTING_GUIDE.md` — extended troubleshooting reference
+- `scripts/bootstrap.sh` — first-run bootstrap that automates API key generation
+- `prometheus.yml` — Prometheus scrape configuration for JadeVectorDB metrics
 
 ## Resources
 
