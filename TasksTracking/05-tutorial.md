@@ -2,8 +2,8 @@
 
 **Phase**: 13
 **Task Range**: T215.01-T218
-**Status**: 100% Complete ✅ (Core + Essential Features)
-**Last Updated**: 2025-12-19
+**Status**: 100% Complete ✅ (Core + Essential Features); 2 low-priority items deferred
+**Last Updated**: 2026-04-20
 
 ---
 
@@ -307,5 +307,23 @@ Create comprehensive tests to verify cURL command generation works correctly for
 - Result: Successfully implemented comprehensive tests for cURL command generation
 
 ---
+
+## Deferred Low-Priority Items (from TUTORIAL_ALIGNMENT_REPORT.md)
+
+> These were identified in the April 2026 tutorial alignment review. All urgent, high, and medium priority items have been completed. These two remain as nice-to-have additions.
+
+### T219: Create Tutorial — Web Dashboard vs CLI Comparison
+**Priority**: 🟢 LOW  
+**Scope**: New tutorial document under `tutorials/`  
+**Description**: Side-by-side comparison of accomplishing the same tasks via the web dashboard UI and the CLI. Covers when to use each, keyboard shortcuts, and tips for power users.  
+**Estimated effort**: 1-2 days  
+**Status**: [ ] OPEN — deferred, add based on user feedback
+
+### T220: Create Tutorial — Production Deployment Guide
+**Priority**: 🟢 LOW  
+**Scope**: New tutorial document under `tutorials/`  
+**Description**: Step-by-step production deployment tutorial covering Docker Compose (using `scripts/bootstrap.sh`), Kubernetes/Helm, CLI usage in CI/CD pipelines, and operational best practices.  
+**Estimated effort**: 2-3 days  
+**Status**: [ ] OPEN — deferred, add based on user feedback
 
 ---
