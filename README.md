@@ -300,6 +300,7 @@ docker compose up -d
 
 ### Key Features
 - PDF and DOCX document ingestion with automatic chunking and embedding
+- Local LLM inference via **Ollama** (`llama3.2:3b` for generation, `mxbai-embed-large` for 1024-dim embeddings) — no external API keys required
 - Semantic search with configurable top-k and category filtering using `mxbai-embed-large`
 - User management with role-based access (admin / viewer), forced first-login password change, and JWT authentication
 - Admin UI: create users, reset passwords, deactivate accounts
