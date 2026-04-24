@@ -331,6 +331,26 @@ jade-db search \
   }'
 ```
 
+## Filter Operator Support
+
+The operators demonstrated in this exercise (`$lt`, `$lte`, `$gt`, `$gte`, `$eq`, `$ne`, `$contains`, `$in`, `$all`, `$and`, `$or`) are part of the JadeVectorDB metadata filtering specification. Support may vary depending on the server version you are running.
+
+**To verify which operators your server supports:**
+```bash
+# Check server version and capabilities
+jade-db health --format json | jq '.version'
+jade-db status --format json
+```
+
+**If a filter operator is not supported**, the server will return an error such as:
+```
+Error: Unsupported filter operator: $contains
+```
+
+In that case, fall back to exact-match filtering (`{"category": "laptop"}`) or check the release notes for your version.
+
+> **Tip:** The operators `$eq`, `$ne`, `$and`, `$or`, and exact-match (`{"field": "value"}`) are supported in all versions. Range operators (`$lt`, `$gt`, etc.) and array operators (`$contains`, `$all`) were added in Phase 16 (December 2025).
+
 ## Performance Considerations
 
 ### Filter First, Then Search
@@ -453,6 +473,11 @@ jade-db search \
 After completing this exercise:
 - **Exercise 4:** Index Management - Optimize performance with different index types
 - **Exercise 5:** Advanced Workflows - Production patterns and automation
+
+## See Also
+
+- `docs/cli-documentation.md` — full reference for the `--filter` flag and supported operators
+- `specs/002-check-if-we/spec.md` — metadata filtering specification (operator definitions)
 
 ## Troubleshooting
 

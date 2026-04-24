@@ -268,6 +268,11 @@ Move on to:
 - **Exercise 3:** Metadata Filtering for advanced searches
 - **Exercise 4:** Index Management for performance optimization
 
+## See Also
+
+- `docs/cli-documentation.md` — full reference for `import` and `export` commands including all format options
+- `tutorials/cli/sample-data/` — sample JSON and CSV files used in this exercise
+
 ## Troubleshooting
 
 **Out of memory errors:**
