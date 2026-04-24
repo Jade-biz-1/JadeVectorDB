@@ -265,7 +265,7 @@ Check the logs for:
 - **Backend**: FastAPI (Python) with JWT auth, rate limiting, structured logging, and user management
 - **Frontend**: React + Vite admin UI with role-based route guards (`RequireAuth` / `RequireAdmin`)
 - **Vector store**: JadeVectorDB
-- **LLM & Embeddings**: Ollama (`llama3.2:3b` + `mxbai-embed-large`, 1024-dim)
+- **LLM & Embeddings**: Ollama (`ollama/ollama:latest` Docker container, port 11434) — runs `llama3.2:3b` for generation and `mxbai-embed-large` (1024-dim) for embeddings; models are pulled automatically on first container start and cached in a named volume (`ollama_data`)
 - **Observability**: Prometheus metrics on `/metrics` (15 custom metrics) + two pre-built Grafana dashboards (EnterpriseRAG + JadeVectorDB)
 
 ### First-Run Setup (Bootstrap)
@@ -295,12 +295,13 @@ docker compose up -d
 | Grafana | http://localhost:3001 (admin/admin) |
 | Prometheus | http://localhost:9090 |
 | JadeVectorDB | http://localhost:8080 |
+| Ollama | http://localhost:11434 |
 
 > **Requirements**: Docker + docker compose, python3 (for JSON parsing in the bootstrap script).
 
 ### Key Features
 - PDF and DOCX document ingestion with automatic chunking and embedding
-- Local LLM inference via **Ollama** (`llama3.2:3b` for generation, `mxbai-embed-large` for 1024-dim embeddings) — no external API keys required
+- Local LLM inference via **Ollama** Docker container (`ollama/ollama:latest`): `llama3.2:3b` for answer generation, `mxbai-embed-large` for 1024-dim embeddings — both models auto-pulled on first start, no external API keys required
 - Semantic search with configurable top-k and category filtering using `mxbai-embed-large`
 - User management with role-based access (admin / viewer), forced first-login password change, and JWT authentication
 - Admin UI: create users, reset passwords, deactivate accounts
